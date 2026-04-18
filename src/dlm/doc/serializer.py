@@ -1,0 +1,174 @@
+"""Serialize a `ParsedDlm` back to canonical `.dlm` text.
+
+Contract:
+
+- `serialize(parse_text(t))` may differ from `t` (whitespace/quoting
+  normalization), but applying the pipeline a second time is a no-op:
+  `serialize(parse_text(serialize(parse_text(t)))) == serialize(parse_text(t))`.
+- Frontmatter key order is deterministic (see `_FRONTMATTER_ORDER`).
+- Nested mappings (`training`, `export`) preserve the schema's declared
+  field order.
+- Section content is emitted verbatim; fence lines are regenerated.
+- Output uses LF line endings and ends with a single trailing newline.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Final
+
+from dlm.doc.parser import ParsedDlm
+from dlm.doc.schema import DlmFrontmatter, ExportConfig, TrainingConfig
+from dlm.doc.sections import Section, SectionType
+
+# Top-level frontmatter key order.
+_FRONTMATTER_ORDER: Final[tuple[str, ...]] = (
+    "dlm_id",
+    "dlm_version",
+    "base_model",
+    "training",
+    "export",
+    "system_prompt",
+)
+
+
+def serialize(parsed: ParsedDlm) -> str:
+    """Produce canonical `.dlm` text for `parsed`.
+
+    Always ends with `\\n`.
+    """
+    parts: list[str] = [_serialize_frontmatter(parsed.frontmatter), "\n"]
+    for i, section in enumerate(parsed.sections):
+        if i > 0:
+            parts.append("\n")
+        parts.append(_serialize_section(section))
+    rendered = "".join(parts)
+    if not rendered.endswith("\n"):
+        rendered += "\n"
+    return rendered
+
+
+# --- frontmatter --------------------------------------------------------------
+
+
+def _serialize_frontmatter(fm: DlmFrontmatter) -> str:
+    lines: list[str] = ["---"]
+    for key in _FRONTMATTER_ORDER:
+        value = getattr(fm, key, None)
+        if key == "system_prompt":
+            if value is None:
+                continue
+            lines.extend(_emit_block_scalar(key, value))
+            continue
+        if isinstance(value, TrainingConfig | ExportConfig):
+            lines.append(f"{key}:")
+            lines.extend(_emit_nested_mapping(value, indent=2))
+            continue
+        lines.append(f"{key}: {_scalar(value)}")
+    lines.append("---")
+    return "\n".join(lines) + "\n"
+
+
+def _emit_nested_mapping(model: TrainingConfig | ExportConfig, *, indent: int) -> list[str]:
+    pad = " " * indent
+    lines: list[str] = []
+    # model_fields preserves declaration order.
+    for field_name in model.__class__.model_fields:
+        value = getattr(model, field_name)
+        lines.append(f"{pad}{field_name}: {_scalar(value)}")
+    return lines
+
+
+def _emit_block_scalar(key: str, value: str) -> list[str]:
+    """YAML `|` block scalar: preserves line breaks verbatim."""
+    lines: list[str] = [f"{key}: |"]
+    for line in value.splitlines():
+        lines.append(f"  {line}")
+    return lines
+
+
+def _scalar(value: object) -> str:
+    """Render a scalar value in YAML-compatible form.
+
+    Conservative quoting: quote strings that could be misparsed (contain
+    whitespace, `:`, `#`, or look like a reserved scalar).
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return _format_number(value)
+    if isinstance(value, str):
+        return _format_string(value)
+    if isinstance(value, list):
+        return _format_list(value)
+    if value is None:
+        return "null"
+    return str(value)
+
+
+def _format_number(value: float | int) -> str:
+    # Use repr() for floats so 2e-4 stays 0.0002 and integer values stay integers.
+    if isinstance(value, bool):  # bool is-a int; guard explicitly
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    # Floats: prefer scientific when helpful, else decimal.
+    if value == 0:
+        return "0.0"
+    if abs(value) < 1e-3 or abs(value) >= 1e6:
+        return repr(value)
+    return repr(value)
+
+
+def _format_string(value: str) -> str:
+    if not value:
+        return '""'
+    if _needs_quoting(value):
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return value
+
+
+_RESERVED_UNQUOTED = frozenset(
+    {
+        "true",
+        "false",
+        "null",
+        "yes",
+        "no",
+        "on",
+        "off",
+        "~",
+    }
+)
+
+
+def _needs_quoting(value: str) -> bool:
+    if value.lower() in _RESERVED_UNQUOTED:
+        return True
+    if any(ch in value for ch in " \t\n#\"':&*!|>?%@`{}[]"):
+        return True
+    # Leading `-` or `,` would be parsed as a YAML list element.
+    return value.startswith(("-", ","))
+
+
+def _format_list(items: Iterable[object]) -> str:
+    """Inline flow-style list: `[a, b, c]`."""
+    rendered = [_scalar(item) for item in items]
+    return "[" + ", ".join(rendered) + "]"
+
+
+# --- sections -----------------------------------------------------------------
+
+
+def _serialize_section(section: Section) -> str:
+    if section.type == SectionType.PROSE:
+        body = section.content
+        if not body.endswith("\n"):
+            body += "\n"
+        return body
+    fence = f"::{section.type.value}::\n"
+    body = section.content
+    if body and not body.endswith("\n"):
+        body += "\n"
+    return fence + body
