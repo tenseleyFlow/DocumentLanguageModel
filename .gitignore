@@ -1,0 +1,32 @@
+.docs/
+CLAUDE.md
+.fackr/
+CLAUDE.md
+.refs/
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# envs
+.venv/
+venv/
+.env
+
+# tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# build + dist
+build/
+dist/
+*.egg-info/
+
+# editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
