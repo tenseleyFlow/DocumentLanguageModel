@@ -42,6 +42,14 @@ from dlm.store.layout import (
 STORE_SUBDIR: Final = "store"
 
 
+def _current_os_name() -> str:
+    """Return `os.name`. Indirected through a helper so tests can patch
+    the NT vs POSIX branch without globally mutating `os.name` (which
+    would break `pathlib` on the host).
+    """
+    return os.name
+
+
 def dlm_home(override: Path | str | None = None) -> Path:
     """Resolve the DLM home directory.
 
@@ -55,7 +63,7 @@ def dlm_home(override: Path | str | None = None) -> Path:
     if env:
         return Path(env).expanduser().resolve()
 
-    if os.name == "nt":
+    if _current_os_name() == "nt":
         appdata = os.environ.get("APPDATA")
         if appdata:
             return Path(appdata).resolve() / "dlm"
