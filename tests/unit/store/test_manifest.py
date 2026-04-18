@@ -71,7 +71,7 @@ class TestNestedTypes:
             TrainingRunSummary.model_validate(
                 {
                     "run_id": 1,
-                    "started_at": datetime.utcnow(),
+                    "started_at": datetime(2026, 4, 18, 10, 0),
                     "adapter_version": 1,
                     "seed": 0,
                     "extra": 1,

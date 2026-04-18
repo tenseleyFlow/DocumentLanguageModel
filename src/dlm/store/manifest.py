@@ -22,7 +22,7 @@ Sprint 12b owns the schema migration framework; when it lands,
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -82,8 +82,10 @@ class ExportSummary(BaseModel):
 
 
 def _utcnow() -> datetime:
-    # Naive UTC — JSON round-trips cleanly without tzinfo bookkeeping.
-    return datetime.utcnow().replace(microsecond=0)
+    # Timezone-aware UTC (audit-03 M2 — `datetime.utcnow()` is deprecated
+    # in Py3.12). We strip tzinfo so the serialized JSON stays the same
+    # naive-ISO-8601 form every downstream consumer already expects.
+    return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
 def _empty_dict() -> dict[str, str]:
