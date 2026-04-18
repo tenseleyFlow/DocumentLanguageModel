@@ -2,7 +2,10 @@
 
 Every stub raises `NotImplementedError` with the sprint number that will
 implement it. This makes `dlm --help` self-documenting about project
-progress.
+progress. Arguments are accepted so `--help` renders the real eventual
+surface; they're unused until each subcommand's owning sprint lands,
+which is why `src/dlm/cli/commands.py` has a ruff per-file-ignore for
+`ARG001` in `pyproject.toml`.
 """
 
 from __future__ import annotations
@@ -34,7 +37,6 @@ def init_cmd(
     ] = False,
 ) -> None:
     """Bootstrap a new .dlm file with sensible defaults."""
-    _ = (path, base, template, i_accept_license)
     _stub("13", "dlm init")
 
 
@@ -46,7 +48,6 @@ def train_cmd(
     max_steps: Annotated[int | None, typer.Option("--max-steps", help="Cap step count.")] = None,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
-    _ = (path, resume, fresh, seed, max_steps)
     _stub("09", "dlm train")
 
 
@@ -57,7 +58,6 @@ def prompt_cmd(
     temp: Annotated[float, typer.Option("--temp")] = 0.7,
 ) -> None:
     """Run inference against the trained adapter."""
-    _ = (path, query, max_tokens, temp)
     _stub("10", "dlm prompt")
 
 
@@ -70,7 +70,6 @@ def export_cmd(
     no_smoke: Annotated[bool, typer.Option("--no-smoke")] = False,
 ) -> None:
     """Export the adapter to an Ollama-registered model."""
-    _ = (path, quant, merged, dequantize, name, no_smoke)
     _stub("11+12", "dlm export")
 
 
@@ -81,7 +80,6 @@ def pack_cmd(
     include_base: Annotated[bool, typer.Option("--include-base")] = False,
 ) -> None:
     """Produce a portable .dlm.pack bundle."""
-    _ = (path, out, include_exports, include_base)
     _stub("14", "dlm pack")
 
 
@@ -90,7 +88,6 @@ def unpack_cmd(
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
     """Install a .dlm.pack into the local store."""
-    _ = (path, force)
     _stub("14", "dlm unpack")
 
 
@@ -114,7 +111,6 @@ def show_cmd(
     json_out: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Show training history, exports, and adapter state."""
-    _ = (path, json_out)
     _stub("13", "dlm show")
 
 
@@ -124,5 +120,4 @@ def migrate_cmd(
     no_backup: Annotated[bool, typer.Option("--no-backup")] = False,
 ) -> None:
     """Migrate a .dlm frontmatter to the current schema version."""
-    _ = (path, dry_run, no_backup)
     _stub("12b", "dlm migrate")

@@ -134,8 +134,7 @@ def _get_vram_gb(backend: Backend, torch: object) -> float | None:
         free, _total = torch.cuda.mem_get_info()  # type: ignore[attr-defined]
     except (AttributeError, RuntimeError) as exc:
         _LOG.warning(
-            "capabilities probe: torch.cuda.mem_get_info failed (%s); "
-            "treating VRAM as unknown",
+            "capabilities probe: torch.cuda.mem_get_info failed (%s); treating VRAM as unknown",
             exc,
         )
         return None

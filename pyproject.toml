@@ -82,6 +82,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ARG", "PT011"]
+# Typer stub subcommands accept every CLI arg the real implementation
+# will take so `--help` reflects the shipping surface — even though the
+# stub body discards them.
+"src/dlm/cli/commands.py" = ["ARG001"]
 
 [tool.ruff.format]
 quote-style = "double"
