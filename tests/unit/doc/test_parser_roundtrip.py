@@ -110,6 +110,28 @@ class TestVersionGating:
         with pytest.raises(DlmVersionError, match="newer than this parser"):
             parse_text(text)
 
+    def test_sub_current_version_points_at_dlm_migrate(self) -> None:
+        """Audit-02 M5: the sub-CURRENT branch of _check_version must
+        surface a `dlm migrate` pointer (Sprint 12b hand-off).
+
+        `dlm_version: 0` exercises the migration-pointer branch;
+        pydantic's `ge=1` constraint rejects `0` as a schema error before
+        the version check fires, so we use a positive value that is still
+        less than CURRENT once CURRENT >= 2. Until Sprint 18 bumps
+        CURRENT, we simulate by monkey-patching the module constant.
+        """
+        from dlm.doc import parser as parser_module
+
+        # Feed a `dlm_version: 1` doc while CURRENT is temporarily 2.
+        text = f"---\ndlm_id: {VALID_ULID}\nbase_model: smollm2-135m\ndlm_version: 1\n---\n"
+        original = parser_module.CURRENT_SCHEMA_VERSION
+        parser_module.CURRENT_SCHEMA_VERSION = original + 1
+        try:
+            with pytest.raises(DlmVersionError, match="dlm migrate"):
+                parse_text(text)
+        finally:
+            parser_module.CURRENT_SCHEMA_VERSION = original
+
 
 class TestFenceGrammar:
     def test_unknown_fence_raises(self) -> None:
@@ -222,8 +244,12 @@ class TestEncodingContract:
     def test_invalid_utf8_raises_encoding_error(self, tmp_path: Path) -> None:
         p = tmp_path / "bad.dlm"
         p.write_bytes(b"---\nbase_model: \xff\n---\n")
-        with pytest.raises(DlmEncodingError):
+        with pytest.raises(DlmEncodingError) as exc:
             parse_file(p)
+        # Audit-02 minor: the parser path must surface byte_offset
+        # end-to-end (not just the io-layer test).
+        assert exc.value.byte_offset == len("---\nbase_model: ")
+        assert exc.value.path == p
 
     def test_crlf_and_lf_produce_identical_section_ids(self, tmp_path: Path) -> None:
         """Windows and Unix edits of the same content must hash-identically."""
