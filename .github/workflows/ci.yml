@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.11.6"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint-type-test:
+    name: lint / typecheck / test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy src/dlm
+
+      - name: Pytest (unit + integration, non-slow)
+        run: uv run pytest
+
+  no-network-sandbox:
+    # audit F13: dlm init / doctor / show must work with zero outbound network.
+    name: no-network sandbox (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Sync dependencies (before blocking network)
+        run: uv sync --all-extras --dev
+
+      - name: Block egress then exercise local-only CLI commands
+        env:
+          # Belt-and-braces: force HF / transformers offline posture.
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          HF_DATASETS_OFFLINE: "1"
+        run: |
+          set -euxo pipefail
+          # Drop all non-loopback egress. Commands that try to reach out
+          # will fail — CI fails if any currently-"local-only" command
+          # attempts network.
+          sudo iptables -A OUTPUT -o lo -j ACCEPT
+          sudo iptables -A OUTPUT -d 127.0.0.0/8 -j ACCEPT
+          sudo iptables -A OUTPUT -j REJECT
+          # Sanity check: confirm egress is blocked.
+          (! curl --max-time 3 -sS https://example.com -o /dev/null) || (echo "egress not blocked" && exit 1)
+          # Exercise CLI surfaces that must be local-only at this sprint.
+          uv run dlm --version
+          uv run dlm --help
+          # `doctor` and `show` will become local-only once their sprints
+          # land (05, 13). Until then, only --help and --version are
+          # asserted here — but the job scaffolding is in place.
