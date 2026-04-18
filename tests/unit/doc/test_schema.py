@@ -1,0 +1,171 @@
+"""Schema validation — positive + negative cases for every constraint."""
+
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+from dlm.doc.schema import DlmFrontmatter, ExportConfig, TrainingConfig
+
+VALID_ULID = "01HZ4X7TGZM3J1A2B3C4D5E6F7"
+
+
+class TestTrainingConfigDefaults:
+    def test_default_instance_has_expected_values(self) -> None:
+        t = TrainingConfig()
+        assert t.adapter == "lora"
+        assert t.lora_r == 8
+        assert t.lora_alpha == 16
+        assert t.lora_dropout == 0.05
+        assert t.target_modules == "auto"
+        assert t.sequence_len == 2048
+        assert t.micro_batch_size == "auto"
+        assert t.grad_accum == "auto"
+        assert t.learning_rate == pytest.approx(2e-4)
+        assert t.num_epochs == 3
+        assert t.optimizer == "adamw_torch"
+        assert t.lr_scheduler == "cosine"
+        assert t.warmup_ratio == pytest.approx(0.1)
+        assert t.seed == 42
+
+    def test_frozen_model_rejects_mutation(self) -> None:
+        t = TrainingConfig()
+        with pytest.raises(ValidationError):
+            t.lora_r = 16  # type: ignore[misc]
+
+
+class TestTrainingConfigConstraints:
+    @pytest.mark.parametrize("bad", [0, -1, 257])
+    def test_lora_r_out_of_range(self, bad: int) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(lora_r=bad)
+
+    @pytest.mark.parametrize("bad", [-0.01, 0.51])
+    def test_lora_dropout_out_of_range(self, bad: float) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(lora_dropout=bad)
+
+    @pytest.mark.parametrize("bad", [63, 32769])
+    def test_sequence_len_out_of_range(self, bad: int) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(sequence_len=bad)
+
+    @pytest.mark.parametrize("bad", [0, -1])
+    def test_num_epochs_must_be_ge_1(self, bad: int) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(num_epochs=bad)
+
+    def test_learning_rate_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(learning_rate=0.0)
+
+    @pytest.mark.parametrize("bad", [-0.01, 0.51])
+    def test_warmup_ratio_out_of_range(self, bad: float) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(warmup_ratio=bad)
+
+    def test_adapter_literal_rejects_unknown(self) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(adapter="full")  # type: ignore[arg-type]
+
+    def test_optimizer_literal_rejects_unknown(self) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(optimizer="lion")  # type: ignore[arg-type]
+
+    def test_lr_scheduler_literal_rejects_unknown(self) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(lr_scheduler="exponential")  # type: ignore[arg-type]
+
+    def test_extra_fields_forbidden(self) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig.model_validate({"adapter": "lora", "rubbish": 1})
+
+    def test_micro_batch_size_auto_or_positive_int(self) -> None:
+        TrainingConfig(micro_batch_size="auto")
+        TrainingConfig(micro_batch_size=4)
+        with pytest.raises(ValidationError):
+            TrainingConfig(micro_batch_size=0)
+        with pytest.raises(ValidationError):
+            TrainingConfig(micro_batch_size="high")  # type: ignore[arg-type]
+
+    def test_grad_accum_auto_or_positive_int(self) -> None:
+        TrainingConfig(grad_accum="auto")
+        TrainingConfig(grad_accum=2)
+        with pytest.raises(ValidationError):
+            TrainingConfig(grad_accum=-1)
+
+    def test_target_modules_accepts_auto_or_list(self) -> None:
+        TrainingConfig(target_modules="auto")
+        TrainingConfig(target_modules=["q_proj", "v_proj"])
+        with pytest.raises(ValidationError):
+            TrainingConfig(target_modules="all-linear")  # type: ignore[arg-type]
+
+
+class TestExportConfig:
+    def test_default_quant(self) -> None:
+        assert ExportConfig().default_quant == "Q4_K_M"
+
+    @pytest.mark.parametrize("level", ["Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"])
+    def test_accepts_known_quant_levels(self, level: str) -> None:
+        ExportConfig(default_quant=level)  # type: ignore[arg-type]
+
+    def test_rejects_unknown_quant_level(self) -> None:
+        with pytest.raises(ValidationError):
+            ExportConfig(default_quant="Q3_K_L")  # type: ignore[arg-type]
+
+    def test_extra_forbid(self) -> None:
+        with pytest.raises(ValidationError):
+            ExportConfig.model_validate({"default_quant": "Q4_K_M", "legacy": True})
+
+
+class TestDlmFrontmatter:
+    def test_minimal_valid(self) -> None:
+        fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="smollm2-135m")
+        assert fm.dlm_version == 1
+        assert fm.training == TrainingConfig()
+        assert fm.export == ExportConfig()
+        assert fm.system_prompt is None
+
+    def test_missing_required_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            DlmFrontmatter.model_validate({})
+
+    def test_base_model_must_not_be_empty(self) -> None:
+        with pytest.raises(ValidationError):
+            DlmFrontmatter(dlm_id=VALID_ULID, base_model="")
+
+    @pytest.mark.parametrize(
+        "bad_id",
+        [
+            "",
+            "not-a-ulid",
+            "01HZ4X7TGZM3J1A2B3C4D5E6F",  # 25 chars
+            "01HZ4X7TGZM3J1A2B3C4D5E6FGG",  # 27 chars
+            "01HZ4X7TGZM3J1A2B3C4D5E6FI",  # contains I (forbidden)
+            "01HZ4X7TGZM3J1A2B3C4D5E6FL",  # contains L
+            "01HZ4X7TGZM3J1A2B3C4D5E6FO",  # contains O
+            "01HZ4X7TGZM3J1A2B3C4D5E6FU",  # contains U
+        ],
+    )
+    def test_invalid_ulid_rejected(self, bad_id: str) -> None:
+        with pytest.raises(ValidationError):
+            DlmFrontmatter(dlm_id=bad_id, base_model="smollm2-135m")
+
+    def test_unknown_top_level_key_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            DlmFrontmatter.model_validate(
+                {
+                    "dlm_id": VALID_ULID,
+                    "base_model": "smollm2-135m",
+                    "surprise": "field",
+                }
+            )
+
+    def test_dlm_version_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            DlmFrontmatter(dlm_id=VALID_ULID, base_model="x", dlm_version=0)
+
+    def test_frozen_rejects_mutation(self) -> None:
+        fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="x")
+        with pytest.raises(ValidationError):
+            fm.base_model = "other"  # type: ignore[misc]
