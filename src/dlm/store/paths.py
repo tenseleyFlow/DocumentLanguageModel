@@ -229,6 +229,6 @@ class StorePath:
             raise ValueError(
                 f"adapter version {version_dir} is outside store root {self.root}",
             ) from exc
-        tmp = self.adapter_current_pointer.with_suffix(f".tmp.{os.getpid()}")
-        tmp.write_text(f"{relative}\n", encoding="utf-8")
-        tmp.replace(self.adapter_current_pointer)
+        from dlm.io.atomic import write_text as _atomic_write_text
+
+        _atomic_write_text(self.adapter_current_pointer, f"{relative}\n")

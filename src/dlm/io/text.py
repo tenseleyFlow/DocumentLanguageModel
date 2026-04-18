@@ -65,13 +65,13 @@ def read_text_str(raw: bytes, *, source: str = "<bytes>") -> str:
 def write_text(path: Path, content: str) -> None:
     """Write `content` as UTF-8 with LF line endings, no BOM.
 
-    Writes atomically: writes to a temp sibling file then `os.replace`s.
+    Writes atomically via `dlm.io.atomic.write_bytes`.
     """
     # Normalize line endings on the way out too, belt-and-braces.
     normalized = content.replace("\r\n", "\n").replace("\r", "\n")
-    tmp = path.with_suffix(path.suffix + f".tmp.{_pid()}")
-    tmp.write_bytes(normalized.encode("utf-8"))
-    tmp.replace(path)
+    from dlm.io.atomic import write_bytes as _atomic_write_bytes
+
+    _atomic_write_bytes(path, normalized.encode("utf-8"))
 
 
 def normalize_for_hashing(content: str) -> str:
@@ -105,9 +105,3 @@ def _decode(raw: bytes, *, path: Path | None) -> str:
 
     # CRLF first, then stray CR, to avoid double-replacing \r\n as \r then \n.
     return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
-def _pid() -> int:
-    import os as _os
-
-    return _os.getpid()

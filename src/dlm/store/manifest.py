@@ -22,7 +22,6 @@ Sprint 12b owns the schema migration framework; when it lands,
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -134,17 +133,14 @@ class Manifest(BaseModel):
 def save_manifest(path: Path, manifest: Manifest) -> None:
     """Write `manifest` to `path` atomically.
 
-    1. Serialize to deterministic JSON (sorted keys, 2-space indent,
-       trailing LF).
-    2. Write to a tmp sibling file.
-    3. `os.replace` onto the final name.
+    Serializes to deterministic JSON (sorted keys, 2-space indent,
+    trailing LF) and commits via `dlm.io.atomic.write_text`.
 
     Round-trip is byte-identical: `save(load(save(m))) == save(m)`.
     """
-    payload = _canonical_json(manifest)
-    tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}")
-    tmp.write_text(payload, encoding="utf-8")
-    tmp.replace(path)
+    from dlm.io.atomic import write_text as _atomic_write_text
+
+    _atomic_write_text(path, _canonical_json(manifest))
 
 
 def load_manifest(path: Path) -> Manifest:
