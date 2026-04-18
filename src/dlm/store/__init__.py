@@ -14,6 +14,7 @@ from __future__ import annotations
 from dlm.store.errors import (
     LockHeldError,
     ManifestCorruptError,
+    ManifestVersionError,
     OrphanedStoreError,
     StaleLockError,
     StoreError,
@@ -40,6 +41,7 @@ __all__ = [
     "LockInfo",
     "Manifest",
     "ManifestCorruptError",
+    "ManifestVersionError",
     "OrphanedStoreError",
     "StaleLockError",
     "StoreError",

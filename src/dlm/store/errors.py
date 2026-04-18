@@ -22,6 +22,25 @@ class ManifestCorruptError(StoreError):
         super().__init__(f"{path}: manifest is corrupt: {reason}")
 
 
+class ManifestVersionError(ManifestCorruptError):
+    """`manifest.json` parses but its `schema_version` needs migration.
+
+    Structurally a `ManifestCorruptError` subclass so callers that only
+    catch the parent still see version mismatches; semantically distinct
+    for callers (like Sprint 12b's migrator) that promote rather than
+    reject.
+    """
+
+    def __init__(self, path: Path, found_version: int, expected_version: int) -> None:
+        self.found_version = found_version
+        self.expected_version = expected_version
+        reason = (
+            f"schema_version {found_version} requires migration to {expected_version} "
+            "(Sprint 12b owns the framework)"
+        )
+        super().__init__(path, reason)
+
+
 class LockHeldError(StoreError):
     """Another process currently holds the store's exclusive lock.
 

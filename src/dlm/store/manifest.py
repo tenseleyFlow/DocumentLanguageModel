@@ -28,7 +28,7 @@ from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from dlm.store.errors import ManifestCorruptError
+from dlm.store.errors import ManifestCorruptError, ManifestVersionError
 
 CURRENT_MANIFEST_SCHEMA_VERSION: Final[int] = 1
 
@@ -101,9 +101,14 @@ def _empty_exports() -> list[ExportSummary]:
 
 
 class Manifest(BaseModel):
-    """Per-store narrative + content-delta index + version pins."""
+    """Per-store narrative + content-delta index + version pins.
 
-    model_config = ConfigDict(extra="forbid")
+    Frozen (audit-03 hygiene) — updates go through `touch()` /
+    `model_copy()` to produce a new instance; mutation would bypass the
+    atomic write contract anyway.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     dlm_id: str = Field(..., min_length=1)
     schema_version: int = CURRENT_MANIFEST_SCHEMA_VERSION
@@ -168,11 +173,7 @@ def load_manifest(path: Path) -> Manifest:
 
     version = data.get("schema_version", 1)
     if version != CURRENT_MANIFEST_SCHEMA_VERSION:
-        raise ManifestCorruptError(
-            path,
-            f"schema_version {version} requires migration to "
-            f"{CURRENT_MANIFEST_SCHEMA_VERSION} (Sprint 12b owns the framework)",
-        )
+        raise ManifestVersionError(path, version, CURRENT_MANIFEST_SCHEMA_VERSION)
 
     try:
         return Manifest.model_validate(data)
