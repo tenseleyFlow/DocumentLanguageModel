@@ -98,8 +98,15 @@ def doctor_cmd(
     json_out: Annotated[bool, typer.Option("--json", help="Emit machine-readable output.")] = False,
 ) -> None:
     """Inspect hardware and print the resolved training plan."""
-    _ = json_out
-    _stub("05", "dlm doctor")
+    import json
+
+    from dlm.hardware import doctor, render_text
+
+    result = doctor()
+    if json_out:
+        typer.echo(json.dumps(result.to_dict(), indent=2, default=str))
+    else:
+        typer.echo(render_text(result))
 
 
 def show_cmd(
