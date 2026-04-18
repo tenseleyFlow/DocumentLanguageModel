@@ -21,6 +21,7 @@ heavy telemetry packages (`wandb`) are importable; the `dlm` CLI sets
 from __future__ import annotations
 
 import importlib.util
+import logging
 import os
 import platform
 import sys
@@ -30,6 +31,8 @@ from typing import Literal
 import psutil
 
 from dlm.hardware.backend import Backend, detect
+
+_LOG = logging.getLogger(__name__)
 
 DeterminismClass = Literal["strong", "best-effort", "advisory"]
 
@@ -114,7 +117,12 @@ def _get_sm(backend: Backend, torch: object) -> tuple[int, int] | None:
         return None
     try:
         major, minor = torch.cuda.get_device_capability()  # type: ignore[attr-defined]
-    except (AttributeError, RuntimeError):
+    except (AttributeError, RuntimeError) as exc:
+        _LOG.warning(
+            "capabilities probe: torch.cuda.get_device_capability failed (%s); "
+            "treating SM as unknown",
+            exc,
+        )
         return None
     return (int(major), int(minor))
 
@@ -124,7 +132,12 @@ def _get_vram_gb(backend: Backend, torch: object) -> float | None:
         return None
     try:
         free, _total = torch.cuda.mem_get_info()  # type: ignore[attr-defined]
-    except (AttributeError, RuntimeError):
+    except (AttributeError, RuntimeError) as exc:
+        _LOG.warning(
+            "capabilities probe: torch.cuda.mem_get_info failed (%s); "
+            "treating VRAM as unknown",
+            exc,
+        )
         return None
     return float(free) / (1024**3)
 

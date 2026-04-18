@@ -70,7 +70,7 @@ def resolve(
     check_refusals(training, caps, base_params, force=force)
 
     use_qlora = _should_qlora(training, caps)
-    precision = _pick_precision(caps, use_qlora)
+    precision = _pick_precision(caps)
     attn = _pick_attention(caps)
     micro_batch = _resolve_micro_batch(training, caps, base_params, seq_len, precision, use_qlora)
     grad_accum = _resolve_grad_accum(training, micro_batch)
@@ -120,10 +120,8 @@ def _should_qlora(training: TrainingConfig, caps: Capabilities) -> bool:
     return training.adapter == "qlora" and caps.backend == Backend.CUDA and caps.has_bitsandbytes
 
 
-def _pick_precision(caps: Capabilities, _use_qlora: bool) -> Precision:
-    # `_use_qlora` is accepted for parity with older callers but the
-    # precision choice only depends on the hardware. Kept as a positional
-    # parameter in case future precision rules care.
+def _pick_precision(caps: Capabilities) -> Precision:
+    """Pick training precision purely from host capabilities."""
     if caps.supports_bf16:
         return "bf16"
     return "fp16"
