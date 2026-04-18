@@ -191,6 +191,18 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
       interpretation for their contents.
     - Empty PROSE sections (between two fences back-to-back) are elided.
     """
+    # The canonical layout emits a single blank line between the closing
+    # `---` and the first body line. Strip one leading LF so section
+    # content doesn't accumulate that separator line on every round-trip.
+    if body.startswith("\n"):
+        body = body[1:]
+        body_start_line += 1
+
+    # Likewise, files canonically end with a trailing LF; `split("\n")`
+    # would otherwise produce a spurious empty trailing element.
+    if body.endswith("\n"):
+        body = body[:-1]
+
     lines = body.split("\n") if body else []
     sections: list[Section] = []
     in_code_block = False
