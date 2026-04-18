@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
     "typer>=0.12",
     "rich>=13.7",
+    "python-ulid>=3.0",       # dlm_id generation (Sprint 13)
 ]
 
 [project.scripts]
@@ -33,6 +34,10 @@ dev = [
     "pytest>=8.0",
     "mypy>=1.11",
     "ruff>=0.6",
+    # Fixture infrastructure (Sprint 02). Promoted to runtime deps in Sprint 06.
+    "torch>=2.4",
+    "transformers>=4.45",
+    "huggingface-hub>=0.25",
 ]
 
 [build-system]
