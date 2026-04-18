@@ -125,6 +125,19 @@ class TestRoundTrip:
         siblings = list(tmp_path.iterdir())
         assert siblings == [path], f"tmp files left over: {siblings}"
 
+    def test_source_path_round_trips(self, tmp_path: Path) -> None:
+        """Audit-03 minor — Manifest.source_path (Path | None) must
+        serialize and round-trip correctly."""
+        source = tmp_path / "mydoc.dlm"
+        source.touch()  # doesn't need to be valid .dlm for this test
+        path = tmp_path / "m.json"
+        manifest = _fresh_manifest(source_path=source)
+        save_manifest(path, manifest)
+        reloaded = load_manifest(path)
+        assert reloaded.source_path == source
+        # And it's really a Path, not a string.
+        assert isinstance(reloaded.source_path, Path)
+
 
 class TestCorruptHandling:
     def test_missing_file_raises(self, tmp_path: Path) -> None:
@@ -143,14 +156,24 @@ class TestCorruptHandling:
         with pytest.raises(ManifestCorruptError, match="must be object"):
             load_manifest(path)
 
-    def test_schema_version_mismatch(self, tmp_path: Path) -> None:
+    def test_schema_version_mismatch_raises_version_error(self, tmp_path: Path) -> None:
+        """Audit-03 — version mismatches surface as the typed subclass so
+        Sprint 12b's migrator can catch them specifically, while callers
+        that only catch the parent ManifestCorruptError still see them.
+        """
+        from dlm.store.errors import ManifestVersionError
+
         path = tmp_path / "old.json"
         path.write_text(
             '{"schema_version": 999, "dlm_id": "x", "base_model": "x"}',
             encoding="utf-8",
         )
-        with pytest.raises(ManifestCorruptError, match="schema_version"):
+        with pytest.raises(ManifestVersionError) as exc_info:
             load_manifest(path)
+        assert exc_info.value.found_version == 999
+        assert exc_info.value.expected_version == CURRENT_MANIFEST_SCHEMA_VERSION
+        # Still catchable as the parent class:
+        assert isinstance(exc_info.value, ManifestCorruptError)
 
     def test_schema_violation_surfaced(self, tmp_path: Path) -> None:
         path = tmp_path / "bad.json"
@@ -170,3 +193,11 @@ class TestTouch:
         bumped = touch(m)
         assert bumped.updated_at > original
         assert bumped.dlm_id == m.dlm_id
+
+
+class TestManifestFrozen:
+    def test_mutation_rejected(self) -> None:
+        """Audit-03 — Manifest is frozen; use touch() or model_copy()."""
+        m = _fresh_manifest()
+        with pytest.raises(ValidationError):
+            m.adapter_version = 99  # type: ignore[misc]
