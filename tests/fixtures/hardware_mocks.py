@@ -53,6 +53,7 @@ def force_rocm(
     vram_gb: float = 16.0,
     device_name: str = "AMD Radeon RX 7900 XTX",
     hip_version: str = "6.0",
+    sm: tuple[int, int] = (11, 0),  # HIP compute capability (RDNA3 ≈ 11.0.3)
 ) -> Iterator[None]:
     """Pretend a ROCm GPU. `torch.version.hip` is the distinguishing mark."""
     import torch
@@ -63,6 +64,7 @@ def force_rocm(
         patch.object(torch.cuda, "is_available", return_value=True),
         patch.object(torch.cuda, "device_count", return_value=1),
         patch.object(torch.cuda, "get_device_name", return_value=device_name),
+        patch.object(torch.cuda, "get_device_capability", return_value=sm),
         patch.object(torch.cuda, "mem_get_info", return_value=(free_bytes, total_bytes)),
         patch.object(torch.version, "hip", hip_version),
         patch.object(torch.backends.mps, "is_available", return_value=False),
