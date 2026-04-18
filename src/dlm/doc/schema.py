@@ -64,6 +64,15 @@ class ExportConfig(BaseModel):
     default_quant: Literal["Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"] = "Q4_K_M"
 
 
+# Named factories so mypy can type-check the field defaults correctly.
+def _default_training() -> TrainingConfig:
+    return TrainingConfig()
+
+
+def _default_export() -> ExportConfig:
+    return ExportConfig()
+
+
 class DlmFrontmatter(BaseModel):
     """Top-level frontmatter: the YAML block between `---` delimiters.
 
@@ -79,8 +88,8 @@ class DlmFrontmatter(BaseModel):
     dlm_id: str
     dlm_version: int = CURRENT_SCHEMA_VERSION
     base_model: str = Field(..., min_length=1)
-    training: TrainingConfig = Field(default_factory=TrainingConfig)
-    export: ExportConfig = Field(default_factory=ExportConfig)
+    training: TrainingConfig = Field(default_factory=_default_training)
+    export: ExportConfig = Field(default_factory=_default_export)
     system_prompt: str | None = None
 
     @field_validator("dlm_id")
