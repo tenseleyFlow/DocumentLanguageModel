@@ -47,6 +47,14 @@ jobs:
       - name: Pytest (unit + integration, non-slow)
         run: uv run pytest
 
+      - name: Coverage gate — src/dlm/doc ≥ 95% (audit 02 M4)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          uv run pytest tests/unit/doc \
+            --cov=src/dlm/doc \
+            --cov-report=term-missing \
+            --cov-fail-under=95
+
   no-network-sandbox:
     # audit F13: dlm init / doctor / show must work with zero outbound network.
     name: no-network sandbox (ubuntu-latest)
