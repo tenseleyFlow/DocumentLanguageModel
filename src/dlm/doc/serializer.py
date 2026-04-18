@@ -107,16 +107,16 @@ def _scalar(value: object) -> str:
 
 
 def _format_number(value: float | int) -> str:
-    # Use repr() for floats so 2e-4 stays 0.0002 and integer values stay integers.
-    if isinstance(value, bool):  # bool is-a int; guard explicitly
-        return "true" if value else "false"
+    """Render a numeric YAML scalar.
+
+    Integers serialize via `str()`; floats via `repr()` so `2e-4` round-trips
+    to `0.0002` cleanly. The `_scalar` dispatcher routes bools away before
+    we get here, so no bool guard is needed.
+    """
     if isinstance(value, int):
         return str(value)
-    # Floats: prefer scientific when helpful, else decimal.
     if value == 0:
         return "0.0"
-    if abs(value) < 1e-3 or abs(value) >= 1e6:
-        return repr(value)
     return repr(value)
 
 

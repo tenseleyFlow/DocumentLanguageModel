@@ -67,11 +67,6 @@ class TestFormatNumber:
     def test_out_of_range_floats_use_repr(self, value: float) -> None:
         assert _format_number(value) == repr(value)
 
-    def test_bool_guard_returns_yaml_literal(self) -> None:
-        """bool is-a int; the guard in _format_number must catch it."""
-        assert _format_number(True) == "true"
-        assert _format_number(False) == "false"
-
 
 class TestFormatString:
     def test_empty_string_is_quoted(self) -> None:

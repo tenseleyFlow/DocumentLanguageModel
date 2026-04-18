@@ -73,6 +73,13 @@ def parse_text(text: str, *, path: Path | None = None) -> ParsedDlm:
 
 
 _FRONTMATTER_DELIM: Final = "---"
+
+# Intentionally looser than the v1 grammar `^::<type>::$` so we can accept
+# the `::type#adapter::` suffix that Sprint 20 (multi-adapter composition)
+# will consume. `_resolve_fence_type` splits on `#` and validates the
+# base against `SectionType`, so unknown base types still raise `FenceError`;
+# the `#adapter` annotation is silently ignored in v1 and becomes
+# authoritative in Sprint 20.
 _FENCE_RE: Final[re.Pattern[str]] = re.compile(r"^::([A-Za-z0-9_#-]+)::$")
 _CODE_FENCE_RE: Final[re.Pattern[str]] = re.compile(r"^```")
 
