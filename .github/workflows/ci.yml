@@ -13,6 +13,8 @@ concurrency:
 env:
   UV_VERSION: "0.11.6"
   PYTHON_VERSION: "3.11"
+  # TODO(sprint-06): replace with pinned 40-char SHA from the base-model registry.
+  TINY_MODEL_REVISION: "main"
 
 jobs:
   lint-type-test:
@@ -82,3 +84,46 @@ jobs:
           # `doctor` and `show` will become local-only once their sprints
           # land (05, 13). Until then, only --help and --version are
           # asserted here — but the job scaffolding is in place.
+
+  slow-tests:
+    # Sprint 02: marker-gated tests that touch HF. Cache-keyed on
+    # (pyproject.toml hash, tiny-model revision) per audit guidance.
+    name: slow tests (hf-cache)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Restore HF cache
+        id: hf-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.hf-cache
+          key: hf-tiny-${{ env.TINY_MODEL_REVISION }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            hf-tiny-${{ env.TINY_MODEL_REVISION }}-
+
+      - name: Pre-warm tiny model
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf-cache
+          DLM_TINY_MODEL_REVISION: ${{ env.TINY_MODEL_REVISION }}
+        run: |
+          set -euxo pipefail
+          echo "Cache hit: ${{ steps.hf-cache.outputs.cache-hit }}"
+          uv run python - <<'PY'
+          from tests.fixtures.tiny_model import tiny_model_path
+          print("tiny model at:", tiny_model_path())
+          PY
+
+      - name: Run slow tests
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf-cache
+          DLM_TINY_MODEL_REVISION: ${{ env.TINY_MODEL_REVISION }}
+        run: uv run pytest -m "slow" -v
