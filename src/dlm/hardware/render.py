@@ -6,7 +6,11 @@ with `rich` if desired without the core module pulling rich in.
 
 from __future__ import annotations
 
+from dlm.hardware.capabilities import Capabilities
 from dlm.hardware.doctor import DoctorResult
+from dlm.hardware.plan import TrainingPlan
+
+_PLAN_REFERENCE_NOTE = "1.5B params, seq_len 2048"
 
 
 def render_text(result: DoctorResult) -> str:
@@ -29,7 +33,7 @@ def render_text(result: DoctorResult) -> str:
 
     if result.plan is not None:
         lines.append("")
-        lines.append(f"Suggested plan (reference base, {_plan_reference_note()}):")
+        lines.append(f"Suggested plan (reference base, {_PLAN_REFERENCE_NOTE}):")
         plan = result.plan
         lines.append(f"  adapter:         {_adapter_summary(plan)}")
         lines.append(f"  precision:       {plan.precision}")
@@ -51,30 +55,22 @@ def render_text(result: DoctorResult) -> str:
     return "\n".join(lines)
 
 
-def _backend_line(caps: object) -> str:
-    # Accept a Capabilities-shaped object without circular import.
-    backend = caps.backend.value if hasattr(caps.backend, "value") else str(caps.backend)  # type: ignore[attr-defined]
-    device = caps.device_name  # type: ignore[attr-defined]
-    bits: list[str] = [f"{backend} ({device})"]
-    sm = caps.sm  # type: ignore[attr-defined]
-    if sm:
-        bits.append(f"SM {sm[0]}.{sm[1]}")
-    vram = caps.vram_gb  # type: ignore[attr-defined]
-    if vram is not None:
-        bits.append(f"{vram:.1f} GB VRAM free")
-    unified = caps.unified_memory_gb  # type: ignore[attr-defined]
-    if unified is not None:
-        bits.append(f"{unified:.1f} GB unified mem")
+def _backend_line(caps: Capabilities) -> str:
+    bits: list[str] = [f"{caps.backend.value} ({caps.device_name})"]
+    if caps.sm is not None:
+        bits.append(f"SM {caps.sm[0]}.{caps.sm[1]}")
+    if caps.vram_gb is not None:
+        bits.append(f"{caps.vram_gb:.1f} GB VRAM free")
+    if caps.unified_memory_gb is not None:
+        bits.append(f"{caps.unified_memory_gb:.1f} GB unified mem")
     return ", ".join(bits)
 
 
-def _torch_suffix(caps: object) -> str:
-    cuda = caps.cuda_version  # type: ignore[attr-defined]
-    rocm = caps.rocm_version  # type: ignore[attr-defined]
-    if cuda:
-        return f" (CUDA {cuda})"
-    if rocm:
-        return f" (ROCm {rocm})"
+def _torch_suffix(caps: Capabilities) -> str:
+    if caps.cuda_version:
+        return f" (CUDA {caps.cuda_version})"
+    if caps.rocm_version:
+        return f" (ROCm {caps.rocm_version})"
     return ""
 
 
@@ -91,14 +87,7 @@ def _telemetry_line(posture: dict[str, str]) -> str:
     return f"{status} (HF={hf}, DO_NOT_TRACK={dnt}, wandb_installed={wandb})"
 
 
-def _adapter_summary(plan: object) -> str:
-    if plan.use_qlora:  # type: ignore[attr-defined]
-        dtype = plan.quant_compute_dtype  # type: ignore[attr-defined]
-        return f"qlora (4-bit NF4, compute {dtype})"
+def _adapter_summary(plan: TrainingPlan) -> str:
+    if plan.use_qlora:
+        return f"qlora (4-bit NF4, compute {plan.quant_compute_dtype})"
     return "lora"
-
-
-def _plan_reference_note() -> str:
-    # Kept as a function to make it easy for Sprint 13 to swap in the
-    # user's actual .dlm.
-    return "1.5B params, seq_len 2048"
