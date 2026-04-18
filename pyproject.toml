@@ -1,0 +1,102 @@
+[project]
+name = "dlm"
+version = "0.1.0"
+description = "A text file with a .dlm extension becomes a local, trainable LLM."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "espadonne", email = "mfwolffe@outlook.com" }]
+keywords = ["llm", "lora", "fine-tuning", "ollama", "local-ai"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+]
+
+[project.scripts]
+dlm = "dlm.cli.app:main"
+
+[project.urls]
+Homepage = "https://github.com/tenseleyFlow/DocumentLanguageModel"
+Issues = "https://github.com/tenseleyFlow/DocumentLanguageModel/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dlm"]
+
+# -------- ruff --------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "N",    # pep8-naming
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "PT",   # pytest
+    "RET",  # return
+    "ARG",  # unused args
+    "PTH",  # use pathlib
+    "TID",  # tidy imports
+]
+ignore = [
+    "E501",  # handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ARG", "PT011"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# -------- mypy --------
+[tool.mypy]
+strict = true
+python_version = "3.11"
+packages = ["dlm"]
+mypy_path = "src"
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+disallow_untyped_decorators = true
+
+# -------- pytest --------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "-m", "not slow and not gpu and not online",
+]
+markers = [
+    "slow: expensive; deselected by default",
+    "gpu: requires CUDA; skipped on CPU/MPS runners",
+    "online: touches the network; skipped in offline CI",
+]
