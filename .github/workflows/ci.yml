@@ -105,9 +105,14 @@ jobs:
           # Exercise CLI surfaces that must be local-only at this sprint.
           uv run dlm --version
           uv run dlm --help
-          # `doctor` and `show` will become local-only once their sprints
-          # land (05, 13). Until then, only --help and --version are
-          # asserted here — but the job scaffolding is in place.
+          # Sprint 05 landed: `dlm doctor` probes torch + psutil only
+          # and emits JSON with no outbound traffic. If it ever reaches
+          # for the network under the iptables-blocked sandbox, this job
+          # fails loudly (audit-03 M4).
+          uv run dlm doctor --json >/dev/null
+          uv run dlm doctor >/dev/null
+          # `dlm show` lands in Sprint 13 (CLI finalization); add here
+          # when it's wired.
 
   slow-tests:
     # Sprint 02: marker-gated tests that touch HF. Cache-keyed on
