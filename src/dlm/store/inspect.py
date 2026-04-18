@@ -8,14 +8,19 @@ dataclass is the backing for Sprint 13's `dlm show` CLI.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from dlm.doc.errors import DlmParseError
 from dlm.doc.parser import parse_file
+from dlm.io.text import DlmEncodingError
 from dlm.store.errors import ManifestCorruptError
 from dlm.store.manifest import ExportSummary, Manifest, load_manifest
 from dlm.store.paths import StorePath
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -84,14 +89,27 @@ def inspect_store(store: StorePath, *, source_path: Path | None = None) -> Store
 
 
 def _is_orphaned(source_path: Path | None, expected_dlm_id: str) -> bool:
+    """Return True iff the linked `.dlm` cannot be confirmed to match.
+
+    We treat only expected failure modes as "can't confirm" → orphan:
+    missing file, parse errors, invalid encoding, or I/O errors reading
+    the file. Unexpected exceptions (e.g., a bug in the parser) are left
+    to propagate so bugs surface instead of silently marking stores
+    orphan (audit-03 M1).
+    """
     if source_path is None:
         return False
     if not source_path.exists():
         return True
     try:
         parsed = parse_file(source_path)
-    except Exception:
-        # Any parse failure counts as "can't confirm the linkage" → orphan.
+    except (DlmParseError, DlmEncodingError, OSError) as exc:
+        _LOG.warning(
+            "orphan probe: could not parse %s: %s: %s",
+            source_path,
+            type(exc).__name__,
+            exc,
+        )
         return True
     return parsed.frontmatter.dlm_id != expected_dlm_id
 
