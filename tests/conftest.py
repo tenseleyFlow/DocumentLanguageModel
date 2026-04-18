@@ -6,7 +6,6 @@ collection time. Fixtures that need heavy deps import them lazily.
 
 from __future__ import annotations
 
-import os
 import random
 from collections.abc import Iterator
 from pathlib import Path
@@ -83,16 +82,8 @@ def hf_cache_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 # --- platform env cleanup -----------------------------------------------------
 
 
-def _unset_if_present(env: dict[str, str], name: str) -> None:
-    env.pop(name, None)
-
-
 @pytest.fixture(autouse=True)
 def _clean_cuda_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Remove CUDA env vars that could contaminate hardware-mock tests."""
     for var in ("CUDA_VISIBLE_DEVICES", "CUDA_LAUNCH_BLOCKING"):
-        env = os.environ.copy()
-        _unset_if_present(env, var)
-        # Only unset in the test process; don't re-inject.
-        if var in os.environ:
-            monkeypatch.delenv(var, raising=False)
+        monkeypatch.delenv(var, raising=False)
