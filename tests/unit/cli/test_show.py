@@ -21,23 +21,40 @@ def _scaffold(tmp_path: Path) -> Path:
 
 
 class TestUninitializedStore:
+    """`dlm init` now creates the store + manifest (audit-05 B2), so a
+    truly uninitialized path means: the `.dlm` file exists but its
+    store directory is absent. Simulate by writing the `.dlm` by hand
+    and pointing DLM_HOME at an unrelated empty directory.
+    """
+
+    def _write_doc(self, path: Path, dlm_id: str) -> Path:
+        path.write_text(
+            f"---\n"
+            f"dlm_id: {dlm_id}\n"
+            f"base_model: smollm2-135m\n"
+            f"---\n"
+            f"body\n",
+            encoding="utf-8",
+        )
+        return path
+
     def test_human_output_says_not_initialized(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("DLM_HOME", str(tmp_path / "dlm-home"))
-        doc = _scaffold(tmp_path)
+        monkeypatch.setenv("DLM_HOME", str(tmp_path / "fresh-home"))
+        # 26-char Crockford base32 ULID (no I / L / O / U).
+        doc = self._write_doc(tmp_path / "doc.dlm", "01HRSHWZ" + "0" * 18)
         runner = CliRunner()
         result = runner.invoke(app, ["show", str(doc)])
         assert result.exit_code == 0, result.output
         joined = result.output
-        # The human output mentions "not yet initialized" for absent stores.
         assert "not yet initialized" in joined or "not initialized" in joined
 
     def test_json_output_reports_not_initialized(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("DLM_HOME", str(tmp_path / "dlm-home"))
-        doc = _scaffold(tmp_path)
+        monkeypatch.setenv("DLM_HOME", str(tmp_path / "fresh-home"))
+        doc = self._write_doc(tmp_path / "doc.dlm", "01HRSHWJ" + "0" * 18)
         runner = CliRunner()
         result = runner.invoke(app, ["show", str(doc), "--json"])
         assert result.exit_code == 0, result.output

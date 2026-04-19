@@ -54,6 +54,7 @@ def init_cmd(
         GatedModelError,
         UnknownBaseModelError,
         is_gated,
+        require_acceptance,
     )
     from dlm.base_models import resolve as resolve_base_model
     from dlm.io.ulid import mint_ulid
@@ -90,13 +91,40 @@ def init_cmd(
             raise typer.Exit(code=1) from exc
         spec = resolve_base_model(base, accept_license=True)
 
-    # Even with non-gated specs we record an acceptance stamp when a
-    # flag was passed; Sprint 15's dlm.lock mirror reads this back.
-    if is_gated(spec) and (i_accept_license or not sys.stdin.isatty()):
-        # Non-interactive path + flag passed → log the fact we accepted.
-        pass
+    # Record the license acceptance (or None for non-gated specs). We
+    # know `resolve_base_model` already validated the flag/prompt chain
+    # — `accept_license=True` means either the user passed the flag or
+    # answered the interactive prompt. Either path is a real
+    # acceptance; persist the record now so subsequent `dlm train` /
+    # `dlm export` don't re-prompt.
+    acceptance_via: Literal["cli_flag", "interactive"] = (
+        "cli_flag" if i_accept_license else "interactive"
+    )
+    acceptance = require_acceptance(
+        spec, accept_license=True, via=acceptance_via
+    ) if is_gated(spec) else None
 
-    _write_init_scaffold(path, spec.key, mint_ulid())
+    dlm_id = mint_ulid()
+    _write_init_scaffold(path, spec.key, dlm_id)
+
+    # Create the store + write the initial manifest so `dlm show` sees
+    # the license record and `dlm train` has a prior manifest to diff
+    # against (audit-05 B2).
+    from dlm.store.manifest import Manifest, save_manifest
+    from dlm.store.paths import for_dlm
+
+    store = for_dlm(dlm_id)
+    store.ensure_layout()
+    save_manifest(
+        store.manifest,
+        Manifest(
+            dlm_id=dlm_id,
+            base_model=spec.key,
+            base_model_revision=spec.revision,
+            source_path=path.resolve(),
+            license_acceptance=acceptance,
+        ),
+    )
     console.print(f"[green]init:[/green] wrote {path}")
 
 

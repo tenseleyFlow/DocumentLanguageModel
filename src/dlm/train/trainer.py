@@ -142,6 +142,16 @@ def run(
     log_path = log_path_for(store.logs, run_id)
     versions = capture_runtime_versions()
 
+    # 4. Content-delta against the previous manifest (audit-04 M1/M2):
+    #    feeds replay sampling before training; `change_set.new` is
+    #    appended to the corpus + `content_hashes` after training.
+    #    Loaded before 3a so the lock record can mirror the
+    #    manifest's license_acceptance (audit-05 M1).
+    from dlm.store.manifest import load_manifest
+
+    prior_manifest = load_manifest(store.manifest)
+    change_set = diff_against_manifest(list(parsed.sections), prior_manifest)
+
     # 3a. Lock validation (Sprint 15). Build the *candidate* lock for
     #     this run and compare against the prior recorded one. Aborts
     #     via LockValidationError for severity=ERROR mismatches unless
@@ -162,18 +172,11 @@ def run(
             determinism_class=determinism.class_,
             capabilities=capabilities,
             lock_mode=lock_mode,
+            license_acceptance=prior_manifest.license_acceptance,
         )
         if parsed.source_path is not None
         else None
     )
-
-    # 4. Content-delta against the previous manifest (audit-04 M1/M2):
-    #    feeds replay sampling before training; `change_set.new` is
-    #    appended to the corpus + `content_hashes` after training.
-    from dlm.store.manifest import load_manifest
-
-    prior_manifest = load_manifest(store.manifest)
-    change_set = diff_against_manifest(list(parsed.sections), prior_manifest)
     replay = ReplayStore.at(store.replay_corpus, store.replay_index)
 
     with StepLogger(log_path) as log:
@@ -319,6 +322,7 @@ def run(
                 versions=versions,
                 determinism_class=determinism.class_,
                 capabilities=capabilities,
+                license_acceptance=prior_manifest.license_acceptance,
             )
 
         log.log_event(
@@ -797,8 +801,15 @@ def _build_candidate_lock(
     versions: PinnedVersions,
     determinism_class: str,
     capabilities: Capabilities | None,
+    license_acceptance: object | None = None,
 ) -> DlmLock:
-    """Assemble the `DlmLock` describing this run."""
+    """Assemble the `DlmLock` describing this run.
+
+    `license_acceptance` is the record (if any) mirrored from
+    `manifest.license_acceptance`. Audit-05 M1 wired this through so
+    the lock's reproducibility contract actually carries the gated-base
+    acceptance fingerprint.
+    """
     if parsed.source_path is None:
         raise ValueError("parsed.source_path is required to build a dlm.lock record")
 
@@ -822,6 +833,7 @@ def _build_candidate_lock(
         pinned_versions=pinned,
         cuda_version=capabilities.cuda_version if capabilities is not None else None,
         rocm_version=capabilities.rocm_version if capabilities is not None else None,
+        license_acceptance=license_acceptance,  # type: ignore[arg-type]
     )
 
 
@@ -836,6 +848,7 @@ def _validate_or_abort_lock(
     determinism_class: str,
     capabilities: Capabilities | None,
     lock_mode: LockMode,
+    license_acceptance: object | None = None,
 ) -> LockDecision:
     """Compare this run's candidate lock against the prior recorded one.
 
@@ -850,6 +863,7 @@ def _validate_or_abort_lock(
         versions=versions,
         determinism_class=determinism_class,
         capabilities=capabilities,
+        license_acceptance=license_acceptance,
     )
     prior = load_lock(store.root)
     decision = validate_lock(prior, candidate, mode=lock_mode)
@@ -873,6 +887,7 @@ def _persist_lock(
     versions: PinnedVersions,
     determinism_class: str,
     capabilities: Capabilities | None,
+    license_acceptance: object | None = None,
 ) -> None:
     """Write the post-run lock. Separate from validation so a failed
     training doesn't leave a fresh lock behind.
@@ -885,6 +900,7 @@ def _persist_lock(
         versions=versions,
         determinism_class=determinism_class,
         capabilities=capabilities,
+        license_acceptance=license_acceptance,
     )
     write_lock(store.root, candidate)
 

@@ -44,19 +44,27 @@ class TestFirstRun:
         runner = CliRunner()
         doc = tmp_path / "mydoc.dlm"
 
-        # init
+        # init — writes the .dlm + creates the store + manifest (audit-05 B2).
         r = runner.invoke(app, ["init", str(doc), "--base", "smollm2-135m"])
         assert r.exit_code == 0, r.output
         assert doc.exists()
 
-        # show (uninitialized store path — no `dlm train` run)
+        # show on a just-init'd store: the manifest exists but there's no
+        # adapter yet — the fully-initialized path kicks in and returns
+        # the populated StoreInspection dict.
         r = runner.invoke(app, ["show", str(doc)])
         assert r.exit_code == 0, r.output
 
         r = runner.invoke(app, ["show", str(doc), "--json"])
         assert r.exit_code == 0, r.output
         payload = json.loads(r.output)
-        assert payload["store_initialized"] is False
+        # The fully-initialized JSON contract (Sprint 13): no
+        # `store_initialized` key, but every other schema key is present.
+        assert payload["dlm_id"]
+        assert payload["base_model"] == "smollm2-135m"
+        assert payload["adapter_version"] == 0
+        assert payload["training_runs"] == 0
+        assert payload["has_adapter_current"] is False
 
         # doctor
         r = runner.invoke(app, ["doctor", "--json"])
