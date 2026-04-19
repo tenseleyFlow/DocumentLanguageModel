@@ -1,0 +1,21 @@
+{
+  "dialect": "chatml",
+  "scenario": "multi-system",
+  "representative_base": "smollm2-135m",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are concise."
+    },
+    {
+      "role": "system",
+      "content": "You always greet first."
+    },
+    {
+      "role": "user",
+      "content": "Hello!"
+    }
+  ],
+  "expected_hf_token_count": 30,
+  "regenerated_at": "2026-04-19T21:34:04"
+}

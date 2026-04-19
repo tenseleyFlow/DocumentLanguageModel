@@ -1,0 +1,17 @@
+{
+  "dialect": "chatml",
+  "scenario": "single-turn",
+  "representative_base": "smollm2-135m",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant."
+    },
+    {
+      "role": "user",
+      "content": "What is 2 + 2?"
+    }
+  ],
+  "expected_hf_token_count": 28,
+  "regenerated_at": "2026-04-19T21:34:04"
+}

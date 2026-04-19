@@ -1,0 +1,11 @@
+{
+  "_comment": [
+    "Maps each Go-template dialect to the representative registry key",
+    "whose HF tokenizer + chat template define the golden token counts.",
+    "Picks small bases so the refresh script can run on any dev machine."
+  ],
+  "chatml": "smollm2-135m",
+  "llama3": "llama-3.2-1b",
+  "phi3": "phi-3.5-mini",
+  "mistral": null
+}

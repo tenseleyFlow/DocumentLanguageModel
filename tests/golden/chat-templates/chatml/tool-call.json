@@ -1,0 +1,21 @@
+{
+  "dialect": "chatml",
+  "scenario": "tool-call",
+  "representative_base": "smollm2-135m",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You can call tools."
+    },
+    {
+      "role": "user",
+      "content": "Call the get_weather tool for London."
+    },
+    {
+      "role": "assistant",
+      "content": "I'll call get_weather(city='London')."
+    }
+  ],
+  "expected_hf_token_count": 45,
+  "regenerated_at": "2026-04-19T21:34:04"
+}

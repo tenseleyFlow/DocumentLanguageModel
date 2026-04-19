@@ -1,0 +1,57 @@
+{
+  "_comment": [
+    "Canonical message-set scenarios used by Sprint 12.6's Go↔Jinja",
+    "closed-loop check. Each registered dialect is expected to render",
+    "every scenario; the per-dialect golden under ./<dialect>/ pins",
+    "the HF token count against which Ollama's prompt_eval_count must",
+    "match at verification time."
+  ],
+  "scenarios": [
+    {
+      "name": "system-only",
+      "messages": [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": ""}
+      ]
+    },
+    {
+      "name": "single-turn",
+      "messages": [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is 2 + 2?"}
+      ]
+    },
+    {
+      "name": "multi-turn",
+      "messages": [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is 2 + 2?"},
+        {"role": "assistant", "content": "4"},
+        {"role": "user", "content": "And 3 + 3?"}
+      ]
+    },
+    {
+      "name": "tool-call",
+      "messages": [
+        {"role": "system", "content": "You can call tools."},
+        {"role": "user", "content": "Call the get_weather tool for London."},
+        {"role": "assistant", "content": "I'll call get_weather(city='London')."}
+      ]
+    },
+    {
+      "name": "multi-system",
+      "messages": [
+        {"role": "system", "content": "You are concise."},
+        {"role": "system", "content": "You always greet first."},
+        {"role": "user", "content": "Hello!"}
+      ]
+    },
+    {
+      "name": "empty-user",
+      "messages": [
+        {"role": "system", "content": "You handle empty user messages gracefully."},
+        {"role": "user", "content": ""}
+      ]
+    }
+  ]
+}
