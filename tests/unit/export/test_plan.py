@@ -1,4 +1,4 @@
-"""ExportPlan — quant validation, QLoRA-merge safety gate."""
+"""ExportPlan — quant validation, QLoRA-merge safety gate, imatrix mode."""
 
 from __future__ import annotations
 
@@ -12,6 +12,66 @@ from dlm.export.plan import (
     resolve_export_plan,
     valid_quants,
 )
+
+
+class TestImatrixMode:
+    """Sprint 11.6 — imatrix field + needs_imatrix() predicate."""
+
+    def test_default_is_auto(self) -> None:
+        assert ExportPlan().imatrix == "auto"
+
+    def test_unknown_mode_rejected(self) -> None:
+        with pytest.raises(ValueError, match="unknown imatrix mode"):
+            ExportPlan(imatrix="fast")  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("mode", ["auto", "off", "cached"])
+    def test_all_modes_valid(self, mode: str) -> None:
+        ExportPlan(imatrix=mode)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("quant", ["Q4_K_M", "Q5_K_M", "Q6_K"])
+    def test_needs_imatrix_true_for_k_quants(self, quant: str) -> None:
+        plan = ExportPlan(quant=quant)  # type: ignore[arg-type]
+        assert plan.needs_imatrix() is True
+
+    @pytest.mark.parametrize("quant", ["Q8_0", "F16"])
+    def test_needs_imatrix_false_for_non_k(self, quant: str) -> None:
+        """Upstream ignores --imatrix on non-k-quants; don't bother building."""
+        plan = ExportPlan(quant=quant)  # type: ignore[arg-type]
+        assert plan.needs_imatrix() is False
+
+    def test_off_mode_suppresses(self) -> None:
+        plan = ExportPlan(quant="Q4_K_M", imatrix="off")
+        assert plan.needs_imatrix() is False
+
+    def test_cached_mode_still_applicable(self) -> None:
+        """`cached` doesn't skip; it just changes *how* we acquire the imatrix."""
+        plan = ExportPlan(quant="Q4_K_M", imatrix="cached")
+        assert plan.needs_imatrix() is True
+
+
+class TestResolveImatrixFlag:
+    def test_default_is_auto(self) -> None:
+        plan = resolve_export_plan(
+            cli_quant=None,
+            cli_merged=False,
+            cli_dequantize=False,
+            cli_no_template=False,
+            cli_ollama_name=None,
+            frontmatter_default_quant=None,
+        )
+        assert plan.imatrix == "auto"
+
+    def test_no_imatrix_flips_to_off(self) -> None:
+        plan = resolve_export_plan(
+            cli_quant=None,
+            cli_merged=False,
+            cli_dequantize=False,
+            cli_no_template=False,
+            cli_ollama_name=None,
+            frontmatter_default_quant=None,
+            cli_no_imatrix=True,
+        )
+        assert plan.imatrix == "off"
 
 
 class TestExportPlanValidation:

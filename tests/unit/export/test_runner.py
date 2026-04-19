@@ -343,6 +343,127 @@ class TestEmbeddingCheck:
         assert order == ["vocab", "embedding"]
 
 
+class TestImatrixWiring:
+    """Sprint 11.6: runner routes plan.imatrix into the quantize pipeline."""
+
+    def test_off_mode_passes_no_imatrix_flag(self, tmp_path: Path) -> None:
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M", imatrix="off")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+        run_export(
+            store,
+            _SPEC,
+            plan,
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
+            embedding_checker=lambda _a, _g: None,
+        )
+        quantize_calls = [c for c in recorder.commands if c and "llama-quantize" in c[0]]
+        assert len(quantize_calls) == 1
+        assert "--imatrix" not in quantize_calls[0]
+
+    def test_non_k_quant_skips_imatrix(self, tmp_path: Path) -> None:
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q8_0", imatrix="auto")  # Q8_0 ignores imatrix
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+        run_export(
+            store,
+            _SPEC,
+            plan,
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
+            embedding_checker=lambda _a, _g: None,
+        )
+        # No llama-imatrix call in the recorder.
+        assert not any("llama-imatrix" in c[0] for c in recorder.commands if c)
+
+    def test_auto_with_empty_corpus_falls_back(self, tmp_path: Path) -> None:
+        """Empty replay corpus → static quantize (no --imatrix flag)."""
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M", imatrix="auto")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+        # No replay corpus exists (store.ensure_layout doesn't create it).
+        run_export(
+            store,
+            _SPEC,
+            plan,
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
+            embedding_checker=lambda _a, _g: None,
+        )
+        quantize = [c for c in recorder.commands if c and "llama-quantize" in c[0]]
+        assert len(quantize) == 1
+        assert "--imatrix" not in quantize[0]
+
+    def test_auto_with_corpus_threads_imatrix(self, tmp_path: Path) -> None:
+        """When replay has content, the runner builds and passes --imatrix."""
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        from dlm.replay.models import SectionSnapshot
+        from dlm.replay.store import ReplayStore
+
+        cached_base, store, vendor = _setup_store(tmp_path)
+        # The base `_setup_store` only writes llama-quantize; imatrix
+        # builds need a stub binary too.
+        (vendor / "build" / "bin" / "llama-imatrix").write_text("# mock")
+
+        # Seed the replay corpus with some text.
+        ReplayStore.at(store.replay_corpus, store.replay_index).append_many(
+            [
+                SectionSnapshot(
+                    section_id=f"{i:016x}",
+                    section_type="prose",
+                    content="Calibration text lorem ipsum " * 40,
+                    first_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+                    last_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+                )
+                for i in range(3)
+            ]
+        )
+
+        plan = ExportPlan(quant="Q4_K_M", imatrix="auto")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+
+        # Wrap the recorder so imatrix subprocess calls also materialize
+        # their `-o` file (lets build_imatrix's final existence check pass).
+        def wrapped(cmd: Any) -> Any:
+            cmd_list = list(cmd)
+            if cmd_list and "llama-imatrix" in cmd_list[0]:
+                recorder.commands.append(cmd_list)
+                out_ix = cmd_list.index("-o") + 1
+                Path(cmd_list[out_ix]).write_bytes(b"fake imatrix bytes")
+                return None
+            return recorder(cmd)
+
+        run_export(
+            store,
+            _SPEC,
+            plan,
+            cached_base_dir=cached_base,
+            subprocess_runner=wrapped,
+            vendor_override=vendor,
+            skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
+            embedding_checker=lambda _a, _g: None,
+        )
+
+        imatrix_calls = [c for c in recorder.commands if c and "llama-imatrix" in c[0]]
+        assert len(imatrix_calls) == 1
+        quantize = [c for c in recorder.commands if c and "llama-quantize" in c[0]]
+        assert len(quantize) == 1
+        assert "--imatrix" in quantize[0]
+
+
 class TestDefaultEmbeddingCheck:
     """Exercise `_default_check_embedding_rows`'s skip path (audit-04 Q2)."""
 

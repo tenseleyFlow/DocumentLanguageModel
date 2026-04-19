@@ -362,6 +362,16 @@ def export_cmd(
         typer.Option("--no-template", help="Skip writing TEMPLATE into the Modelfile."),
     ] = False,
     no_smoke: Annotated[bool, typer.Option("--no-smoke")] = False,
+    no_imatrix: Annotated[
+        bool,
+        typer.Option(
+            "--no-imatrix",
+            help=(
+                "Skip importance-matrix calibration. Default uses the "
+                "replay corpus to calibrate k-quant quantization (Sprint 11.6)."
+            ),
+        ),
+    ] = False,
     skip_ollama: Annotated[
         bool,
         typer.Option(
@@ -422,6 +432,7 @@ def export_cmd(
             cli_dequantize=dequantize,
             cli_no_template=no_template,
             cli_ollama_name=name,
+            cli_no_imatrix=no_imatrix,
             frontmatter_default_quant=parsed.frontmatter.export.default_quant,
         )
     except ValueError as exc:

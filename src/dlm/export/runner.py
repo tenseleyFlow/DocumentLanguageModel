@@ -49,6 +49,12 @@ SubprocessRunner = Callable[[Sequence[str]], Any]
 # Tests monkeypatch this down to exercise the timeout path.
 _APPEND_LOCK_TIMEOUT: float = 60.0
 
+# Number of calibration chunks for Sprint 11.6 imatrix builds. 256 ×
+# 512 tokens ≈ 128k tokens — enough to stabilize per-tensor statistics
+# without burning minutes on CPU. Surfaced at module scope so tests
+# can monkeypatch it.
+DEFAULT_IMATRIX_CHUNKS: int = 256
+
 
 @dataclass(frozen=True)
 class ExportResult:
@@ -200,6 +206,8 @@ def run_export(
             plan=plan,
             run=run,
             vendor_override=vendor_override,
+            spec=spec,
+            store=store,
         )
 
     # 4b. Tokenizer ↔ GGUF vocab cross-check (audit F02/F06 + B1).
@@ -322,8 +330,16 @@ def _convert_and_quantize_base(
     plan: ExportPlan,
     run: SubprocessRunner,
     vendor_override: Path | None,
+    spec: BaseModelSpec,
+    store: StorePath,
 ) -> None:
-    """HF → fp16 GGUF → quantized GGUF. Removes the fp16 intermediate."""
+    """HF → fp16 GGUF → (imatrix) → quantized GGUF. Removes the fp16 intermediate.
+
+    The imatrix step (Sprint 11.6) runs between convert and quantize
+    when the plan needs one: either a cache-keyed hit is reused or a
+    fresh imatrix is built from the replay corpus. Non-k-quant levels
+    and `imatrix="off"` plans skip the build entirely.
+    """
     fp16_path = export_dir / "base.fp16.gguf"
     convert_cmd = base_gguf.build_convert_hf_args(
         cached_base_dir,
@@ -332,17 +348,91 @@ def _convert_and_quantize_base(
     )
     run(convert_cmd)
 
+    imatrix_path = _resolve_or_build_imatrix(
+        export_dir=export_dir,
+        fp16_path=fp16_path,
+        plan=plan,
+        run=run,
+        vendor_override=vendor_override,
+        spec=spec,
+        store=store,
+    )
+
     quant_cmd = base_gguf.build_quantize_args(
         fp16_path,
         out_quant=base_gguf_path,
         quant=plan.quant,
         bin_override=vendor_override,
+        imatrix_path=imatrix_path,
     )
     run(quant_cmd)
 
     # Don't keep the intermediate fp16 copy — users can regenerate if needed.
     if fp16_path.exists():
         fp16_path.unlink()
+
+
+def _resolve_or_build_imatrix(
+    *,
+    export_dir: Path,
+    fp16_path: Path,
+    plan: ExportPlan,
+    run: SubprocessRunner,
+    vendor_override: Path | None,
+    spec: BaseModelSpec,
+    store: StorePath,
+) -> Path | None:
+    """Return a path to an imatrix to feed quantize, or None.
+
+    - `plan.needs_imatrix()` False → no-op.
+    - `plan.imatrix == "cached"` → reuse any existing `imatrix.gguf`
+      verbatim (no key check — debug escape hatch).
+    - `plan.imatrix == "auto"` → cache check, rebuild on miss.
+    - Empty replay corpus → fall back to static quantize (None).
+    """
+    from dlm.export.imatrix import (
+        build_imatrix,
+        calibration_text_from_replay,
+        resolve_imatrix,
+    )
+
+    if not plan.needs_imatrix():
+        return None
+
+    existing = export_dir / "imatrix.gguf"
+    if plan.imatrix == "cached":
+        return existing if existing.is_file() else None
+
+    calibration_text, corpus_sha = calibration_text_from_replay(
+        corpus_path=store.replay_corpus,
+        index_path=store.replay_index,
+    )
+    if not calibration_text.strip():
+        # Nothing to calibrate against. Log + proceed with static quant.
+        _LOG.info("imatrix: replay corpus empty; falling back to static quantization")
+        return None
+
+    cached = resolve_imatrix(
+        export_dir,
+        base_revision=spec.revision,
+        corpus_sha256=corpus_sha,
+        chunks=DEFAULT_IMATRIX_CHUNKS,
+    )
+    if cached is not None:
+        _LOG.info("imatrix: cache hit (%s)", cached.sha256[:12])
+        return cached.path
+
+    artifact = build_imatrix(
+        base_gguf=fp16_path,
+        calibration_text=calibration_text,
+        export_dir=export_dir,
+        base_revision=spec.revision,
+        corpus_sha256=corpus_sha,
+        chunks=DEFAULT_IMATRIX_CHUNKS,
+        bin_override=vendor_override,
+        subprocess_runner=run,
+    )
+    return artifact.path
 
 
 def _cached_base_matches(export_dir: Path, base_gguf_path: Path, quant: str) -> bool:

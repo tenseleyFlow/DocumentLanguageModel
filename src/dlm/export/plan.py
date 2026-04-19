@@ -18,6 +18,16 @@ from dlm.export.errors import UnsafeMergeError
 # bump to vendored llama.cpp + a registry-probe pass.
 QuantLevel = Literal["Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0", "F16"]
 
+# imatrix only improves k-quant output; `Q8_0` and `F16` ignore it
+# upstream. We track the three k-quant levels so the runner can decide
+# whether to build / thread an imatrix at all.
+_IMATRIX_APPLICABLE_QUANTS: frozenset[str] = frozenset({"Q4_K_M", "Q5_K_M", "Q6_K"})
+
+# `auto` = build if missing OR stale; `cached` = reuse any existing
+# imatrix as-is (don't even check the cache key — debugging escape
+# hatch); `off` = pass no `--imatrix` to quantize.
+ImatrixMode = Literal["auto", "off", "cached"]
+
 # Bytes-per-param table — used by `dlm export` to estimate output size
 # upfront. Matches llama.cpp's documented ratios; not load-bearing for
 # correctness.
@@ -54,6 +64,11 @@ class ExportPlan:
     dequantize_confirmed: bool = False
     include_template: bool = True
     ollama_name: str | None = None
+    # Sprint 11.6: imatrix-calibrated quantization. "auto" builds from
+    # the replay corpus when a cache miss is detected; "cached" reuses
+    # any existing imatrix.gguf verbatim (no key check — debug hatch);
+    # "off" skips imatrix entirely even for k-quants.
+    imatrix: ImatrixMode = "auto"
 
     def __post_init__(self) -> None:
         if self.quant not in get_args(QuantLevel):
@@ -62,6 +77,20 @@ class ExportPlan:
             raise ValueError(
                 "--dequantize only makes sense with --merged; drop the flag or add --merged."
             )
+        if self.imatrix not in get_args(ImatrixMode):
+            raise ValueError(
+                f"unknown imatrix mode {self.imatrix!r}; expected one of {get_args(ImatrixMode)}"
+            )
+
+    def needs_imatrix(self) -> bool:
+        """Return True iff this plan wants an imatrix threaded into quantize.
+
+        False when:
+        - `imatrix="off"` (explicit user opt-out),
+        - `quant` is non-k-quant (`Q8_0` or `F16` — upstream ignores the
+          flag anyway so we don't bother building one).
+        """
+        return self.imatrix != "off" and self.quant in _IMATRIX_APPLICABLE_QUANTS
 
     def assert_merge_safe(self, *, was_qlora: bool) -> None:
         """Gate the merged-QLoRA path behind an explicit opt-in (pitfall #3).
@@ -91,12 +120,15 @@ def resolve_export_plan(
     cli_no_template: bool,
     cli_ollama_name: str | None,
     frontmatter_default_quant: str | None,
+    cli_no_imatrix: bool = False,
 ) -> ExportPlan:
     """Compose an `ExportPlan` from CLI + frontmatter + built-in defaults.
 
     Precedence: CLI flag > frontmatter default > built-in default.
     The resolver validates the quant string early so the CLI can
     surface "unknown quant" before any subprocess launches.
+
+    `cli_no_imatrix=True` forces `imatrix="off"`; default is `"auto"`.
     """
     chosen = cli_quant or frontmatter_default_quant or DEFAULT_QUANT
     if chosen not in get_args(QuantLevel):
@@ -108,4 +140,5 @@ def resolve_export_plan(
         dequantize_confirmed=cli_dequantize,
         include_template=not cli_no_template,
         ollama_name=cli_ollama_name,
+        imatrix="off" if cli_no_imatrix else "auto",
     )
