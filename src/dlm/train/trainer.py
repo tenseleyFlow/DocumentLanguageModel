@@ -32,6 +32,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from dlm.lock import (
+    DlmLock,
+    LockDecision,
+    LockMode,
+    LockValidationError,
+    build_lock,
+    hardware_tier_from_backend,
+    hash_dlm_file,
+    load_lock,
+    validate_lock,
+    write_lock,
+)
+from dlm.lock import (
+    lock_path as _lock_file_path,
+)
 from dlm.replay import ChangeSet, ReplayStore, SectionSnapshot, diff_against_manifest
 from dlm.train.checkpoint_commit import commit_version
 from dlm.train.determinism import DeterminismSummary, seed_everything
@@ -50,6 +65,7 @@ from dlm.train.state_sidecar import (
 if TYPE_CHECKING:
     from dlm.base_models import BaseModelSpec
     from dlm.doc.parser import ParsedDlm
+    from dlm.hardware.capabilities import Capabilities
     from dlm.hardware.plan import TrainingPlan
     from dlm.store.paths import StorePath
 
@@ -85,6 +101,8 @@ def run(
     mode: Mode = "fresh",
     seed: int | None = None,
     max_steps: int | None = None,
+    lock_mode: LockMode = "default",
+    capabilities: Capabilities | None = None,
     trainer_factory: Callable[..., Any] | None = None,
 ) -> TrainingRunResult:
     """Execute one training cycle end-to-end.
@@ -92,6 +110,18 @@ def run(
     `seed` defaults to `parsed.frontmatter.training.seed`. `max_steps`
     caps the run below the num-epochs * dataset-size count; `None`
     lets the full schedule run.
+
+    `lock_mode` controls `dlm.lock` validation (Sprint 15):
+
+    - `"default"` — validate, abort on ERROR, warn on WARN, write on success
+    - `"strict"` — upgrade WARN → ERROR (`--strict-lock`)
+    - `"update"` — skip validation, always overwrite (`--update-lock`)
+    - `"ignore"` — skip validation and don't write (`--ignore-lock`)
+
+    `capabilities` is optional; when passed, the recorded hardware tier
+    reflects the real backend + SM. Callers without a doctor report
+    (unit tests with mocked trainers) can omit it — the tier falls
+    back to `"cpu"`.
 
     `trainer_factory` is a test seam — pass a callable that returns
     an object with `.train()` + `.state` + `.save_model(dir)` to
@@ -111,6 +141,31 @@ def run(
     run_id = _next_run_id(store)
     log_path = log_path_for(store.logs, run_id)
     versions = capture_runtime_versions()
+
+    # 3a. Lock validation (Sprint 15). Build the *candidate* lock for
+    #     this run and compare against the prior recorded one. Aborts
+    #     via LockValidationError for severity=ERROR mismatches unless
+    #     the caller opted into --update-lock / --ignore-lock.
+    #
+    #     Skipped when `parsed.source_path` is None — unit tests that
+    #     synthesize a `ParsedDlm` directly (no on-disk `.dlm`) can't
+    #     compute `dlm_sha256`. The CLI path always has a source file,
+    #     so production runs always honor the lock.
+    lock_decision = (
+        _validate_or_abort_lock(
+            store=store,
+            parsed=parsed,
+            spec=spec,
+            seed=seed,
+            run_id=run_id,
+            versions=versions,
+            determinism_class=determinism.class_,
+            capabilities=capabilities,
+            lock_mode=lock_mode,
+        )
+        if parsed.source_path is not None
+        else None
+    )
 
     # 4. Content-delta against the previous manifest (audit-04 M1/M2):
     #    feeds replay sampling before training; `change_set.new` is
@@ -249,6 +304,22 @@ def run(
             current_sections=list(parsed.sections),
             summary_path=summary_path,
         )
+
+        # 12. Persist the lock (Sprint 15). `ignore_lock` mode suppresses
+        #     the write; every other mode updates `dlm.lock` after the
+        #     manifest append so a partial failure can't leave a lock
+        #     newer than its run summary.
+        if lock_decision is not None and lock_decision.should_write_lock:
+            _persist_lock(
+                store=store,
+                parsed=parsed,
+                spec=spec,
+                seed=seed,
+                run_id=run_id,
+                versions=versions,
+                determinism_class=determinism.class_,
+                capabilities=capabilities,
+            )
 
         log.log_event(
             "run_complete",
@@ -705,6 +776,117 @@ def _next_run_id(store: StorePath) -> int:
     if not manifest.training_runs:
         return 1
     return max(r.run_id for r in manifest.training_runs) + 1
+
+
+_TRAIN_TO_LOCK_DETERMINISM: dict[str, str] = {
+    # `DeterminismSummary.class_` (training vocabulary) → DlmLock vocabulary.
+    # Trainer uses underscores + "loose"; the lock schema matches the
+    # hardware module's hyphenated naming.
+    "strict": "strong",
+    "best_effort": "best-effort",
+    "loose": "advisory",
+}
+
+
+def _build_candidate_lock(
+    *,
+    parsed: ParsedDlm,
+    spec: BaseModelSpec,
+    seed: int,
+    run_id: int,
+    versions: PinnedVersions,
+    determinism_class: str,
+    capabilities: Capabilities | None,
+) -> DlmLock:
+    """Assemble the `DlmLock` describing this run."""
+    if parsed.source_path is None:
+        raise ValueError("parsed.source_path is required to build a dlm.lock record")
+
+    sm = capabilities.sm if capabilities is not None else None
+    backend_value = capabilities.backend.value if capabilities is not None else None
+    tier = hardware_tier_from_backend(backend_value, sm=sm)
+
+    # `versions` is a TypedDict(total=False) with mixed str | None.
+    pinned: dict[str, str] = {k: v for k, v in versions.items() if isinstance(v, str)}
+
+    mapped_class = _TRAIN_TO_LOCK_DETERMINISM.get(determinism_class, determinism_class)
+
+    return build_lock(
+        dlm_id=parsed.frontmatter.dlm_id,
+        dlm_sha256=hash_dlm_file(parsed.source_path),
+        base_model_revision=spec.revision,
+        hardware_tier=tier,
+        seed=seed,
+        determinism_class=mapped_class,  # type: ignore[arg-type]
+        run_id=run_id,
+        pinned_versions=pinned,
+        cuda_version=capabilities.cuda_version if capabilities is not None else None,
+        rocm_version=capabilities.rocm_version if capabilities is not None else None,
+    )
+
+
+def _validate_or_abort_lock(
+    *,
+    store: StorePath,
+    parsed: ParsedDlm,
+    spec: BaseModelSpec,
+    seed: int,
+    run_id: int,
+    versions: PinnedVersions,
+    determinism_class: str,
+    capabilities: Capabilities | None,
+    lock_mode: LockMode,
+) -> LockDecision:
+    """Compare this run's candidate lock against the prior recorded one.
+
+    Raises `LockValidationError` on `abort`; otherwise returns the
+    `LockDecision` so the caller knows whether to write post-success.
+    """
+    candidate = _build_candidate_lock(
+        parsed=parsed,
+        spec=spec,
+        seed=seed,
+        run_id=run_id,
+        versions=versions,
+        determinism_class=determinism_class,
+        capabilities=capabilities,
+    )
+    prior = load_lock(store.root)
+    decision = validate_lock(prior, candidate, mode=lock_mode)
+
+    if decision.action == "abort":
+        reasons = [msg for _sev, msg in decision.mismatches]
+        raise LockValidationError(path=_lock_file_path(store.root), reasons=reasons)
+    if decision.action == "proceed_with_warnings":
+        for _sev, msg in decision.mismatches:
+            _LOG.warning("dlm.lock drift: %s", msg)
+    return decision
+
+
+def _persist_lock(
+    *,
+    store: StorePath,
+    parsed: ParsedDlm,
+    spec: BaseModelSpec,
+    seed: int,
+    run_id: int,
+    versions: PinnedVersions,
+    determinism_class: str,
+    capabilities: Capabilities | None,
+) -> None:
+    """Write the post-run lock. Separate from validation so a failed
+    training doesn't leave a fresh lock behind.
+    """
+    candidate = _build_candidate_lock(
+        parsed=parsed,
+        spec=spec,
+        seed=seed,
+        run_id=run_id,
+        versions=versions,
+        determinism_class=determinism_class,
+        capabilities=capabilities,
+    )
+    write_lock(store.root, candidate)
 
 
 def _utc_naive() -> datetime:
