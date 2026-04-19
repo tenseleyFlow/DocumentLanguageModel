@@ -158,6 +158,11 @@ jobs:
           HF_DATASETS_OFFLINE: "1"
         run: |
           set -euxo pipefail
+          # ALWAYS flush OUTPUT on exit — otherwise the post-step hooks
+          # (cache upload, artifact collection) lose the runner's
+          # heartbeat to GitHub Actions and the job fails with
+          # "hosted runner lost communication with the server".
+          trap 'sudo iptables -F OUTPUT || true' EXIT
           # Drop all non-loopback egress. Commands that try to reach out
           # will fail — CI fails if any currently-"local-only" command
           # attempts network.
