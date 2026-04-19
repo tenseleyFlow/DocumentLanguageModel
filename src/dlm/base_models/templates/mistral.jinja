@@ -1,0 +1,24 @@
+{#
+Mistral-Instruct reference template. Uses `[INST]...[/INST]` tags and
+wraps the conversation in `<s>...</s>` BOS/EOS. System messages are
+prepended to the first user message by convention.
+
+Vendored for future Mistral-family entries in the registry; not used by
+the 10 launch bases but Sprint 12's Go registry mirrors this shape.
+#}
+{%- if messages[0]['role'] == 'system' -%}
+    {%- set system_prompt = messages[0]['content'] -%}
+    {%- set messages = messages[1:] -%}
+{%- else -%}
+    {%- set system_prompt = '' -%}
+{%- endif -%}
+<s>
+{%- for message in messages -%}
+    {%- if message['role'] == 'user' -%}
+[INST] {% if loop.first and system_prompt %}{{ system_prompt }}
+
+{% endif %}{{ message['content'] }} [/INST]
+    {%- elif message['role'] == 'assistant' -%}
+ {{ message['content'] }}</s>{% if not loop.last %}<s>{% endif %}
+    {%- endif -%}
+{%- endfor -%}

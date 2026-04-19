@@ -1,0 +1,16 @@
+{#
+Phi-3 / Phi-3.5 reference template. Uses `<|role|>` opener and `<|end|>`
+closer; finishes with `<|endoftext|>` on assistant turns (handled by
+`add_generation_prompt=False`). Source-of-truth for Sprint 12 round-trip.
+
+Roles accepted: "system", "user", "assistant".
+#}
+{%- for message in messages -%}
+<|{{ message['role'] }}|>
+{{ message['content'] }}<|end|>
+{% endfor -%}
+{%- if add_generation_prompt -%}
+<|assistant|>
+{%- else -%}
+<|endoftext|>
+{%- endif -%}
