@@ -30,9 +30,7 @@ if TYPE_CHECKING:
     from transformers import PreTrainedTokenizerBase
 
 
-def tokenizer_grew(
-    base: PreTrainedTokenizerBase, final: PreTrainedTokenizerBase
-) -> bool:
+def tokenizer_grew(base: PreTrainedTokenizerBase, final: PreTrainedTokenizerBase) -> bool:
     """True iff `final` has a larger vocab or different added-token set than `base`.
 
     `vocab_size` comparison catches the `add_special_tokens` path used by

@@ -65,9 +65,7 @@ class TestOllamaRun:
         with (
             patch(
                 "dlm.export.ollama.smoke.subprocess.run",
-                side_effect=subprocess.TimeoutExpired(
-                    cmd="ollama", timeout=1.0, stderr=b"hang"
-                ),
+                side_effect=subprocess.TimeoutExpired(cmd="ollama", timeout=1.0, stderr=b"hang"),
             ),
             pytest.raises(OllamaSmokeError, match="timed out"),
         ):

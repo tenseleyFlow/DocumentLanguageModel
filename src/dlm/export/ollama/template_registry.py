@@ -91,8 +91,7 @@ def get_template(dialect: str) -> DialectTemplate:
     """
     if dialect not in _REGISTRY:
         raise TemplateRegistryError(
-            f"unknown template dialect {dialect!r}; "
-            f"registered: {sorted(_REGISTRY)}"
+            f"unknown template dialect {dialect!r}; registered: {sorted(_REGISTRY)}"
         )
     return _REGISTRY[dialect]
 

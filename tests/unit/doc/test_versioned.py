@@ -54,9 +54,7 @@ class TestFutureVersion:
 
 
 class TestMigratedPath:
-    def test_migration_applied_before_pydantic(
-        self, scratch_registry: None
-    ) -> None:
+    def test_migration_applied_before_pydantic(self, scratch_registry: None) -> None:
         """A registered v1 migrator rewrites the dict before validation."""
 
         @register(from_version=1)

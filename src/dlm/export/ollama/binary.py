@@ -49,9 +49,7 @@ def locate_ollama(override: Path | None = None) -> Path:
     if override is not None:
         if override.is_file():
             return override
-        raise OllamaBinaryNotFoundError(
-            f"override path {override} does not exist"
-        )
+        raise OllamaBinaryNotFoundError(f"override path {override} does not exist")
 
     found = shutil.which("ollama")
     if found:
@@ -88,9 +86,7 @@ def ollama_version(binary: Path | None = None) -> tuple[int, int, int]:
             timeout=10,
         )
     except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
-        raise OllamaBinaryNotFoundError(
-            f"cannot execute {path}: {exc}"
-        ) from exc
+        raise OllamaBinaryNotFoundError(f"cannot execute {path}: {exc}") from exc
 
     # Ollama prints version to stdout on most platforms; some builds
     # print to stderr. Check both.

@@ -265,9 +265,7 @@ def export_cmd(
         console.print(f"[red]license:[/red] base model {parsed.frontmatter.base_model!r} is gated.")
         if exc.license_url:
             console.print(f"  review the license at: {exc.license_url}")
-        console.print(
-            "  accept via `dlm train --i-accept-license` before exporting."
-        )
+        console.print("  accept via `dlm train --i-accept-license` before exporting.")
         raise typer.Exit(code=1) from exc
 
     try:

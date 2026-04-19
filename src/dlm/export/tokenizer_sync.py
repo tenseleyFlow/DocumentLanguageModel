@@ -119,8 +119,7 @@ def read_gguf_vocab_size(gguf_path: Path) -> int:
                 raise PreflightError(
                     probe="gguf_vocab",
                     detail=(
-                        f"{gguf_path} does not look like a GGUF file "
-                        f"(magic {magic!r} != b'GGUF')."
+                        f"{gguf_path} does not look like a GGUF file (magic {magic!r} != b'GGUF')."
                     ),
                 )
             # version (uint32), tensor_count (uint64), kv_count (uint64)
@@ -156,9 +155,7 @@ def read_gguf_vocab_size(gguf_path: Path) -> int:
     )
 
 
-def assert_gguf_vocab_matches(
-    gguf_path: Path, tokenizer: PreTrainedTokenizerBase
-) -> None:
+def assert_gguf_vocab_matches(gguf_path: Path, tokenizer: PreTrainedTokenizerBase) -> None:
     """Raise `PreflightError` if the GGUF vocab size disagrees with the tokenizer.
 
     Authoritative tokenizer is `len(tokenizer.get_vocab())` — that includes

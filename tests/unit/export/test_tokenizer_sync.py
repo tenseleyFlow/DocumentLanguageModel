@@ -17,7 +17,6 @@ from dlm.export.tokenizer_sync import (
     tokenizer_from_adapter,
 )
 
-
 # --- GGUF synthesis -------------------------------------------------------
 
 _TYPE_UINT32 = 4
@@ -197,9 +196,7 @@ class TestReadVocabSize:
         body.extend(_s.pack("<I", _TYPE_UINT32))
         body.extend(_s.pack("<I", 15))
         # String-array KV (exercises the array-of-strings skip branch).
-        _write_kv_string_array(
-            body, "tokenizer.ggml.merges", ["a b", "c d", "e f"]
-        )
+        _write_kv_string_array(body, "tokenizer.ggml.merges", ["a b", "c d", "e f"])
         # Finally the target.
         _write_kv_string_array(body, "tokenizer.ggml.tokens", ["x", "y"])
 
@@ -248,9 +245,7 @@ class TestTokenizerFromAdapter:
         with pytest.raises(PreflightError, match="does not exist"):
             tokenizer_from_adapter(tmp_path / "missing")
 
-    def test_delegates_to_auto_tokenizer_with_local_only(
-        self, tmp_path: Path
-    ) -> None:
+    def test_delegates_to_auto_tokenizer_with_local_only(self, tmp_path: Path) -> None:
         adapter = tmp_path / "adapter"
         adapter.mkdir()
         sentinel = object()

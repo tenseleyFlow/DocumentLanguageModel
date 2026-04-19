@@ -175,21 +175,19 @@ def run_export(
     smoke_first_line: str | None = None
     modelfile_path: Path | None = None
     if not skip_ollama:
-        modelfile_path, ollama_name, ollama_ver_str, smoke_first_line = (
-            _run_ollama_stage(
-                store=store,
-                spec=spec,
-                plan=plan,
-                adapter_path=adapter_path,
-                export_dir=export_dir,
-                base_gguf_path=base_gguf_path,
-                adapter_version=adapter_version,
-                system_prompt=system_prompt,
-                source_dlm_path=source_dlm_path,
-                skip_smoke=skip_smoke,
-                ollama_create_runner=ollama_create_runner,
-                ollama_run_runner=ollama_run_runner,
-            )
+        modelfile_path, ollama_name, ollama_ver_str, smoke_first_line = _run_ollama_stage(
+            store=store,
+            spec=spec,
+            plan=plan,
+            adapter_path=adapter_path,
+            export_dir=export_dir,
+            base_gguf_path=base_gguf_path,
+            adapter_version=adapter_version,
+            system_prompt=system_prompt,
+            source_dlm_path=source_dlm_path,
+            skip_smoke=skip_smoke,
+            ollama_create_runner=ollama_create_runner,
+            ollama_run_runner=ollama_run_runner,
         )
 
     # 7. Write export_manifest.json.

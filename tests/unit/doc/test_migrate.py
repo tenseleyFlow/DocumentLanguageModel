@@ -74,9 +74,7 @@ class TestIdempotent:
 
 
 class TestMigratedWrite:
-    def test_write_path_updates_version_and_body(
-        self, tmp_path: Path, bumped_current: int
-    ) -> None:
+    def test_write_path_updates_version_and_body(self, tmp_path: Path, bumped_current: int) -> None:
         @register(from_version=1)
         def _v1(raw: dict[str, object]) -> dict[str, object]:
             # Drop an obsolete field that would fail extra="forbid" on v2.
@@ -116,9 +114,7 @@ y
         # Trailing newline.
         assert rewritten.endswith("\n")
 
-    def test_no_backup_skips_bak_write(
-        self, tmp_path: Path, bumped_current: int
-    ) -> None:
+    def test_no_backup_skips_bak_write(self, tmp_path: Path, bumped_current: int) -> None:
         @register(from_version=1)
         def _v1(raw: dict[str, object]) -> dict[str, object]:
             return dict(raw)
@@ -131,9 +127,7 @@ y
         assert result.backup_path is None
         assert not (tmp_path / "mydoc.dlm.bak").exists()
 
-    def test_dry_run_reports_without_writing(
-        self, tmp_path: Path, bumped_current: int
-    ) -> None:
+    def test_dry_run_reports_without_writing(self, tmp_path: Path, bumped_current: int) -> None:
         @register(from_version=1)
         def _v1(raw: dict[str, object]) -> dict[str, object]:
             return dict(raw)
@@ -176,9 +170,7 @@ class TestCli:
         assert result.exit_code == 0, result.output
         assert "already at" in (result.output + result.stderr)
 
-    def test_dry_run_prints_plan_without_writing(
-        self, tmp_path: Path, bumped_current: int
-    ) -> None:
+    def test_dry_run_prints_plan_without_writing(self, tmp_path: Path, bumped_current: int) -> None:
         @register(from_version=1)
         def _v1(raw: dict[str, object]) -> dict[str, object]:
             return dict(raw)

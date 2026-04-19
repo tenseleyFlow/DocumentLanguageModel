@@ -94,9 +94,7 @@ class TestOllamaCreate:
         with (
             patch(
                 "dlm.export.ollama.register.subprocess.run",
-                side_effect=subprocess.TimeoutExpired(
-                    cmd="ollama", timeout=1.0, stderr=b"slow"
-                ),
+                side_effect=subprocess.TimeoutExpired(cmd="ollama", timeout=1.0, stderr=b"slow"),
             ),
             pytest.raises(OllamaCreateError, match="timed out"),
         ):

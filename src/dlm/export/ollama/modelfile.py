@@ -62,9 +62,7 @@ def render_modelfile(ctx: ModelfileContext) -> str:
     stops = _resolve_stops(ctx.adapter_dir, template_row)
     header = _build_header(ctx)
     from_line = f"FROM ./{ctx.base_gguf_name}"
-    adapter_line = (
-        f"ADAPTER ./{ctx.adapter_gguf_name}" if ctx.adapter_gguf_name else None
-    )
+    adapter_line = f"ADAPTER ./{ctx.adapter_gguf_name}" if ctx.adapter_gguf_name else None
     template_block = _build_template_block(template_row)
     param_lines = _build_param_lines(
         stops=stops,
@@ -200,7 +198,7 @@ def _build_param_lines(
     """Emit the `PARAMETER stop ...` + defaults block."""
     lines: list[str] = []
     for stop in stops:
-        lines.append(f'PARAMETER stop {json.dumps(stop)}')
+        lines.append(f"PARAMETER stop {json.dumps(stop)}")
     lines.append(f"PARAMETER temperature {temperature}")
     lines.append(f"PARAMETER top_p {top_p}")
     return lines

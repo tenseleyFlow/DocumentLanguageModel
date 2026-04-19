@@ -103,9 +103,7 @@ class TestStops:
         count = text.count('PARAMETER stop "<|im_end|>"')
         assert count == 1
 
-    def test_missing_tokenizer_config_falls_back_to_dialect(
-        self, tmp_path: Path
-    ) -> None:
+    def test_missing_tokenizer_config_falls_back_to_dialect(self, tmp_path: Path) -> None:
         adapter = tmp_path / "bare"
         adapter.mkdir()
         text = render_modelfile(_ctx(tmp_path, adapter=adapter))
@@ -154,8 +152,6 @@ class TestSystemInjection:
     def test_newline_in_prompt_escaped(self, tmp_path: Path) -> None:
         text = render_modelfile(_ctx(tmp_path, system_prompt="line1\nline2"))
         # Newline encoded as `\n` inside the quoted string — never a raw newline.
-        system_lines = [
-            line for line in text.splitlines() if line.startswith("SYSTEM ")
-        ]
+        system_lines = [line for line in text.splitlines() if line.startswith("SYSTEM ")]
         assert len(system_lines) == 1
         assert "\\n" in system_lines[0]

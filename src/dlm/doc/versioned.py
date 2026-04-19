@@ -29,9 +29,7 @@ from dlm.doc.migrations.dispatch import apply_pending
 from dlm.doc.schema import CURRENT_SCHEMA_VERSION, DlmFrontmatter
 
 
-def validate_versioned(
-    raw: dict[str, object], *, path: Path | None = None
-) -> DlmFrontmatter:
+def validate_versioned(raw: dict[str, object], *, path: Path | None = None) -> DlmFrontmatter:
     """Dispatch: migrate (if needed) then Pydantic-validate.
 
     Raises:
