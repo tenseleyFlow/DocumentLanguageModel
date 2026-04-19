@@ -97,12 +97,48 @@ class TestVersionDrift:
         with pytest.warns(VersionDriftWarning, match="torch:"):
             load_state(tmp_path, runtime_versions={"torch": "99.99.99"})
 
-    def test_missing_on_either_side_no_warning(self, tmp_path: Path) -> None:
-        """`None`/missing key is 'unknown', not 'different'."""
+    def test_gaining_a_package_is_not_drift(self, tmp_path: Path) -> None:
+        """Saved had no `trl` pinned; current runtime knows it → no drift.
+
+        Gaining capability isn't drift — there was no prior state to
+        diverge from. Only losing a pinned package is (see M6 test).
+        """
         save_state(tmp_path, _mock_state())
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            load_state(tmp_path, runtime_versions={"torch": torch.__version__, "trl": None})
+            load_state(
+                tmp_path,
+                runtime_versions={"torch": torch.__version__, "trl": "1.2.0"},
+            )
+
+    def test_losing_pinned_package_is_drift(self, tmp_path: Path) -> None:
+        """Audit-04 M6: saved had `bitsandbytes="0.43.1"`, runtime has None.
+
+        This matters for the QLoRA-on-CUDA → resumed-on-Apple-Silicon
+        case; under the old logic it was silently skipped.
+        """
+        # Build a mock state whose pinned_versions declares bitsandbytes.
+        state = _mock_state()
+        state["pinned_versions"] = {
+            "torch": torch.__version__,
+            "bitsandbytes": "0.43.1",
+        }
+        save_state(tmp_path, state)
+
+        with pytest.warns(VersionDriftWarning, match="bitsandbytes.*0\\.43\\.1.*missing"):
+            load_state(
+                tmp_path,
+                runtime_versions={"torch": torch.__version__, "bitsandbytes": None},
+            )
+
+    def test_losing_pinned_package_missing_key_is_drift(self, tmp_path: Path) -> None:
+        """Same as above but the runtime dict omits the key entirely."""
+        state = _mock_state()
+        state["pinned_versions"] = {"torch": torch.__version__, "bitsandbytes": "0.43.1"}
+        save_state(tmp_path, state)
+
+        with pytest.warns(VersionDriftWarning, match="bitsandbytes.*missing"):
+            load_state(tmp_path, runtime_versions={"torch": torch.__version__})
 
 
 class TestCaptureRuntimeVersions:

@@ -155,14 +155,28 @@ def load_state(directory: Path, *, runtime_versions: PinnedVersions) -> Training
 
 
 def _version_diff(pinned: PinnedVersions, runtime: PinnedVersions) -> list[str]:
-    """Return `["key: saved→current", ...]` for keys whose versions differ."""
+    """Return `["key: saved→current", ...]` for keys whose versions differ.
+
+    Asymmetric handling of `None` (audit-04 M6): losing a pinned package
+    between save + resume (e.g., a QLoRA checkpoint from a CUDA box
+    being resumed on Apple Silicon without `bitsandbytes`) is drift
+    the user should see. Gaining a package that wasn't pinned is not
+    drift — there was no prior state to diverge from.
+
+    Rules:
+    - saved=str, current=str, equal    → no drift
+    - saved=str, current=str, differ   → drift ("saved→current")
+    - saved=str, current=None/missing  → drift ("saved→missing")
+    - saved=None/missing, current=*    → no drift (no prior state)
+    """
     diffs: list[str] = []
     for key in sorted(pinned.keys() | runtime.keys()):
         saved = pinned.get(key)
+        if saved is None:
+            continue
         current = runtime.get(key)
-        if saved is None or current is None:
-            # Missing key on either side — don't warn; could just be
-            # an optional dependency like bitsandbytes.
+        if current is None:
+            diffs.append(f"{key}: {saved}→missing")
             continue
         if saved != current:
             diffs.append(f"{key}: {saved}→{current}")
