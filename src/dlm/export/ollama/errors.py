@@ -85,3 +85,36 @@ class TemplateRegistryError(OllamaError):
     means an hf:-escape-hatch base whose template inference picked a
     dialect we haven't templated — remedy is to add it to the registry.
     """
+
+
+class VerificationError(OllamaError):
+    """Sprint 12.6: Go↔Jinja closed-loop verification detected drift.
+
+    Raised when Ollama's `prompt_eval_count` (Go template output)
+    disagrees with HuggingFace's `apply_chat_template` token count for
+    the same message set. A mismatch means the dialect's Go `.gotmpl`
+    file is out of sync with the base model's Jinja reference; the
+    remedy is to regenerate the golden via `scripts/refresh-chat-
+    template-goldens.py` and, if the delta is real, fix the template.
+    """
+
+    def __init__(
+        self,
+        *,
+        ollama_name: str,
+        hf_count: int,
+        go_count: int,
+        scenario: str | None = None,
+    ) -> None:
+        where = f" on scenario {scenario!r}" if scenario else ""
+        super().__init__(
+            f"template drift on {ollama_name}{where}: HF Jinja produced "
+            f"{hf_count} prompt tokens, Ollama Go template produced "
+            f"{go_count}. Delta: {go_count - hf_count:+d}. Regenerate "
+            "the golden via scripts/refresh-chat-template-goldens.py, "
+            "then diff the .gotmpl if the delta is real."
+        )
+        self.ollama_name = ollama_name
+        self.hf_count = hf_count
+        self.go_count = go_count
+        self.scenario = scenario

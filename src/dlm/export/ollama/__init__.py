@@ -21,6 +21,7 @@ from dlm.export.ollama.errors import (
     OllamaSmokeError,
     OllamaVersionError,
     TemplateRegistryError,
+    VerificationError,
 )
 from dlm.export.ollama.modelfile import ModelfileContext, render_modelfile
 from dlm.export.ollama.register import ollama_create, ollama_lock_path
@@ -30,6 +31,11 @@ from dlm.export.ollama.template_registry import (
     get_template,
     load_template_text,
     registered_dialects,
+)
+from dlm.export.ollama.verify import (
+    parse_prompt_eval_count,
+    run_with_telemetry,
+    verify_token_count,
 )
 
 __all__ = [
@@ -43,6 +49,7 @@ __all__ = [
     "OllamaSmokeError",
     "OllamaVersionError",
     "TemplateRegistryError",
+    "VerificationError",
     "check_ollama_version",
     "first_line",
     "get_template",
@@ -52,6 +59,9 @@ __all__ = [
     "ollama_lock_path",
     "ollama_run",
     "ollama_version",
+    "parse_prompt_eval_count",
     "registered_dialects",
     "render_modelfile",
+    "run_with_telemetry",
+    "verify_token_count",
 ]
