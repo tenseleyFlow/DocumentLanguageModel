@@ -1,0 +1,101 @@
+name: integration-slow
+
+# Weekly gate for slow integration tests: real training, export, ollama
+# round trip, pack / unpack / prompt identity. Not run per-PR because
+# the end-to-end path is ~15-20 min on ubuntu-latest; opt in by labeling
+# a PR with `slow-run-please`.
+#
+# Sprint 14.5 owns this workflow. The bodies live under tests/integration/
+# and skip gracefully when `ollama` / `vendor/llama.cpp` / tiny-model
+# cache aren't present, so the job is also safe to dispatch manually
+# from the Actions tab.
+
+on:
+  schedule:
+    # Sundays at 07:00 UTC — offset from the template-drift workflow at
+    # 06:00 UTC so the two jobs don't contend for runner capacity.
+    - cron: "0 7 * * 0"
+  workflow_dispatch: {}
+  pull_request:
+    types: [labeled, synchronize]
+
+concurrency:
+  group: integration-slow-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.11.6"
+  PYTHON_VERSION: "3.11"
+  # Same SHA as ci.yml / weekly-template-drift.yml — keep in sync.
+  TINY_MODEL_REVISION: "12fd25f77366fa6b3b4b768ec3050bf629380bac"
+
+jobs:
+  slow:
+    name: slow integration suite
+    # On pull_request runs, only fire when the `slow-run-please` label is present.
+    # Scheduled / manual dispatch always run.
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'slow-run-please')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Restore HF cache
+        id: hf-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.hf-cache
+          key: hf-tiny-${{ env.TINY_MODEL_REVISION }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            hf-tiny-${{ env.TINY_MODEL_REVISION }}-
+
+      - name: Pre-warm tiny model
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf-cache
+          DLM_TINY_MODEL_REVISION: ${{ env.TINY_MODEL_REVISION }}
+        run: |
+          uv run python - <<'PY'
+          from tests.fixtures.tiny_model import tiny_model_path
+          print("tiny model at:", tiny_model_path())
+          PY
+
+      - name: Restore llama.cpp build cache
+        id: llama-cpp-cache
+        uses: actions/cache@v4
+        with:
+          path: vendor/llama.cpp/build
+          key: llama-cpp-build-${{ hashFiles('.gitmodules', 'vendor/llama.cpp/VERSION') }}
+
+      - name: Build llama-quantize + llama-imatrix (if not cached)
+        if: steps.llama-cpp-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          command -v cmake >/dev/null 2>&1 || sudo apt-get install -y cmake
+          scripts/bump-llama-cpp.sh build
+
+      - name: Install Ollama
+        run: |
+          set -euxo pipefail
+          curl -fsSL https://ollama.com/install.sh | sh
+          # The ollama_daemon fixture starts its own `ollama serve` when
+          # nothing is listening — we don't need to launch one here.
+          ollama --version
+
+      - name: Run slow integration suite
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf-cache
+          DLM_TINY_MODEL_REVISION: ${{ env.TINY_MODEL_REVISION }}
+        run: uv run pytest -m slow -v
