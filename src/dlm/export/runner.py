@@ -124,6 +124,8 @@ def run_export(
     ollama_run_runner: Callable[..., str] | None = None,
     vocab_checker: VocabChecker | None = None,
     training_sequence_len: int | None = None,
+    override_temperature: float | None = None,
+    override_top_p: float | None = None,
 ) -> ExportResult:
     """Execute one GGUF export end-to-end.
 
@@ -238,6 +240,8 @@ def run_export(
             ollama_create_runner=ollama_create_runner,
             ollama_run_runner=ollama_run_runner,
             training_sequence_len=training_sequence_len,
+            override_temperature=override_temperature,
+            override_top_p=override_top_p,
         )
 
     # 7. Write export_manifest.json.
@@ -389,6 +393,8 @@ def _run_ollama_stage(
     ollama_create_runner: Callable[..., str] | None,
     ollama_run_runner: Callable[..., str] | None,
     training_sequence_len: int | None,
+    override_temperature: float | None,
+    override_top_p: float | None,
 ) -> tuple[Path, str, str | None, str | None]:
     """Render Modelfile → ollama_create → optional ollama_run (smoke).
 
@@ -424,6 +430,8 @@ def _run_ollama_stage(
         source_dlm_path=source_dlm_path,
         dlm_version=dlm_version,
         training_sequence_len=training_sequence_len,
+        override_temperature=override_temperature,
+        override_top_p=override_top_p,
     )
     modelfile_text = render_modelfile(ctx)
     modelfile_path = export_dir / "Modelfile"

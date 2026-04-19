@@ -55,6 +55,12 @@ class ModelfileContext:
     # was trained for — otherwise it defaults to 2048 and a document
     # trained at 8192 effectively loses 75% of its context. Audit-04 Q1.
     training_sequence_len: int | None = None
+    # Per-document sampling overrides from frontmatter's `export:`
+    # block. When set, they replace the dialect's defaults in the
+    # emitted `PARAMETER temperature` / `PARAMETER top_p` lines
+    # (audit-04 Q5).
+    override_temperature: float | None = None
+    override_top_p: float | None = None
 
 
 def render_modelfile(ctx: ModelfileContext) -> str:
@@ -72,10 +78,16 @@ def render_modelfile(ctx: ModelfileContext) -> str:
     adapter_line = f"ADAPTER ./{ctx.adapter_gguf_name}" if ctx.adapter_gguf_name else None
     template_block = _build_template_block(template_row)
     num_ctx = _resolve_num_ctx(ctx)
+    temperature = (
+        ctx.override_temperature
+        if ctx.override_temperature is not None
+        else template_row.default_temperature
+    )
+    top_p = ctx.override_top_p if ctx.override_top_p is not None else template_row.default_top_p
     param_lines = _build_param_lines(
         stops=stops,
-        temperature=template_row.default_temperature,
-        top_p=template_row.default_top_p,
+        temperature=temperature,
+        top_p=top_p,
         num_ctx=num_ctx,
     )
     system_line = _build_system_line(ctx.system_prompt)

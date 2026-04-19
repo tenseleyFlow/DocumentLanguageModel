@@ -37,6 +37,8 @@ def _ctx(
     system_prompt: str | None = None,
     adapter: Path | None = None,
     training_sequence_len: int | None = None,
+    override_temperature: float | None = None,
+    override_top_p: float | None = None,
 ) -> ModelfileContext:
     plan = ExportPlan(quant="Q4_K_M", merged=merged)
     return ModelfileContext(
@@ -49,6 +51,8 @@ def _ctx(
         adapter_version=7,
         system_prompt=system_prompt,
         training_sequence_len=training_sequence_len,
+        override_temperature=override_temperature,
+        override_top_p=override_top_p,
     )
 
 
@@ -96,6 +100,22 @@ class TestShape:
         # smollm2-135m tops out at 8192.
         assert f"PARAMETER num_ctx {_SPEC.context_length}" in text
         assert "PARAMETER num_ctx 99999" not in text
+
+    def test_override_temperature(self, tmp_path: Path) -> None:
+        """Audit-04 Q5: frontmatter export.default_temperature overrides the dialect default."""
+        text = render_modelfile(_ctx(tmp_path, override_temperature=0.2))
+        assert "PARAMETER temperature 0.2" in text
+
+    def test_override_top_p(self, tmp_path: Path) -> None:
+        """Audit-04 Q5: frontmatter export.default_top_p overrides the dialect default."""
+        text = render_modelfile(_ctx(tmp_path, override_top_p=0.5))
+        assert "PARAMETER top_p 0.5" in text
+
+    def test_unset_overrides_fall_back_to_dialect(self, tmp_path: Path) -> None:
+        """When overrides are None, the dialect defaults are emitted unchanged."""
+        text = render_modelfile(_ctx(tmp_path))
+        # chatml defaults aren't zero/one, but we can assert both PARAMETER lines exist.
+        assert "PARAMETER temperature 0.2" not in text  # would be present if override bled in
 
     def test_license_line_present(self, tmp_path: Path) -> None:
         text = render_modelfile(_ctx(tmp_path))

@@ -62,6 +62,13 @@ class ExportConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     default_quant: Literal["Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"] = "Q4_K_M"
+    # Optional per-document sampling overrides. When set, the Modelfile
+    # emits `PARAMETER temperature <v>` / `PARAMETER top_p <v>` in place
+    # of the dialect default — a Q&A document prefers temperature=0.2,
+    # a creative one prefers 0.9. `None` keeps the dialect default
+    # (audit-04 Q5).
+    default_temperature: float | None = Field(None, gt=0.0, le=2.0)
+    default_top_p: float | None = Field(None, gt=0.0, le=1.0)
 
 
 # Named factories so mypy can type-check the field defaults correctly.
