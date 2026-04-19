@@ -55,8 +55,6 @@ def make_formatting_func(tokenizer: PreTrainedTokenizerBase) -> FormattingFunc:
                 "preference rows (prompt/chosen/rejected) must be routed to DPOTrainer, "
                 "not SFTTrainer's formatting_func"
             )
-        raise DataFormatError(
-            f"row has neither `messages` nor `text`: keys={sorted(row.keys())}"
-        )
+        raise DataFormatError(f"row has neither `messages` nor `text`: keys={sorted(row.keys())}")
 
     return formatting_func

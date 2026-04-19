@@ -53,8 +53,7 @@ def split(
         sid = row.get("_dlm_section_id")
         if not isinstance(sid, str) or not sid:
             raise ValueError(
-                "every row must carry a string `_dlm_section_id` "
-                "(did you skip sections_to_rows?)"
+                "every row must carry a string `_dlm_section_id` (did you skip sections_to_rows?)"
             )
         sub_index = per_section_index[sid]
         per_section_index[sid] += 1
@@ -63,7 +62,23 @@ def split(
         else:
             train_rows.append(row)
 
+    # `Dataset.from_list` infers schema from row[0] only — mixed-shape
+    # rows lose keys that don't appear in the first dict. Unify the
+    # key-set across BOTH buckets first so train+val share the same
+    # schema and no field silently drops out.
+    all_keys: set[str] = set()
+    for row in rows:
+        all_keys.update(row.keys())
+    _unify_keys(train_rows, all_keys)
+    _unify_keys(val_rows, all_keys)
+
     return Dataset.from_list(train_rows), Dataset.from_list(val_rows)
+
+
+def _unify_keys(rows: list[Row], keys: set[str]) -> None:
+    for row in rows:
+        for k in keys:
+            row.setdefault(k, None)
 
 
 def _assigns_to_val(*, seed: int, section_id: str, sub_index: int, threshold: int) -> bool:

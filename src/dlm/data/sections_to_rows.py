@@ -72,5 +72,4 @@ def _section_to_rows(section: Section) -> list[Row]:
             for t in triples
         ]
 
-    # StrEnum is exhaustive; this is a belt-and-braces guard.
-    raise ValueError(f"unknown section type: {section.type!r}")
+    raise ValueError(f"unknown section type: {section.type!r}")  # pragma: no cover
