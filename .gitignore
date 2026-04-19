@@ -33,3 +33,5 @@ dist/
 *.swp
 .DS_Store
 site/
+.claude/
+AGENTS.md
