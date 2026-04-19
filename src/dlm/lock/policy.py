@@ -107,14 +107,26 @@ def _rule_determinism_flags(prior: DlmLock, current: DlmLock) -> tuple[Severity,
 def _rule_torch_version(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
     prior_v = prior.pinned_versions.get("torch")
     current_v = current.pinned_versions.get("torch")
-    if prior_v is None or current_v is None or prior_v == current_v:
+    if prior_v == current_v:
         return None
+    # One-sided None = the runtime forgot to pin torch (or just gained it).
+    # That's a strict signal something broke in capture_runtime_versions —
+    # surface as WARN instead of silently ignoring (audit-05 M3).
+    if prior_v is None:
+        return (Severity.WARN, f"torch newly pinned ({current_v})")
+    if current_v is None:
+        return (Severity.WARN, f"torch no longer pinned (was {prior_v})")
     prior_major = _major(prior_v)
     current_major = _major(current_v)
     if prior_major is not None and current_major is not None and prior_major != current_major:
         return (
             Severity.ERROR,
             f"torch major-version mismatch ({prior_v} → {current_v})",
+        )
+    if prior_major is None or current_major is None:
+        return (
+            Severity.WARN,
+            f"torch version changed (unparseable: {prior_v} → {current_v})",
         )
     return (Severity.WARN, f"torch minor-version drift ({prior_v} → {current_v})")
 
@@ -125,7 +137,11 @@ def _rule_bitsandbytes_any(prior: DlmLock, current: DlmLock) -> tuple[Severity, 
     if prior_v == current_v:
         return None
     # Any bnb drift is a strong warning — QLoRA correctness is unusually
-    # sensitive to bnb kernels.
+    # sensitive to bnb kernels. Include add/remove in that (audit-05 M3).
+    if prior_v is None:
+        return (Severity.WARN, f"bitsandbytes newly pinned ({current_v})")
+    if current_v is None:
+        return (Severity.WARN, f"bitsandbytes no longer pinned (was {prior_v})")
     return (
         Severity.WARN,
         f"bitsandbytes changed ({prior_v!r} → {current_v!r}); QLoRA kernels are version-sensitive",
@@ -133,7 +149,11 @@ def _rule_bitsandbytes_any(prior: DlmLock, current: DlmLock) -> tuple[Severity, 
 
 
 def _rule_minor_peers(prior: DlmLock, current: DlmLock) -> list[tuple[Severity, str]]:
-    """WARN on drift for transformers / peft / trl / accelerate / llama_cpp."""
+    """WARN on drift for transformers / peft / trl / accelerate / llama_cpp.
+
+    One-sided None transitions are treated as "newly pinned" / "no longer
+    pinned" rather than silent passes (audit-05 M3).
+    """
     keys = ("transformers", "peft", "trl", "accelerate", "llama_cpp")
     mismatches: list[tuple[Severity, str]] = []
     for key in keys:
@@ -141,10 +161,88 @@ def _rule_minor_peers(prior: DlmLock, current: DlmLock) -> list[tuple[Severity, 
         current_v = current.pinned_versions.get(key)
         if prior_v == current_v:
             continue
-        mismatches.append(
-            (Severity.WARN, f"{key} changed ({prior_v!r} → {current_v!r})"),
-        )
+        if prior_v is None:
+            msg = f"{key} newly pinned ({current_v})"
+        elif current_v is None:
+            msg = f"{key} no longer pinned (was {prior_v})"
+        else:
+            msg = f"{key} changed ({prior_v!r} → {current_v!r})"
+        mismatches.append((Severity.WARN, msg))
     return mismatches
+
+
+def _rule_seed(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
+    """Seed change invalidates the determinism contract (audit-05 M3)."""
+    if prior.seed == current.seed:
+        return None
+    return (Severity.WARN, f"seed changed ({prior.seed} → {current.seed})")
+
+
+def _rule_base_model_sha256(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
+    """Content hash drift under identical revision = upstream force-push (audit-05 M3).
+
+    ERROR when both hashes are present and disagree — it's a stronger
+    signal than a mere revision bump. One-sided None is silent (the
+    field is optional in the schema for stores that didn't capture it).
+    """
+    if prior.base_model_sha256 is None or current.base_model_sha256 is None:
+        return None
+    if prior.base_model_sha256 == current.base_model_sha256:
+        return None
+    return (
+        Severity.ERROR,
+        f"base_model_sha256 changed ({prior.base_model_sha256[:12]}… → "
+        f"{current.base_model_sha256[:12]}…) — upstream revision was rewritten",
+    )
+
+
+def _rule_cuda_version(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
+    if prior.cuda_version == current.cuda_version:
+        return None
+    return (
+        Severity.WARN,
+        f"cuda_version changed ({prior.cuda_version} → {current.cuda_version})",
+    )
+
+
+def _rule_rocm_version(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
+    if prior.rocm_version == current.rocm_version:
+        return None
+    return (
+        Severity.WARN,
+        f"rocm_version changed ({prior.rocm_version} → {current.rocm_version})",
+    )
+
+
+def _rule_license_acceptance(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
+    """License acceptance transitions are WARN (audit-05 M3).
+
+    None → populated = the store just accepted a gated base; populated →
+    None = the record vanished (edit-hostile). Different spdx / url =
+    upstream license changed or operator re-accepted under different
+    terms. All deserve a warning line in the reporter.
+    """
+    prior_a = prior.license_acceptance
+    current_a = current.license_acceptance
+    if prior_a is None and current_a is None:
+        return None
+    if prior_a is None and current_a is not None:
+        return (Severity.WARN, f"license_acceptance newly recorded ({current_a.license_spdx})")
+    if prior_a is not None and current_a is None:
+        return (Severity.WARN, f"license_acceptance cleared (was {prior_a.license_spdx})")
+    # Both present — only surface if content disagrees.
+    assert prior_a is not None and current_a is not None
+    if prior_a.license_spdx != current_a.license_spdx:
+        return (
+            Severity.WARN,
+            f"license_acceptance spdx changed ({prior_a.license_spdx} → {current_a.license_spdx})",
+        )
+    if prior_a.license_url != current_a.license_url:
+        return (
+            Severity.WARN,
+            f"license_acceptance url changed ({prior_a.license_url} → {current_a.license_url})",
+        )
+    return None
 
 
 # --- driver -----------------------------------------------------------------
@@ -153,11 +251,16 @@ def _rule_minor_peers(prior: DlmLock, current: DlmLock) -> list[tuple[Severity, 
 DEFAULT_RULES: Final[tuple[Rule, ...]] = (
     _rule_dlm_sha,
     _rule_base_revision,
+    _rule_base_model_sha256,
     _rule_hardware_tier,
     _rule_determinism_class,
     _rule_determinism_flags,
     _rule_torch_version,
     _rule_bitsandbytes_any,
+    _rule_seed,
+    _rule_cuda_version,
+    _rule_rocm_version,
+    _rule_license_acceptance,
 )
 
 

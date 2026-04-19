@@ -119,6 +119,100 @@ class TestHardwareAndDeterminism:
         assert _severities(prior, current) == {Severity.WARN}
 
 
+class TestNoneTransitions:
+    """Audit-05 M3: torch / bnb / minor-peers rules must surface
+    one-sided None transitions (version added / removed) as WARN rather
+    than silently allowing them."""
+
+    def test_torch_added_is_warn(self) -> None:
+        prior = _lock(pinned_versions={})
+        current = _lock(pinned_versions={"torch": "2.5.1"})
+        assert _severities(prior, current) == {Severity.WARN}
+
+    def test_torch_removed_is_warn(self) -> None:
+        prior = _lock(pinned_versions={"torch": "2.5.1"})
+        current = _lock(pinned_versions={})
+        assert _severities(prior, current) == {Severity.WARN}
+
+    def test_transformers_added_is_warn(self) -> None:
+        prior = _lock(pinned_versions={"torch": "2.5.1"})
+        current = _lock(pinned_versions={"torch": "2.5.1", "transformers": "4.46.0"})
+        assert _severities(prior, current) == {Severity.WARN}
+
+    def test_bitsandbytes_removed_is_warn(self) -> None:
+        prior = _lock(pinned_versions={"torch": "2.5.1", "bitsandbytes": "0.43.0"})
+        current = _lock(pinned_versions={"torch": "2.5.1"})
+        assert _severities(prior, current) == {Severity.WARN}
+
+
+class TestSeedRule:
+    def test_seed_change_is_warn(self) -> None:
+        prior = _lock(seed=42)
+        current = _lock(seed=99)
+        assert _severities(prior, current) == {Severity.WARN}
+
+    def test_seed_change_upgrades_under_strict(self) -> None:
+        prior = _lock(seed=42)
+        current = _lock(seed=99)
+        assert _severities(prior, current, strict=True) == {Severity.ERROR}
+
+
+class TestBaseModelSha256Rule:
+    def test_sha256_mismatch_is_error(self) -> None:
+        prior = _lock(base_model_sha256="a" * 64)
+        current = _lock(base_model_sha256="b" * 64)
+        assert Severity.ERROR in _severities(prior, current)
+
+    def test_one_sided_none_is_silent(self) -> None:
+        prior = _lock(base_model_sha256=None)
+        current = _lock(base_model_sha256="a" * 64)
+        # No drift under the sha256 rule when the prior didn't capture it.
+        messages = [msg for _sev, msg in classify_mismatches(prior, current)]
+        assert not any("base_model_sha256" in m for m in messages)
+
+
+class TestCudaRocmRules:
+    def test_cuda_version_change_is_warn(self) -> None:
+        prior = _lock(cuda_version="12.1")
+        current = _lock(cuda_version="12.4")
+        assert _severities(prior, current) == {Severity.WARN}
+
+    def test_rocm_version_change_is_warn(self) -> None:
+        prior = _lock(rocm_version="6.0")
+        current = _lock(rocm_version="6.2")
+        assert _severities(prior, current) == {Severity.WARN}
+
+
+class TestLicenseAcceptanceRule:
+    def _acceptance(self, spdx: str = "llama3.2", url: str = "https://example.com/llama") -> object:
+        from dlm.base_models.license import LicenseAcceptance
+
+        return LicenseAcceptance(
+            accepted_at=datetime(2026, 4, 1, tzinfo=UTC),
+            license_url=url,
+            license_spdx=spdx,
+            via="cli_flag",
+        )
+
+    def test_none_to_populated_is_warn(self) -> None:
+        prior = _lock(license_acceptance=None)
+        current = _lock(license_acceptance=self._acceptance())
+        msgs = [msg for _s, msg in classify_mismatches(prior, current)]
+        assert any("license_acceptance newly recorded" in m for m in msgs)
+
+    def test_spdx_change_is_warn(self) -> None:
+        prior = _lock(license_acceptance=self._acceptance(spdx="llama3.2"))
+        current = _lock(license_acceptance=self._acceptance(spdx="llama3.3"))
+        msgs = [msg for _s, msg in classify_mismatches(prior, current)]
+        assert any("spdx changed" in m for m in msgs)
+
+    def test_both_none_is_silent(self) -> None:
+        prior = _lock(license_acceptance=None)
+        current = _lock(license_acceptance=None)
+        msgs = [msg for _s, msg in classify_mismatches(prior, current)]
+        assert not any("license_acceptance" in m for m in msgs)
+
+
 class TestNoDrift:
     def test_identical_locks_produce_no_mismatches(self) -> None:
         lock = _lock()
