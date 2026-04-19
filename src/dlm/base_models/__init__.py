@@ -12,6 +12,7 @@ Public surface:
 
 from __future__ import annotations
 
+from dlm.base_models.downloader import DownloadResult, download_spec, sha256_of_directory
 from dlm.base_models.errors import (
     BaseModelError,
     GatedModelError,
@@ -28,12 +29,15 @@ __all__ = [
     "BASE_MODELS",
     "BaseModelError",
     "BaseModelSpec",
+    "DownloadResult",
     "GatedModelError",
     "ProbeFailedError",
     "ProbeReport",
     "ProbeResult",
     "UnknownBaseModelError",
+    "download_spec",
     "known_keys",
     "resolve",
     "resolve_hf",
+    "sha256_of_directory",
 ]
