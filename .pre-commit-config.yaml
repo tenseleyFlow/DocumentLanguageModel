@@ -1,0 +1,40 @@
+# Sprint 15 — pre-commit hygiene for DocumentLanguageModel.
+#
+# Install via `uv run pre-commit install` once per clone. CI matches the
+# same hook set so local failures mirror the PR check.
+#
+# `pytest-unit` runs the fast tier only (no -m slow, no online, no gpu)
+# — the full slow suite lives in .github/workflows/integration-slow.yml.
+
+default_language_version:
+  python: python3.11
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        args: [--strict, src/dlm]
+        # Match pyproject's dep surface; keeping this in sync with
+        # pyproject.toml is a manual step checked by the `mypy` hook
+        # failing loudly when it can't resolve a third-party symbol.
+        additional_dependencies:
+          - pydantic>=2.13
+          - pydantic_core
+          - types-pyyaml
+
+  - repo: local
+    hooks:
+      - id: pytest-unit
+        name: pytest (unit + non-slow integration)
+        entry: uv run pytest -m "not slow and not gpu and not online"
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
