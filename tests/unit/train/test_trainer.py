@@ -147,6 +147,64 @@ class TestRunHappyPath:
         )
         assert result.seed == 42  # from TrainingConfig default
 
+    def test_content_hashes_updated_with_current_sections(self, tmp_path: Path) -> None:
+        """Audit-04 M2: manifest.content_hashes reflects the CURRENT .dlm after run."""
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        parsed = _parsed()
+        expected_sids = {s.section_id for s in parsed.sections}
+
+        run(store, parsed, spec, _plan(), trainer_factory=_mock_trainer_factory)
+
+        from dlm.store.manifest import load_manifest
+
+        manifest = load_manifest(store.manifest)
+        assert set(manifest.content_hashes.keys()) == expected_sids
+
+    def test_replay_corpus_appended_with_new_sections(self, tmp_path: Path) -> None:
+        """Audit-04 M1: new sections are written into the replay corpus."""
+        from dlm.replay import ReplayStore
+
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        parsed = _parsed()
+        run(store, parsed, spec, _plan(), trainer_factory=_mock_trainer_factory)
+
+        replay = ReplayStore.at(store.replay_corpus, store.replay_index)
+        entries = replay.load()
+        # First run: every section is `new` → every section ends up in the corpus.
+        corpus_sids = {e.section_id for e in entries}
+        expected_sids = {s.section_id for s in parsed.sections}
+        assert corpus_sids == expected_sids
+
+    def test_second_run_reclassifies_unchanged_and_does_not_duplicate(
+        self, tmp_path: Path
+    ) -> None:
+        """After run #1 writes content_hashes, run #2 sees everything as unchanged."""
+        from dlm.replay import ReplayStore
+
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        parsed = _parsed()
+        run(store, parsed, spec, _plan(), trainer_factory=_mock_trainer_factory)
+        run(store, parsed, spec, _plan(), trainer_factory=_mock_trainer_factory)
+
+        replay = ReplayStore.at(store.replay_corpus, store.replay_index)
+        entries = replay.load()
+        # Section count, not frame count — identical sections shouldn't re-append.
+        assert len({e.section_id for e in entries}) == len(parsed.sections)
+        # Second run's delta should be all-unchanged → no new frames appended.
+        assert len(entries) == len(parsed.sections)
+
 
 class TestRunBranches:
     def test_disk_preflight_refuses_start(self, tmp_path: Path) -> None:

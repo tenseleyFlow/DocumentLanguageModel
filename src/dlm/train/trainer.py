@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from dlm.replay import ChangeSet, ReplayStore, SectionSnapshot, diff_against_manifest
 from dlm.train.checkpoint_commit import commit_version
 from dlm.train.determinism import DeterminismSummary, seed_everything
 from dlm.train.disk_preflight import preflight_disk
@@ -108,6 +109,15 @@ def run(
     log_path = log_path_for(store.logs, run_id)
     versions = capture_runtime_versions()
 
+    # 4. Content-delta against the previous manifest (audit-04 M1/M2):
+    #    feeds replay sampling before training; `change_set.new` is
+    #    appended to the corpus + `content_hashes` after training.
+    from dlm.store.manifest import load_manifest
+
+    prior_manifest = load_manifest(store.manifest)
+    change_set = diff_against_manifest(list(parsed.sections), prior_manifest)
+    replay = ReplayStore.at(store.replay_corpus, store.replay_index)
+
     with StepLogger(log_path) as log:
         log.write_banner(
             Banner(
@@ -121,8 +131,14 @@ def run(
                 plan=plan.to_dict(),
             )
         )
+        log.log_event(
+            "delta",
+            new=[s.section_id for s in change_set.new],
+            unchanged=[s.section_id for s in change_set.unchanged],
+            removed=list(change_set.removed),
+        )
 
-        # 4. Build or resume the SFT trainer.
+        # 5. Build or resume the SFT trainer.
         sft = _build_trainer(
             store=store,
             parsed=parsed,
@@ -132,9 +148,12 @@ def run(
             seed=seed,
             max_steps=max_steps,
             factory=trainer_factory,
+            change_set=change_set,
+            replay=replay,
+            adapter_version_for_rng=prior_manifest.adapter_version,
         )
 
-        # 5. Run the training loop.
+        # 6. Run the training loop.
         start = time.perf_counter()
         train_result = sft.train()
         elapsed = time.perf_counter() - start
@@ -144,7 +163,7 @@ def run(
         final_train_loss = _maybe_float(getattr(train_result, "training_loss", None))
         final_val_loss = _maybe_float(getattr(sft.state, "best_metric", None))
 
-        # 6. Two-phase commit: save adapter + state into a pending
+        # 7. Two-phase commit: save adapter + state into a pending
         #    version dir, then flip the current pointer atomically.
         adapter_path = commit_version(
             store,
@@ -157,7 +176,15 @@ def run(
         )
         adapter_version = int(adapter_path.name.lstrip("v"))
 
-        # 7. Append the training-run summary to the manifest.
+        # 8. Append NEW section snapshots to the replay corpus so the
+        #    next `dlm train` draws from today's training signal.
+        #    `changed` is reserved empty under the current content-
+        #    addressed design; only `new` needs persisting here.
+        _append_change_set_to_replay(replay, change_set, run_id=run_id)
+
+        # 9. Append the training-run summary + refresh `content_hashes`
+        #    on the manifest. The delta for the NEXT run is computed
+        #    against the hashes written here.
         _append_training_run(
             store=store,
             run_id=run_id,
@@ -168,6 +195,7 @@ def run(
             final_val_loss=final_val_loss,
             base_model_revision=spec.revision,
             versions=versions,
+            current_sections=list(parsed.sections),
         )
 
         log.log_event(
@@ -204,6 +232,9 @@ def _build_trainer(
     seed: int,
     max_steps: int | None,
     factory: Callable[..., Any] | None,
+    change_set: ChangeSet,
+    replay: ReplayStore,
+    adapter_version_for_rng: int,
 ) -> Any:
     """Assemble model + tokenizer + dataset + SFTTrainer.
 
@@ -221,6 +252,9 @@ def _build_trainer(
             mode=mode,
             seed=seed,
             max_steps=max_steps,
+            change_set=change_set,
+            replay=replay,
+            adapter_version_for_rng=adapter_version_for_rng,
         )
 
     # pragma: no cover — exercised by the slow-marked integration test
@@ -234,6 +268,9 @@ def _build_trainer(
         mode=mode,
         seed=seed,
         max_steps=max_steps,
+        change_set=change_set,
+        replay=replay,
+        adapter_version_for_rng=adapter_version_for_rng,
     )
 
 
@@ -246,6 +283,9 @@ def _build_real_trainer(  # pragma: no cover
     mode: Mode,
     seed: int,
     max_steps: int | None,
+    change_set: ChangeSet,
+    replay: ReplayStore,
+    adapter_version_for_rng: int,
 ) -> Any:
     # Deferred imports — heavy ML stack only touched on the real path.
     from trl import SFTConfig, SFTTrainer  # type: ignore[attr-defined]
@@ -257,10 +297,18 @@ def _build_real_trainer(  # pragma: no cover
     base_model = load_base_model(spec, plan)
     tok_bringup = prepare_tokenizer(spec.hf_id, spec.revision)
 
+    replay_rows = _sample_replay_rows(
+        replay,
+        change_set=change_set,
+        seed=seed,
+        adapter_version=adapter_version_for_rng,
+    )
+
     train_ds, val_ds = build_dataset(
         list(parsed.sections),
         seed=seed,
         val_frac=0.1,
+        replay_rows=replay_rows or None,
     )
 
     resume_path = store.resolve_current_adapter() if mode == "resume" else None
@@ -365,6 +413,64 @@ def _snapshot_training_state(
     )
 
 
+def _sample_replay_rows(
+    replay: ReplayStore,
+    *,
+    change_set: ChangeSet,
+    seed: int,
+    adapter_version: int,
+) -> list[dict[str, Any]]:
+    """Draw recency-weighted replay rows for this training run.
+
+    `k = max(32, 2 × |new|)` matches the Sprint 08 design note: the
+    sample is an anti-forgetting counterweight to the fresh content's
+    gradient signal. Returns an empty list when the corpus is cold
+    (first `dlm train` on a store).
+    """
+    import random as _random
+    from datetime import UTC, datetime
+
+    entries = replay.load()
+    if not entries:
+        return []
+
+    k = max(32, 2 * len(change_set.new))
+    rng = _random.Random(seed + adapter_version)
+    now = datetime.now(UTC).replace(tzinfo=None, microsecond=0)
+    return replay.sample_rows(k=k, now=now, rng=rng)
+
+
+def _append_change_set_to_replay(
+    replay: ReplayStore,
+    change_set: ChangeSet,
+    *,
+    run_id: int,
+) -> None:
+    """Persist `change_set.new` into the replay corpus for future runs.
+
+    Idempotent-ish: a section appended twice produces two frames with
+    the same `section_id` but different `last_seen_at`. The sampler
+    uses `added_at` for recency weighting so double-appends are a
+    harmless no-op beyond mild corpus growth — eviction (Sprint 08)
+    reclaims the bytes.
+    """
+    if not change_set.new:
+        return
+    now = _utc_naive()
+    snapshots = [
+        SectionSnapshot(
+            section_id=section.section_id,
+            section_type=section.type.value,
+            content=section.content,
+            first_seen_at=now,
+            last_seen_at=now,
+            training_runs_seen=[run_id],
+        )
+        for section in change_set.new
+    ]
+    replay.append_many(snapshots)
+
+
 def _append_training_run(
     *,
     store: StorePath,
@@ -376,8 +482,14 @@ def _append_training_run(
     final_val_loss: float | None,
     base_model_revision: str,
     versions: PinnedVersions,
+    current_sections: list[Any],
 ) -> None:
-    """Append a TrainingRunSummary to `manifest.training_runs`.
+    """Append a TrainingRunSummary + refresh `content_hashes` (audit-04 M2).
+
+    `content_hashes` is overwritten with the full set of current-document
+    section ids. `diff_against_manifest` keys on this dict, so updating
+    it here is what makes the NEXT run classify things correctly as
+    `new`/`unchanged`/`removed`.
 
     Manifest reads/writes go through the Sprint 04 atomic I/O path so
     a concurrent reader never sees a torn file.
@@ -401,11 +513,13 @@ def _append_training_run(
 
     manifest_path = store.manifest
     manifest = load_manifest(manifest_path)
+    new_hashes = {s.section_id: s.section_id for s in current_sections}
     updated = manifest.model_copy(
         update={
             "training_runs": [*manifest.training_runs, summary],
             "adapter_version": adapter_version,
             "updated_at": now,
+            "content_hashes": new_hashes,
         }
     )
     save_manifest(manifest_path, updated)
