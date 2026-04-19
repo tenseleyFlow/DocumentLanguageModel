@@ -31,11 +31,18 @@ class UnknownBaseModelError(BaseModelError):
 
 @dataclass(frozen=True)
 class ProbeResult:
-    """Outcome of a single compatibility probe."""
+    """Outcome of a single compatibility probe.
+
+    `skipped=True` signals the probe couldn't run (e.g., vendored
+    llama.cpp not yet installed) but we're choosing not to block — the
+    aggregate verdict treats skipped as pass so offline dev stays
+    unblocked. `detail` carries the human-readable reason.
+    """
 
     name: str
     passed: bool
     detail: str
+    skipped: bool = False
 
 
 class ProbeFailedError(BaseModelError):
@@ -82,8 +89,13 @@ class ProbeReport:
 
     @property
     def passed(self) -> bool:
+        """All non-skipped probes passed. Skipped probes don't block."""
         return all(r.passed for r in self.results)
 
     @property
     def failures(self) -> tuple[ProbeResult, ...]:
         return tuple(r for r in self.results if not r.passed)
+
+    @property
+    def skipped(self) -> tuple[ProbeResult, ...]:
+        return tuple(r for r in self.results if r.skipped)
