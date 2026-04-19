@@ -138,7 +138,7 @@ def pack(
             created_at=datetime.now(UTC).replace(tzinfo=None, microsecond=0),
             tool_version=dlm_version,
             content_type=content_type,
-            platform_hint=sys.platform,
+            platform_hint=_platform_hint(),
             licensee_acceptance_url=licensee_acceptance_url,
         )
         (staging / HEADER_FILENAME).write_text(
@@ -181,6 +181,26 @@ def pack(
 
 
 # --- internals --------------------------------------------------------------
+
+
+def _platform_hint() -> str:
+    """`<os>-<accelerator>` — more informative than `sys.platform` alone.
+
+    `sys.platform` collapses both "CUDA Linux" and "CPU-only Linux" to
+    `"linux"`, which loses the information `dlm doctor` on the receiving
+    host most needs: can this host reasonably resume training? Audit-04
+    N2. Falls back to `sys.platform` if the hardware detector can't
+    import torch (packaging context without torch installed).
+    """
+    try:
+        from dlm.hardware.backend import detect
+    except ImportError:  # pragma: no cover — dev env has torch
+        return sys.platform
+    try:
+        backend = detect().value
+    except Exception:
+        backend = "unknown"
+    return f"{sys.platform}-{backend}"
 
 
 def _content_type(*, include_base: bool, include_exports: bool, include_logs: bool) -> ContentType:
