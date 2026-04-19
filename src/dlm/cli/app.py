@@ -69,9 +69,34 @@ def _root(
         bool, typer.Option("--quiet", "-q", help="Suppress informational output.")
     ] = False,
 ) -> None:
-    """Root callback. Sprints 13+ flesh out logging and $DLM_HOME handling."""
-    # Arguments captured for future use; this sprint is scaffolding only.
-    _ = (version, home, verbose, quiet)
+    """Root callback — configure DLM_HOME + logger level for downstream cmds."""
+    import logging
+
+    _ = version  # consumed by is_eager callback before we arrive
+
+    if home is not None:
+        # Make the override visible to every sprint-04 `StorePath.for_dlm`
+        # downstream of this callback.
+        os.environ["DLM_HOME"] = home
+
+    if verbose and quiet:
+        raise typer.BadParameter("--verbose and --quiet are mutually exclusive")
+
+    level = logging.INFO
+    if verbose:
+        level = logging.DEBUG
+    elif quiet:
+        level = logging.WARNING
+
+    # Only attach a handler if the root logger hasn't already been
+    # configured by the parent process (e.g. in tests). `force=True`
+    # resets any prior CLI-run handlers so --verbose on a second call
+    # actually takes effect.
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+        force=True,
+    )
 
 
 # Register subcommand stubs.
