@@ -189,6 +189,27 @@ def train_cmd(
             help="Accept the base model's license (required for gated bases like llama-3.2).",
         ),
     ] = False,
+    strict_lock: Annotated[
+        bool,
+        typer.Option(
+            "--strict-lock",
+            help="Fail on any dlm.lock drift, including version warns.",
+        ),
+    ] = False,
+    update_lock: Annotated[
+        bool,
+        typer.Option(
+            "--update-lock",
+            help="Overwrite dlm.lock without validating prior entries.",
+        ),
+    ] = False,
+    ignore_lock: Annotated[
+        bool,
+        typer.Option(
+            "--ignore-lock",
+            help="Skip dlm.lock validation and don't write a new lock.",
+        ),
+    ] = False,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
     import sys
@@ -199,6 +220,7 @@ def train_cmd(
     from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
     from dlm.hardware import doctor
+    from dlm.lock import LockMode, LockValidationError
     from dlm.store.paths import for_dlm
     from dlm.train import (
         DiskSpaceError,
@@ -214,6 +236,24 @@ def train_cmd(
         console.print("[red]error:[/red] --resume and --fresh are mutually exclusive")
         raise typer.Exit(code=2)
     mode: Literal["fresh", "resume"] = "resume" if resume else "fresh"
+
+    # Mutual-exclusion gate for the three lock flags. Exactly one (or
+    # zero) may be set — silently ignoring a conflicting pair would
+    # mask operator intent.
+    lock_flag_count = sum((strict_lock, update_lock, ignore_lock))
+    if lock_flag_count > 1:
+        console.print(
+            "[red]error:[/red] --strict-lock / --update-lock / --ignore-lock "
+            "are mutually exclusive",
+        )
+        raise typer.Exit(code=2)
+    lock_mode: LockMode = "default"
+    if strict_lock:
+        lock_mode = "strict"
+    elif update_lock:
+        lock_mode = "update"
+    elif ignore_lock:
+        lock_mode = "ignore"
 
     parsed = parse_file(path)
     try:
@@ -250,7 +290,16 @@ def train_cmd(
             mode=mode,
             seed=seed,
             max_steps=max_steps,
+            lock_mode=lock_mode,
+            capabilities=doctor().capabilities,
         )
+    except LockValidationError as exc:
+        console.print(f"[red]lock:[/red] {exc}")
+        console.print(
+            "  Re-run with [bold]--update-lock[/bold] to accept the drift or "
+            "[bold]--ignore-lock[/bold] to continue without persisting a new lock."
+        )
+        raise typer.Exit(code=1) from exc
     except DiskSpaceError as exc:
         console.print(f"[red]disk:[/red] {exc}")
         raise typer.Exit(code=1) from exc
