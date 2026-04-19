@@ -89,21 +89,16 @@ def _rule_hardware_tier(prior: DlmLock, current: DlmLock) -> tuple[Severity, str
     )
 
 
-def _rule_determinism_class(
-    prior: DlmLock, current: DlmLock
-) -> tuple[Severity, str] | None:
+def _rule_determinism_class(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
     if prior.determinism_class == current.determinism_class:
         return None
     return (
         Severity.WARN,
-        f"determinism_class changed ({prior.determinism_class} → "
-        f"{current.determinism_class})",
+        f"determinism_class changed ({prior.determinism_class} → {current.determinism_class})",
     )
 
 
-def _rule_determinism_flags(
-    prior: DlmLock, current: DlmLock
-) -> tuple[Severity, str] | None:
+def _rule_determinism_flags(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
     if prior.determinism_flags == current.determinism_flags:
         return None
     return (Severity.WARN, "determinism_flags changed")
@@ -124,9 +119,7 @@ def _rule_torch_version(prior: DlmLock, current: DlmLock) -> tuple[Severity, str
     return (Severity.WARN, f"torch minor-version drift ({prior_v} → {current_v})")
 
 
-def _rule_bitsandbytes_any(
-    prior: DlmLock, current: DlmLock
-) -> tuple[Severity, str] | None:
+def _rule_bitsandbytes_any(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
     prior_v = prior.pinned_versions.get("bitsandbytes")
     current_v = current.pinned_versions.get("bitsandbytes")
     if prior_v == current_v:
@@ -135,8 +128,7 @@ def _rule_bitsandbytes_any(
     # sensitive to bnb kernels.
     return (
         Severity.WARN,
-        f"bitsandbytes changed ({prior_v!r} → {current_v!r}); QLoRA kernels are "
-        "version-sensitive",
+        f"bitsandbytes changed ({prior_v!r} → {current_v!r}); QLoRA kernels are version-sensitive",
     )
 
 
@@ -188,8 +180,5 @@ def classify_mismatches(
             results.append(outcome)
     results.extend(_rule_minor_peers(prior, current))
     if strict:
-        results = [
-            (Severity.ERROR if sev is Severity.WARN else sev, msg)
-            for sev, msg in results
-        ]
+        results = [(Severity.ERROR if sev is Severity.WARN else sev, msg) for sev, msg in results]
     return results

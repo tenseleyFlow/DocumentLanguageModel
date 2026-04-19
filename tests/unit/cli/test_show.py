@@ -29,11 +29,7 @@ class TestUninitializedStore:
 
     def _write_doc(self, path: Path, dlm_id: str) -> Path:
         path.write_text(
-            f"---\n"
-            f"dlm_id: {dlm_id}\n"
-            f"base_model: smollm2-135m\n"
-            f"---\n"
-            f"body\n",
+            f"---\ndlm_id: {dlm_id}\nbase_model: smollm2-135m\n---\nbody\n",
             encoding="utf-8",
         )
         return path

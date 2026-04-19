@@ -100,9 +100,11 @@ def init_cmd(
     acceptance_via: Literal["cli_flag", "interactive"] = (
         "cli_flag" if i_accept_license else "interactive"
     )
-    acceptance = require_acceptance(
-        spec, accept_license=True, via=acceptance_via
-    ) if is_gated(spec) else None
+    acceptance = (
+        require_acceptance(spec, accept_license=True, via=acceptance_via)
+        if is_gated(spec)
+        else None
+    )
 
     dlm_id = mint_ulid()
     _write_init_scaffold(path, spec.key, dlm_id)

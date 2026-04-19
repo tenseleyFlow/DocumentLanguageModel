@@ -97,8 +97,7 @@ def test_pack_unpack_prompt_is_byte_identical(trained_store, tmp_path: Path) -> 
         post = _run_prompt(fresh_home, restored_doc)
 
         assert pre == post, (
-            "pack round-trip broke prompt output at temp=0.\n"
-            f"pre:  {pre!r}\npost: {post!r}"
+            f"pack round-trip broke prompt output at temp=0.\npre:  {pre!r}\npost: {post!r}"
         )
     finally:
         for k, v in saved.items():

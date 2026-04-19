@@ -53,9 +53,7 @@ def test_strict_lock_rejects_torch_minor_drift(tmp_path: Path) -> None:
 
     current = torch.__version__.split("+", 1)[0]
     if current == "2.5.1":
-        pytest.skip(
-            "runtime torch already matches the planted lock; test can't simulate drift."
-        )
+        pytest.skip("runtime torch already matches the planted lock; test can't simulate drift.")
 
     # Bootstrap home + doc.
     home = tmp_path / "dlm-home"

@@ -186,8 +186,7 @@ def main() -> int:
 
     if not args.approve:
         print(
-            "[dry-run] pass --approve to write "
-            f"{target.relative_to(_REPO_ROOT)}",
+            f"[dry-run] pass --approve to write {target.relative_to(_REPO_ROOT)}",
         )
         return 1 if prior is None or prior.get("adapter_sha256") != sha_a else 0
 

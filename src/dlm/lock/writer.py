@@ -56,7 +56,9 @@ def load_lock(store_root: Path) -> DlmLock | None:
         raise LockSchemaError(path, f"invalid JSON: {exc}") from exc
 
     if not isinstance(payload, dict):
-        raise LockSchemaError(path, f"top-level JSON must be an object, got {type(payload).__name__}")
+        raise LockSchemaError(
+            path, f"top-level JSON must be an object, got {type(payload).__name__}"
+        )
 
     version = payload.get("lock_version")
     if version != CURRENT_LOCK_VERSION:
