@@ -160,6 +160,39 @@ def check_chat_template(adapter_dir: Path, *, required: bool = True) -> None:
         )
 
 
+def check_pretokenizer_fingerprint(spec: BaseModelSpec) -> None:
+    """Re-run the llama.cpp pre-tokenizer fingerprint probe at export time.
+
+    Audit-05 M4 / CLAUDE.md pitfall #5: "Sprint 11 re-verifies at `dlm
+    export` preflight". Sprint 06 runs the probe at resolve/init time;
+    nothing between `dlm init` and `dlm export` guarantees the
+    fingerprint table + tokenizer snapshot still agree (e.g., a
+    `vendor/llama.cpp` bump invalidates the recorded fingerprint).
+    This function runs `probe_pretokenizer_hash` fresh and refuses on
+    a real mismatch.
+
+    Skipped when the probe reports `skipped=True` (no fingerprint
+    table or no entry for this spec's dialect). A `skipped` result is
+    NOT an error — the label probe still ran at resolve time and
+    guards against the "unknown pre-tokenizer" llama.cpp case.
+    """
+    from dlm.base_models.probes import probe_pretokenizer_hash
+
+    result = probe_pretokenizer_hash(spec)
+    if result.skipped:
+        return
+    if not result.passed:
+        raise PreflightError(
+            probe="pretokenizer_fingerprint",
+            detail=(
+                f"pre-tokenizer fingerprint mismatch for {spec.key!r}: "
+                f"{result.detail}. Re-run `scripts/bump-llama-cpp.sh` to "
+                "refresh the fingerprint table, or verify the base-model "
+                "tokenizer hasn't been tampered with."
+            ),
+        )
+
+
 def check_was_adapter_qlora(adapter_dir: Path) -> bool:
     """Read the audit-05 M1 `training_run.json` flag.
 

@@ -188,6 +188,11 @@ def run_export(
     preflight.check_adapter_config(adapter_path, spec)
     preflight.check_tokenizer_vocab(adapter_path)
     preflight.check_chat_template(adapter_path, required=plan.include_template)
+    # Audit-05 M4 / CLAUDE.md pitfall #5: re-verify the llama.cpp
+    # pre-tokenizer fingerprint at export time. Protects against a
+    # `vendor/llama.cpp` bump or tokenizer rewrite between
+    # `dlm init` (Sprint 06 probe ran then) and `dlm export` now.
+    preflight.check_pretokenizer_fingerprint(spec)
     was_qlora = preflight.check_was_adapter_qlora(adapter_path)
 
     # 2. Merge-safety gate (pitfall #3).
