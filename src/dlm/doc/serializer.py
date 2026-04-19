@@ -61,8 +61,13 @@ def _serialize_frontmatter(fm: DlmFrontmatter) -> str:
             lines.extend(_emit_block_scalar(key, value))
             continue
         if isinstance(value, TrainingConfig | ExportConfig):
+            nested = _emit_nested_mapping(value, indent=2)
+            if not nested:
+                # All-default nested block — skip the header too so we
+                # don't emit an empty `training:` line (audit-05 M2).
+                continue
             lines.append(f"{key}:")
-            lines.extend(_emit_nested_mapping(value, indent=2))
+            lines.extend(nested)
             continue
         lines.append(f"{key}: {_scalar(value)}")
     lines.append("---")
@@ -70,11 +75,23 @@ def _serialize_frontmatter(fm: DlmFrontmatter) -> str:
 
 
 def _emit_nested_mapping(model: TrainingConfig | ExportConfig, *, indent: int) -> list[str]:
+    """Emit a nested training/export block.
+
+    Audit-05 M2: suppress fields that equal their schema default so
+    re-serializing a minimal `.dlm` doesn't bloat it with every
+    inlined default. Idempotency (Sprint 03 DoD) is preserved — the
+    parser's defaults match the suppressed values, so round-trip
+    stability holds at the model level.
+    """
     pad = " " * indent
     lines: list[str] = []
+    defaults = model.__class__()  # instance with all defaults
     # model_fields preserves declaration order.
     for field_name in model.__class__.model_fields:
         value = getattr(model, field_name)
+        default_value = getattr(defaults, field_name)
+        if value == default_value:
+            continue
         lines.append(f"{pad}{field_name}: {_scalar(value)}")
     return lines
 
