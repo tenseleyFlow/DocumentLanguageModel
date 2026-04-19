@@ -66,10 +66,13 @@ class TrainingRunResult:
     adapter_version: int
     adapter_path: Path
     log_path: Path
+    summary_path: Path
     seed: int
     steps: int
     final_train_loss: float | None
     final_val_loss: float | None
+    final_val_perplexity: float | None
+    early_stopped: bool
     determinism: DeterminismSummary
 
 
@@ -161,9 +164,28 @@ def run(
 
         steps = int(getattr(sft.state, "global_step", 0))
         final_train_loss = _maybe_float(getattr(train_result, "training_loss", None))
-        final_val_loss = _maybe_float(getattr(sft.state, "best_metric", None))
 
-        # 7. Two-phase commit: save adapter + state into a pending
+        # 7. Extract final eval metrics from trainer.state.log_history.
+        #    Sprint 10: the SFTTrainer calls compute_metrics at each
+        #    eval_steps; the last logged `eval_loss` + perplexity are
+        #    the authoritative post-run numbers.
+        from dlm.eval import summarize_eval_state
+
+        log_history = list(getattr(sft.state, "log_history", []))
+        eval_summary = summarize_eval_state(log_history)
+        final_val_loss = eval_summary["final_val_loss"]
+        final_val_perplexity = eval_summary["final_val_perplexity"]
+
+        # Early-stop heuristic.
+        from dlm.eval import was_early_stopped
+
+        early_stopped = was_early_stopped(
+            max_steps_ran=steps,
+            configured_max_steps=max_steps,
+            num_epochs_done=float(getattr(sft.state, "epoch", 0.0)),
+        )
+
+        # 8. Two-phase commit: save adapter + state into a pending
         #    version dir, then flip the current pointer atomically.
         adapter_path = commit_version(
             store,
@@ -176,15 +198,15 @@ def run(
         )
         adapter_version = int(adapter_path.name.lstrip("v"))
 
-        # 8. Append NEW section snapshots to the replay corpus so the
+        # 9. Append NEW section snapshots to the replay corpus so the
         #    next `dlm train` draws from today's training signal.
         #    `changed` is reserved empty under the current content-
         #    addressed design; only `new` needs persisting here.
         _append_change_set_to_replay(replay, change_set, run_id=run_id)
 
-        # 9. Append the training-run summary + refresh `content_hashes`
-        #    on the manifest. The delta for the NEXT run is computed
-        #    against the hashes written here.
+        # 10. Append the training-run summary + refresh `content_hashes`
+        #     on the manifest. The delta for the NEXT run is computed
+        #     against the hashes written here.
         _append_training_run(
             store=store,
             run_id=run_id,
@@ -198,12 +220,32 @@ def run(
             current_sections=list(parsed.sections),
         )
 
+        # 11. Write the human-readable TrainingSummary JSON alongside
+        #     the JSONL log. Sprint 13's `dlm show` reads this to
+        #     report "how did the last run go?" without loading torch.
+        summary_path = _write_training_summary(
+            store=store,
+            log_path=log_path,
+            run_id=run_id,
+            adapter_version=adapter_version,
+            seed=seed,
+            steps=steps,
+            final_train_loss=final_train_loss,
+            final_val_loss=final_val_loss,
+            final_val_perplexity=final_val_perplexity,
+            early_stopped=early_stopped,
+            duration_seconds=elapsed,
+            determinism=determinism,
+        )
+
         log.log_event(
             "run_complete",
             run_id=run_id,
             adapter_version=adapter_version,
             steps=steps,
             elapsed_seconds=elapsed,
+            early_stopped=early_stopped,
+            summary_path=str(summary_path),
         )
 
     return TrainingRunResult(
@@ -211,10 +253,13 @@ def run(
         adapter_version=adapter_version,
         adapter_path=adapter_path,
         log_path=log_path,
+        summary_path=summary_path,
         seed=seed,
         steps=steps,
         final_train_loss=final_train_loss,
         final_val_loss=final_val_loss,
+        final_val_perplexity=final_val_perplexity,
+        early_stopped=early_stopped,
         determinism=determinism,
     )
 
@@ -438,6 +483,45 @@ def _sample_replay_rows(
     rng = _random.Random(seed + adapter_version)
     now = datetime.now(UTC).replace(tzinfo=None, microsecond=0)
     return replay.sample_rows(k=k, now=now, rng=rng)
+
+
+def _write_training_summary(
+    *,
+    store: StorePath,
+    log_path: Path,
+    run_id: int,
+    adapter_version: int,
+    seed: int,
+    steps: int,
+    final_train_loss: float | None,
+    final_val_loss: float | None,
+    final_val_perplexity: float | None,
+    early_stopped: bool,
+    duration_seconds: float,
+    determinism: DeterminismSummary,
+) -> Path:
+    """Write `logs/train-*.summary.json` next to the JSONL log."""
+    from dlm.eval import TrainingSummary, save_summary, summary_path_for
+
+    # Re-derive the timestamp portion from the log filename so summary + log share a stem.
+    stem = log_path.stem  # "train-000001-2026-04-18T10:15:23"
+    ts = stem.split("-", 2)[-1] if "-" in stem else ""
+    summary_path = summary_path_for(store.logs, run_id, ts)
+
+    summary = TrainingSummary(
+        run_id=run_id,
+        adapter_version=adapter_version,
+        seed=seed,
+        steps=steps,
+        final_train_loss=final_train_loss,
+        final_val_loss=final_val_loss,
+        final_val_perplexity=final_val_perplexity,
+        early_stopped=early_stopped,
+        duration_seconds=duration_seconds,
+        determinism_class=determinism.class_,
+    )
+    save_summary(summary_path, summary)
+    return summary_path
 
 
 def _append_change_set_to_replay(

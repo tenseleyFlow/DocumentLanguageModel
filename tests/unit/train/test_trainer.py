@@ -203,6 +203,29 @@ class TestRunHappyPath:
         # Second run's delta should be all-unchanged → no new frames appended.
         assert len(entries) == len(parsed.sections)
 
+    def test_training_summary_json_written(self, tmp_path: Path) -> None:
+        """Sprint 10: every run writes `logs/train-*.summary.json`."""
+        from dlm.eval import load_summary
+
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        result = run(
+            store, _parsed(), spec, _plan(),
+            trainer_factory=_mock_trainer_factory,
+        )
+
+        assert result.summary_path.exists()
+        summary = load_summary(result.summary_path)
+        assert summary.run_id == result.run_id
+        assert summary.adapter_version == result.adapter_version
+        assert summary.seed == result.seed
+        assert summary.steps == result.steps
+        assert summary.early_stopped is False  # mock runs full schedule
+        assert summary.determinism_class == result.determinism.class_
+
     def test_resume_mode_sees_prior_adapter(self, tmp_path: Path) -> None:
         """Audit-04 m12: mode='resume' propagates + prior adapter is resolvable."""
         store = for_dlm("01TEST", home=tmp_path)
