@@ -58,6 +58,17 @@ class DlmVersionError(DlmParseError):
     """
 
 
+class UnsupportedMigrationError(DlmVersionError):
+    """No migrator is registered for the requested `from_version`.
+
+    Raised by `dlm.doc.migrations.dispatch.apply_pending` when the
+    `MIGRATORS` registry lacks an entry for an intermediate version on
+    the path from `raw.dlm_version` to `CURRENT_SCHEMA_VERSION`. The
+    coverage test catches this at commit time; this error catches the
+    "user forked off the migration path manually" case at runtime.
+    """
+
+
 class FenceError(DlmParseError):
     """Malformed or unknown section fence in the body."""
 
