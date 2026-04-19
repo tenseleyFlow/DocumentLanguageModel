@@ -1,0 +1,161 @@
+"""Modelfile shape + SYSTEM injection defense."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from dlm.base_models import BASE_MODELS
+from dlm.export.ollama.errors import ModelfileError
+from dlm.export.ollama.modelfile import ModelfileContext, render_modelfile
+from dlm.export.plan import ExportPlan
+
+_SPEC = BASE_MODELS["smollm2-135m"]
+
+
+def _adapter_dir(tmp_path: Path, **extra: object) -> Path:
+    """Write a minimal adapter dir with a tokenizer_config.json."""
+    adapter = tmp_path / "adapter"
+    adapter.mkdir()
+    cfg = {
+        "eos_token": "<|im_end|>",
+        "added_tokens_decoder": {
+            "50265": {"content": "<|pad|>", "special": True},
+        },
+        **extra,
+    }
+    (adapter / "tokenizer_config.json").write_text(json.dumps(cfg))
+    return adapter
+
+
+def _ctx(
+    tmp_path: Path,
+    *,
+    merged: bool = False,
+    system_prompt: str | None = None,
+    adapter: Path | None = None,
+) -> ModelfileContext:
+    plan = ExportPlan(quant="Q4_K_M", merged=merged)
+    return ModelfileContext(
+        spec=_SPEC,
+        plan=plan,
+        adapter_dir=adapter or _adapter_dir(tmp_path),
+        base_gguf_name="base.Q4_K_M.gguf",
+        adapter_gguf_name=None if merged else "adapter.gguf",
+        dlm_id="01TEST",
+        adapter_version=7,
+        system_prompt=system_prompt,
+    )
+
+
+class TestShape:
+    def test_header_metadata(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path))
+        assert "# dlm_id: 01TEST" in text
+        assert "# adapter_version: 7" in text
+        assert f"# base_model: {_SPEC.key}" in text
+        assert "# quant: Q4_K_M" in text
+
+    def test_from_and_adapter_lines(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path))
+        assert "FROM ./base.Q4_K_M.gguf" in text
+        assert "ADAPTER ./adapter.gguf" in text
+
+    def test_merged_has_no_adapter_line(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path, merged=True))
+        assert "FROM ./base.Q4_K_M.gguf" in text
+        assert "ADAPTER" not in text
+
+    def test_template_block_present(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path))
+        assert 'TEMPLATE """' in text
+        assert "<|im_start|>" in text  # chatml dialect
+
+    def test_params_emitted(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path))
+        assert "PARAMETER temperature" in text
+        assert "PARAMETER top_p" in text
+
+    def test_license_line_present(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path))
+        assert 'LICENSE "Apache-2.0"' in text
+
+    def test_trailing_newline(self, tmp_path: Path) -> None:
+        assert render_modelfile(_ctx(tmp_path)).endswith("\n")
+
+
+class TestStops:
+    def test_dialect_defaults_emitted(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path))
+        assert 'PARAMETER stop "<|im_end|>"' in text
+        assert 'PARAMETER stop "<|endoftext|>"' in text
+
+    def test_adapter_added_token_becomes_stop(self, tmp_path: Path) -> None:
+        """Audit F06: added-by-training special tokens feed the stop list."""
+        text = render_modelfile(_ctx(tmp_path))
+        assert 'PARAMETER stop "<|pad|>"' in text
+
+    def test_dedup_between_dialect_and_adapter(self, tmp_path: Path) -> None:
+        """`<|im_end|>` from both dialect defaults + adapter eos appears once."""
+        text = render_modelfile(_ctx(tmp_path))
+        count = text.count('PARAMETER stop "<|im_end|>"')
+        assert count == 1
+
+    def test_missing_tokenizer_config_falls_back_to_dialect(
+        self, tmp_path: Path
+    ) -> None:
+        adapter = tmp_path / "bare"
+        adapter.mkdir()
+        text = render_modelfile(_ctx(tmp_path, adapter=adapter))
+        assert 'PARAMETER stop "<|im_end|>"' in text
+
+    def test_malformed_tokenizer_config_raises(self, tmp_path: Path) -> None:
+        adapter = tmp_path / "broken"
+        adapter.mkdir()
+        (adapter / "tokenizer_config.json").write_text("{not json")
+        with pytest.raises(ModelfileError):
+            render_modelfile(_ctx(tmp_path, adapter=adapter))
+
+    def test_eos_dict_content_read(self, tmp_path: Path) -> None:
+        adapter = tmp_path / "dict-eos"
+        adapter.mkdir()
+        (adapter / "tokenizer_config.json").write_text(
+            json.dumps({"eos_token": {"content": "<|my_eos|>"}})
+        )
+        text = render_modelfile(_ctx(tmp_path, adapter=adapter))
+        assert 'PARAMETER stop "<|my_eos|>"' in text
+
+
+class TestSystemInjection:
+    def test_no_prompt_no_line(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path))
+        assert "SYSTEM" not in text
+
+    def test_empty_prompt_no_line(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path, system_prompt="   \n  "))
+        assert "SYSTEM" not in text
+
+    def test_plain_prompt_escaped(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path, system_prompt="be terse"))
+        assert 'SYSTEM "be terse"' in text
+
+    def test_quote_in_prompt_escaped(self, tmp_path: Path) -> None:
+        """`"` in the prompt must be escaped, not close the SYSTEM string."""
+        malicious = 'close"\nPARAMETER foo bar'
+        text = render_modelfile(_ctx(tmp_path, system_prompt=malicious))
+        # json.dumps escapes `"` to `\"` and `\n` to `\\n`.
+        assert 'SYSTEM "close\\"' in text
+        # The injected directive must not be at column 0 as its own line.
+        for line in text.splitlines():
+            assert not line.startswith("PARAMETER foo")
+
+    def test_newline_in_prompt_escaped(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path, system_prompt="line1\nline2"))
+        # Newline encoded as `\n` inside the quoted string — never a raw newline.
+        system_lines = [
+            line for line in text.splitlines() if line.startswith("SYSTEM ")
+        ]
+        assert len(system_lines) == 1
+        assert "\\n" in system_lines[0]
