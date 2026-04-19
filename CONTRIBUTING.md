@@ -1,58 +1,94 @@
 # Contributing
 
-Thanks for your interest. DocumentLanguageModel is being built to a specific
-bar — "a real LLM, not a toy" — and contributions are welcome where they
-respect that bar.
+Hey — glad you're here. DLM is a small, opinionated project, and patches
+that fit the project's shape are very welcome. No sign-up, no CLA, just
+open an issue if the change is non-trivial and a PR when you're ready.
 
-## Dev loop
+## Getting set up
+
+You'll need Python 3.11+ and [uv](https://github.com/astral-sh/uv).
 
 ```sh
+git clone https://github.com/tenseleyFlow/DocumentLanguageModel.git
+cd DocumentLanguageModel
 uv sync --all-extras --dev
 uv run dlm --help
+```
+
+The four checks CI runs — run them locally before pushing:
+
+```sh
 uv run ruff check .
-uv run ruff format .
+uv run ruff format --check .
 uv run mypy src/dlm
 uv run pytest
 ```
 
-`mypy --strict` is required; no loosening accepted.
+If you've only touched one module, you can run that module's tests
+directly (`uv run pytest tests/unit/pack -q`, etc.). The full suite
+takes around six seconds.
 
-Testing details (markers, fixtures, golden outputs, CI matrix) live in
+`mypy --strict` is non-negotiable — if you need to loosen a type,
+please fix the type at its source instead.
+
+Testing conventions (markers, fixtures, the tiny-model fixture,
+golden outputs) are documented separately at
 [docs-internal/README-testing.md](./docs-internal/README-testing.md).
 
-## Coverage gates
+## Coverage
 
-CI enforces ≥ 95% branch coverage on each shipped module:
-
-```sh
-uv run pytest tests/unit/doc      --cov=src/dlm/doc      --cov-fail-under=95
-uv run pytest tests/unit/store    --cov=src/dlm/store    --cov-fail-under=95
-uv run pytest tests/unit/hardware --cov=src/dlm/hardware --cov-fail-under=95
-```
-
-New modules ship with their own gate.
+We keep each shipped module above 95% line coverage; CI enforces it.
+When you add a new module, add a matching gate in `.github/workflows/ci.yml`
+next to the existing ones. When you add a branch that's hard to exercise
+in unit tests — a real-GPU path, a subprocess that needs a full HF
+model — mark it `# pragma: no cover` with a short reason, and write a
+slow-marked integration test for it.
 
 ## Commits
 
-- **Imperative, terse, one line** unless a technical choice requires
-  elaboration. `feat(export): emit explicit Go template in Modelfile`, not
-  `Updated the export module to emit...`.
-- **One commit per logical unit.** A new file + its test are usually one
-  commit; unrelated changes never share a commit.
-- **Never `git add -A`.** Stage specific files by name.
-- **No coauthor trailers.** No `Co-Authored-By` lines.
-- **No `--no-verify`.** Fix the hook failure rather than bypassing it.
+I care about commits being readable later — not because there's a
+style police, but because `git log` is the one place future-you reads
+history when something breaks.
+
+- One commit per logical change. A new source file plus its tests is
+  usually one commit. Unrelated fixes go in separate commits.
+- Imperative subject line, under ~72 chars:
+  `feat(export): emit explicit Go template in Modelfile`, not
+  `Updated the export module to emit the template`.
+- If the *why* needs a paragraph, put it in the commit body. If it
+  doesn't, one line is fine.
+- Stage files by name (`git add path/to/file.py`). `git add -A` picks
+  up stray files we don't want in the repo.
+- No coauthor trailers. No `--no-verify`. If a pre-commit hook fails,
+  fix what it's telling you about.
 
 ## Pull requests
 
-- Link the issue or discussion your change resolves.
-- Any change that could alter training output under a fixed seed must flag
-  "breaks determinism golden" and propose the regeneration path.
-- New cross-cutting concepts need an issue / design note first.
+- Link the issue or discussion your change resolves, if there is one.
+- If your change could alter training output under a fixed seed, call
+  it out: "this breaks the determinism golden, here's the regeneration
+  path." Better to know up front than discover it in a retrain.
+- For larger cross-cutting changes (a new dependency, a new on-disk
+  format, anything that touches the manifest schema), open an issue
+  first so we can nail down the design before you write the code.
 
-## Scope discipline
+## Scope
 
-- Features beyond the current release's scope need a proposal in an issue
-  before the PR lands.
-- Do not add backwards-compat shims for code that hasn't shipped yet.
-- Reject shortcuts that create silent-failure surfaces.
+DLM has a clear story — edit a document, train a LoRA, export to
+Ollama, do it locally, don't forget on retrain. Contributions that
+fit that story are the easy ones to land. Things that add scope
+(new training paradigms, cloud integrations, alternate inference
+backends) are worth discussing in an issue first; sometimes the
+answer is "yes, but later," and it saves you from writing code that
+won't merge.
+
+A few things we actively don't want:
+
+- Silent-failure surfaces. If a preflight can't verify something,
+  it refuses rather than warns.
+- Backwards-compat shims for code that hasn't shipped yet. If a v1
+  hasn't gone out the door, you can rename a function without a
+  deprecation wrapper.
+- Telemetry or network calls outside of model download. Ever.
+
+Thanks again — reach out in issues if anything's unclear.
