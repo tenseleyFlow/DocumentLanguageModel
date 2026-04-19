@@ -5,7 +5,7 @@ aggregates them into a `ProbeReport`. Probes must be non-destructive
 (read-only) and offline-safe where possible — the refresh-registry
 script exercises them online.
 
-Four probes:
+Five probes:
 
 1. `probe_architecture` — `AutoConfig(hf_id).architectures[0]` matches
    `spec.architecture`. Catches model-surgery mismatches and wrong
@@ -20,11 +20,13 @@ Four probes:
    (populated by `scripts/bump-llama-cpp.sh`) and checks the spec's
    `tokenizer_pre` is a known **label**. Silent drift here causes
    silent GGUF export failures per findings §9; the probe catches it
-   early. NOTE (audit-04 M7): this is a label-membership check, not a
-   real hash probe. Sprint 11 adds `probe_pretokenizer_hash` that
-   canonically sha256-digests `tokenizer.json` merges+pre_tokenizer
-   config and compares against llama.cpp's table. The current probe
-   is deliberately named `_label` so the contract matches the code.
+   early. This is the offline fast-check.
+5. `probe_pretokenizer_hash` — real fingerprint check (audit-04 B8 /
+   CLAUDE.md pitfall #5). Tokenizes `_LLAMA_CPP_CHKTXT` and compares
+   the sha256 of the stringified token sequence against a vendored
+   per-label fingerprint table. Detects silent upstream tokenization
+   changes that the label probe would miss. Requires a local HF
+   cache; skipped cleanly otherwise.
 
 Heavy imports (`transformers.AutoConfig`, `AutoTokenizer`) happen
 inside each probe so the module loads cheaply.
@@ -48,6 +50,25 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 VENDOR_LLAMA_CPP_DEFAULT: Final[Path] = _REPO_ROOT / "vendor" / "llama.cpp"
 VENDOR_PRETOKENIZER_HASHES_DEFAULT: Final[Path] = (
     _REPO_ROOT / "vendor" / "llama_cpp_pretokenizer_hashes.json"
+)
+VENDOR_PRETOKENIZER_FINGERPRINTS_DEFAULT: Final[Path] = (
+    _REPO_ROOT / "vendor" / "llama_cpp_pretokenizer_fingerprints.json"
+)
+
+# The canonical test string llama.cpp uses at `convert_hf_to_gguf.py::
+# get_vocab_base_pre`. Tokenize this under the model's BPE tokenizer,
+# stringify the resulting token-id list, sha256 it — that digest is
+# the fingerprint llama.cpp maps to one of its pre-tokenizer types.
+# Keep verbatim; any edit here desynchronizes us from llama.cpp's
+# identification logic (audit-04 B8 + CLAUDE.md pitfall #5).
+_LLAMA_CPP_CHKTXT: Final[str] = (
+    "\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n"
+    "🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ "
+    "🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 "
+    "កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ "
+    "------======= нещо на Български '''''''```````\"\"\"\"......!!!!!!?????? "
+    "I've been 'told he's there, 'RE you sure? 'M not sure I'll make it, "
+    "'D you like some tea? We'Ve a'lL"
 )
 
 
@@ -238,6 +259,122 @@ def probe_pretokenizer_label(
     )
 
 
+def probe_pretokenizer_hash(
+    spec: BaseModelSpec,
+    *,
+    fingerprints_path: Path | None = None,
+) -> ProbeResult:
+    """Compute the real llama.cpp pre-tokenizer fingerprint and compare.
+
+    Audit-04 B8 / CLAUDE.md pitfall #5. The label probe (above) only
+    checks membership in a string table; llama.cpp itself identifies
+    the pre-tokenizer by sha256-hashing the token-id sequence produced
+    by tokenizing a stable test string (`_LLAMA_CPP_CHKTXT`). We do
+    the same here — if the upstream tokenizer changes behavior (new
+    revision, silently different merges), the fingerprint drifts and
+    this probe fails loudly *before* a broken GGUF reaches Ollama.
+
+    The fingerprint table at
+    `vendor/llama_cpp_pretokenizer_fingerprints.json` is maintained by
+    `scripts/bump-llama-cpp.sh`. Missing table or no entry for the
+    spec's `tokenizer_pre` label → skip (the label probe still runs).
+
+    Requires a local HF cache (`local_files_only=True`); skipped
+    cleanly in CI environments without the tokenizer downloaded.
+    """
+    import hashlib
+
+    path = fingerprints_path or VENDOR_PRETOKENIZER_FINGERPRINTS_DEFAULT
+    if not path.exists():
+        return ProbeResult(
+            name="pretokenizer_hash",
+            passed=True,
+            detail=f"skipped: {path} not present (bump-llama-cpp.sh maintains it)",
+            skipped=True,
+        )
+
+    try:
+        table = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return ProbeResult(
+            name="pretokenizer_hash",
+            passed=False,
+            detail=f"fingerprint table unreadable: {exc}",
+        )
+    if not isinstance(table, dict):
+        return ProbeResult(
+            name="pretokenizer_hash",
+            passed=False,
+            detail="fingerprint table has wrong shape (expected {label: sha256})",
+        )
+
+    expected = table.get(spec.tokenizer_pre)
+    if not isinstance(expected, str):
+        return ProbeResult(
+            name="pretokenizer_hash",
+            passed=True,
+            detail=(
+                f"skipped: no fingerprint recorded for {spec.tokenizer_pre!r}; "
+                "run scripts/bump-llama-cpp.sh to refresh the table"
+            ),
+            skipped=True,
+        )
+
+    try:
+        from huggingface_hub.errors import GatedRepoError
+        from transformers import AutoTokenizer
+    except ImportError as exc:  # pragma: no cover — dev env always has transformers
+        return ProbeResult(
+            name="pretokenizer_hash",
+            passed=True,
+            detail=f"skipped: transformers unavailable ({exc})",
+            skipped=True,
+        )
+
+    try:
+        tok = AutoTokenizer.from_pretrained(
+            spec.hf_id, revision=spec.revision, local_files_only=True
+        )
+    except GatedRepoError as exc:
+        raise GatedModelError(spec.hf_id, spec.license_url) from exc
+    except Exception as exc:
+        # Not a probe *failure* — tokenizer simply isn't cached locally.
+        # Online refresh-registry runs will exercise the real check.
+        return ProbeResult(
+            name="pretokenizer_hash",
+            passed=True,
+            detail=f"skipped: cannot load tokenizer offline ({type(exc).__name__})",
+            skipped=True,
+        )
+
+    try:
+        tokens = tok.encode(_LLAMA_CPP_CHKTXT)
+    except Exception as exc:
+        return ProbeResult(
+            name="pretokenizer_hash",
+            passed=False,
+            detail=f"tokenizer.encode failed on chktxt: {type(exc).__name__}: {exc}",
+        )
+
+    digest = hashlib.sha256(str(tokens).encode()).hexdigest()
+    if digest != expected:
+        return ProbeResult(
+            name="pretokenizer_hash",
+            passed=False,
+            detail=(
+                f"pre-tokenizer drifted for {spec.tokenizer_pre!r}: "
+                f"expected {expected[:12]}…, got {digest[:12]}…. "
+                "Upstream may have changed tokenization; re-pin revision "
+                "or run scripts/bump-llama-cpp.sh to refresh the fingerprint."
+            ),
+        )
+    return ProbeResult(
+        name="pretokenizer_hash",
+        passed=True,
+        detail=f"fingerprint matches {spec.tokenizer_pre!r} ({digest[:12]}…)",
+    )
+
+
 # --- aggregate ---------------------------------------------------------------
 
 
@@ -253,5 +390,6 @@ def run_all(spec: BaseModelSpec) -> ProbeReport:
         probe_chat_template(spec),
         probe_gguf_arch_supported(spec),
         probe_pretokenizer_label(spec),
+        probe_pretokenizer_hash(spec),
     )
     return ProbeReport(hf_id=spec.hf_id, results=results)

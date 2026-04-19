@@ -11,9 +11,11 @@ import pytest
 
 from dlm.base_models import BaseModelSpec, GatedModelError
 from dlm.base_models.probes import (
+    _LLAMA_CPP_CHKTXT,
     probe_architecture,
     probe_chat_template,
     probe_gguf_arch_supported,
+    probe_pretokenizer_hash,
     probe_pretokenizer_label,
     run_all,
 )
@@ -159,8 +161,125 @@ class TestProbePretokenizerLabel:
         assert result.passed is False
 
 
+class TestProbePretokenizerHash:
+    """Audit-04 B8: real sha256-of-token-ids fingerprint check."""
+
+    def _tok_with_encoding(self, tokens: list[int]) -> SimpleNamespace:
+        """Fake tokenizer whose `encode()` returns a fixed sequence."""
+        return SimpleNamespace(encode=lambda _text: tokens)
+
+    def test_skips_when_table_missing(self, tmp_path: Path) -> None:
+        result = probe_pretokenizer_hash(_spec(), fingerprints_path=tmp_path / "absent.json")
+        assert result.skipped is True
+        assert result.passed is True
+
+    def test_skips_when_label_not_in_table(self, tmp_path: Path) -> None:
+        table = tmp_path / "fp.json"
+        table.write_text(json.dumps({"qwen2": "a" * 64}), encoding="utf-8")
+        result = probe_pretokenizer_hash(_spec(), fingerprints_path=table)
+        assert result.skipped is True
+        assert "no fingerprint recorded" in result.detail
+
+    def test_matching_hash_passes(self, tmp_path: Path) -> None:
+        import hashlib as _hashlib
+
+        tokens = [1, 2, 3]
+        expected = _hashlib.sha256(str(tokens).encode()).hexdigest()
+        table = tmp_path / "fp.json"
+        table.write_text(json.dumps({"demo": expected}), encoding="utf-8")
+
+        with patch(
+            "transformers.AutoTokenizer.from_pretrained",
+            return_value=self._tok_with_encoding(tokens),
+        ):
+            result = probe_pretokenizer_hash(_spec(), fingerprints_path=table)
+
+        assert result.passed is True
+        assert "fingerprint matches" in result.detail
+
+    def test_mismatching_hash_fails(self, tmp_path: Path) -> None:
+        table = tmp_path / "fp.json"
+        table.write_text(json.dumps({"demo": "b" * 64}), encoding="utf-8")
+
+        with patch(
+            "transformers.AutoTokenizer.from_pretrained",
+            return_value=self._tok_with_encoding([9, 9, 9]),
+        ):
+            result = probe_pretokenizer_hash(_spec(), fingerprints_path=table)
+
+        assert result.passed is False
+        assert "drifted" in result.detail
+
+    def test_uses_exact_llama_cpp_chktxt(self, tmp_path: Path) -> None:
+        """The test string must match llama.cpp's verbatim or fingerprints desynchronize."""
+        seen: dict[str, str] = {}
+
+        def _capture(text: str) -> list[int]:
+            seen["text"] = text
+            return [0]
+
+        import hashlib as _hashlib
+
+        expected = _hashlib.sha256(str([0]).encode()).hexdigest()
+        table = tmp_path / "fp.json"
+        table.write_text(json.dumps({"demo": expected}), encoding="utf-8")
+
+        with patch(
+            "transformers.AutoTokenizer.from_pretrained",
+            return_value=SimpleNamespace(encode=_capture),
+        ):
+            probe_pretokenizer_hash(_spec(), fingerprints_path=table)
+
+        assert seen["text"] == _LLAMA_CPP_CHKTXT
+
+    def test_offline_cache_miss_is_skipped(self, tmp_path: Path) -> None:
+        """A tokenizer not cached locally doesn't count as a probe failure."""
+        table = tmp_path / "fp.json"
+        table.write_text(json.dumps({"demo": "a" * 64}), encoding="utf-8")
+
+        with patch(
+            "transformers.AutoTokenizer.from_pretrained",
+            side_effect=OSError("not in cache"),
+        ):
+            result = probe_pretokenizer_hash(_spec(), fingerprints_path=table)
+
+        assert result.skipped is True
+        assert result.passed is True
+
+    def test_gated_tokenizer_raises_gated_error(self, tmp_path: Path) -> None:
+        from unittest.mock import Mock as _Mock
+
+        from huggingface_hub.errors import GatedRepoError
+
+        table = tmp_path / "fp.json"
+        table.write_text(json.dumps({"demo": "a" * 64}), encoding="utf-8")
+
+        with (
+            patch(
+                "transformers.AutoTokenizer.from_pretrained",
+                side_effect=GatedRepoError("gated", response=_Mock()),
+            ),
+            pytest.raises(GatedModelError),
+        ):
+            probe_pretokenizer_hash(_spec(), fingerprints_path=table)
+
+    def test_unreadable_table_fails(self, tmp_path: Path) -> None:
+        table = tmp_path / "fp.json"
+        table.write_text("not json", encoding="utf-8")
+        result = probe_pretokenizer_hash(_spec(), fingerprints_path=table)
+        assert result.passed is False
+        assert "unreadable" in result.detail
+
+    def test_wrong_shape_table_fails(self, tmp_path: Path) -> None:
+        table = tmp_path / "fp.json"
+        table.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+        result = probe_pretokenizer_hash(_spec(), fingerprints_path=table)
+        assert result.passed is False
+        assert "wrong shape" in result.detail
+
+
 class TestRunAll:
-    def test_aggregates_all_four_probes(self) -> None:
+    def test_aggregates_all_five_probes(self) -> None:
         spec = _spec()
         fake_cfg = SimpleNamespace(architectures=["DemoForCausalLM"])
         tokenizer = SimpleNamespace(chat_template="tmpl")
@@ -175,4 +294,5 @@ class TestRunAll:
             "chat_template",
             "gguf_arch",
             "pretokenizer_label",
+            "pretokenizer_hash",
         }
