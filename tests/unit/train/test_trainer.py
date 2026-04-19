@@ -56,6 +56,9 @@ def _mock_trainer_factory(**_: Any) -> MagicMock:
     sft.optimizer = SimpleNamespace(state_dict=lambda: {"lr": 1e-4})
     sft.lr_scheduler = SimpleNamespace(state_dict=lambda: {"step": 20})
     sft.scaler = None
+    # Audit-05 M2: explicit control stub so `_hf_early_stop_flag` reads
+    # False rather than a truthy MagicMock auto-attr.
+    sft.control = SimpleNamespace(should_training_stop=False)
 
     train_result = SimpleNamespace(training_loss=1.23)
     sft.train.return_value = train_result
@@ -268,6 +271,72 @@ class TestRunHappyPath:
         assert observed["resume_path"] == r1.adapter_path
         # And the new run commits a fresh version on top.
         assert r2.adapter_version == 2
+
+
+class TestEvalCadence:
+    """Audit-05 M2: eval_steps + early-stop config are threaded into SFTConfig."""
+
+    def test_default_eval_steps_with_max_steps(self) -> None:
+        from dlm.train.trainer import _default_eval_steps
+
+        assert _default_eval_steps(max_steps=100) == 25  # quarter cadence
+        assert _default_eval_steps(max_steps=3) == 1  # floor at 1
+
+    def test_default_eval_steps_without_max_steps(self) -> None:
+        from dlm.train.trainer import _default_eval_steps
+
+        assert _default_eval_steps(max_steps=None) == 50
+        assert _default_eval_steps(max_steps=0) == 50
+        assert _default_eval_steps(max_steps=-1) == 50
+
+    def test_default_early_stop_config(self) -> None:
+        from dlm.train.trainer import _default_early_stop_config
+
+        cfg = _default_early_stop_config()
+        assert cfg.patience == 3
+        assert cfg.threshold == 0.0
+        assert cfg.metric == "eval_loss"
+        assert cfg.greater_is_better is False
+
+    def test_hf_early_stop_flag_respects_control(self) -> None:
+        """`sft.control.should_training_stop` is the authoritative signal."""
+        from dlm.train.trainer import _hf_early_stop_flag
+
+        stopped = SimpleNamespace(control=SimpleNamespace(should_training_stop=True))
+        running = SimpleNamespace(control=SimpleNamespace(should_training_stop=False))
+        assert _hf_early_stop_flag(stopped) is True
+        assert _hf_early_stop_flag(running) is False
+
+    def test_hf_early_stop_flag_missing_control_returns_none(self) -> None:
+        """Mock trainers without `control` fall through to heuristic."""
+        from dlm.train.trainer import _hf_early_stop_flag
+
+        no_control = SimpleNamespace()
+        empty_control = SimpleNamespace(control=SimpleNamespace())
+        assert _hf_early_stop_flag(no_control) is None
+        assert _hf_early_stop_flag(empty_control) is None
+
+
+class TestEarlyStoppedPropagation:
+    """The trainer prefers the HF signal when available."""
+
+    def test_early_stopped_true_when_hf_flag_set(self, tmp_path: Path) -> None:
+        from dlm.eval import load_summary
+
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        def _early_stop_factory(**kwargs: Any) -> MagicMock:
+            sft = _mock_trainer_factory(**kwargs)
+            sft.control = SimpleNamespace(should_training_stop=True)
+            return sft
+
+        result = run(store, _parsed(), spec, _plan(), trainer_factory=_early_stop_factory)
+        assert result.early_stopped is True
+        summary = load_summary(result.summary_path)
+        assert summary.early_stopped is True
 
 
 class TestRunBranches:

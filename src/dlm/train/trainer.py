@@ -176,10 +176,14 @@ def run(
         final_val_loss = eval_summary["final_val_loss"]
         final_val_perplexity = eval_summary["final_val_perplexity"]
 
-        # Early-stop heuristic.
+        # Early-stop detection (audit-05 M2). Prefer HF's real signal
+        # (the callback sets `control.should_training_stop`); fall back
+        # to the heuristic if the trainer object doesn't expose it
+        # (e.g., unit-test mock).
         from dlm.eval import was_early_stopped
 
-        early_stopped = was_early_stopped(
+        hf_flag = _hf_early_stop_flag(sft)
+        early_stopped = hf_flag if hf_flag is not None else was_early_stopped(
             max_steps_ran=steps,
             configured_max_steps=max_steps,
             num_epochs_done=float(getattr(sft.state, "epoch", 0.0)),
@@ -263,6 +267,43 @@ def run(
         early_stopped=early_stopped,
         determinism=determinism,
     )
+
+
+def _default_eval_steps(max_steps: int | None) -> int:
+    """Pick a reasonable `eval_steps` cadence (audit-05 M2).
+
+    Four eval rounds per run gives enough signal to watch a loss curve
+    without dominating wall-clock with eval overhead. When `max_steps`
+    isn't set we're running to num_epochs — fall back to 50 steps,
+    which is "often enough to see a trend" on tiny-model CI runs.
+    """
+    if max_steps is not None and max_steps > 0:
+        return max(1, max_steps // 4)
+    return 50
+
+
+def _default_early_stop_config() -> Any:
+    """Patience + threshold defaults until TrainingConfig extends (Sprint 12b)."""
+    from dlm.eval import EarlyStopConfig
+
+    return EarlyStopConfig(patience=3, threshold=0.0, metric="eval_loss")
+
+
+def _hf_early_stop_flag(sft: Any) -> bool | None:
+    """Read HF's real early-stop signal, or return None if unavailable.
+
+    `trainer.control.should_training_stop` is True iff a callback
+    (e.g., `EarlyStoppingCallback`) asked the loop to exit. Mock
+    trainers in unit tests don't expose this; return None to let the
+    caller fall back to the heuristic.
+    """
+    control = getattr(sft, "control", None)
+    if control is None:
+        return None
+    flag = getattr(control, "should_training_stop", None)
+    if flag is None:
+        return None
+    return bool(flag)
 
 
 # --- internal seams ----------------------------------------------------------
@@ -371,6 +412,13 @@ def _build_real_trainer(  # pragma: no cover
         gradient_checkpointing=plan.gradient_checkpointing,
     )
 
+    # Eval cadence (audit-05 M2): without eval_strategy="steps" + eval_steps,
+    # `trainer.state.log_history` never gains `eval_loss` entries and
+    # `summarize_eval_state` always returns None. Default cadence: four
+    # eval rounds per run (or every 50 steps if running to epoch end).
+    eval_steps = _default_eval_steps(max_steps)
+    early_stop_cfg = _default_early_stop_config()
+
     sft_config = SFTConfig(
         output_dir=str(store.logs / f"sft-run-{seed}"),
         num_train_epochs=parsed.frontmatter.training.num_epochs,
@@ -386,7 +434,14 @@ def _build_real_trainer(  # pragma: no cover
         fp16=(plan.precision == "fp16"),
         report_to=["none"],
         save_strategy="no",  # we own checkpoint commit
+        eval_strategy="steps",
+        eval_steps=eval_steps,
+        metric_for_best_model=early_stop_cfg.metric,
+        greater_is_better=early_stop_cfg.greater_is_better,
+        load_best_model_at_end=True,
     )
+
+    from dlm.eval import build_callback
 
     # Newer TRL releases (>=0.9) renamed `tokenizer` → `processing_class`.
     return SFTTrainer(
@@ -396,6 +451,7 @@ def _build_real_trainer(  # pragma: no cover
         eval_dataset=val_ds,
         formatting_func=make_formatting_func(tok_bringup.tokenizer),
         args=sft_config,
+        callbacks=[build_callback(early_stop_cfg)],
     )
 
 
