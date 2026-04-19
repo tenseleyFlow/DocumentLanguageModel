@@ -28,6 +28,7 @@ from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from dlm.base_models.license import LicenseAcceptance
 from dlm.store.errors import ManifestCorruptError, ManifestVersionError
 
 CURRENT_MANIFEST_SCHEMA_VERSION: Final[int] = 1
@@ -137,6 +138,12 @@ class Manifest(BaseModel):
     # Source `.dlm` file we were last associated with. Used for orphan
     # detection (Sprint 04 `inspect`); updated by CLI ops (Sprint 13).
     source_path: Path | None = None
+
+    # License acceptance fingerprint (Sprint 12b). `None` on
+    # non-gated bases or stores predating Sprint 12b. Sprint 15's
+    # repo-level `dlm.lock` mirrors this; divergence triggers a
+    # re-check on the next `dlm train`.
+    license_acceptance: LicenseAcceptance | None = None
 
 
 # --- I/O ---------------------------------------------------------------------
