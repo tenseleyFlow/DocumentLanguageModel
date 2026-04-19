@@ -63,8 +63,7 @@ def llama_cpp_root(override: Path | None = None) -> Path:
         raise VendoringError(f"cannot enumerate {root}: {exc}") from exc
     if any_entry is None:
         raise VendoringError(
-            f"vendor/llama.cpp is empty at {root}. "
-            "Run `git submodule update --init --recursive`."
+            f"vendor/llama.cpp is empty at {root}. Run `git submodule update --init --recursive`."
         )
     return root
 

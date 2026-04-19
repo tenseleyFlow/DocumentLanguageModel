@@ -210,9 +210,7 @@ def _convert_and_quantize_base(
         fp16_path.unlink()
 
 
-def _cached_base_matches(
-    export_dir: Path, base_gguf_path: Path, quant: str
-) -> bool:
+def _cached_base_matches(export_dir: Path, base_gguf_path: Path, quant: str) -> bool:
     """Return True iff `base.<quant>.gguf` already exists AND is referenced
     by a pre-existing `export_manifest.json` with matching sha256.
     """
@@ -229,9 +227,7 @@ def _cached_base_matches(
         return False
     if prior.quant != quant:
         return False
-    recorded = next(
-        (a for a in prior.artifacts if a.path == base_gguf_path.name), None
-    )
+    recorded = next((a for a in prior.artifacts if a.path == base_gguf_path.name), None)
     if recorded is None:
         return False
     return compute_sha256(base_gguf_path) == recorded.sha256
@@ -260,11 +256,7 @@ def _perform_merge_path(  # pragma: no cover
 
         fp16_path = export_dir / "merged.fp16.gguf"
         run(base_gguf.build_convert_hf_args(tmp_hf, out_fp16=fp16_path))
-        run(
-            base_gguf.build_quantize_args(
-                fp16_path, out_quant=base_gguf_path, quant=plan.quant
-            )
-        )
+        run(base_gguf.build_quantize_args(fp16_path, out_quant=base_gguf_path, quant=plan.quant))
         if fp16_path.exists():
             fp16_path.unlink()
 

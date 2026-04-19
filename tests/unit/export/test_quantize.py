@@ -59,16 +59,20 @@ class TestCmdPropagation:
 class TestTypedReraise:
     def test_keyboard_interrupt_not_wrapped(self) -> None:
         """Timeouts become SubprocessError; KeyboardInterrupt does not."""
-        with patch(
-            "dlm.export.quantize.subprocess.run", side_effect=KeyboardInterrupt
-        ), pytest.raises(KeyboardInterrupt):
+        with (
+            patch("dlm.export.quantize.subprocess.run", side_effect=KeyboardInterrupt),
+            pytest.raises(KeyboardInterrupt),
+        ):
             run_checked(["true"])
 
     def test_generic_subprocess_timeout_mapped(self) -> None:
-        with patch(
-            "dlm.export.quantize.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="x", timeout=1.0, stderr=b"late"),
-        ), pytest.raises(SubprocessError) as excinfo:
+        with (
+            patch(
+                "dlm.export.quantize.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="x", timeout=1.0, stderr=b"late"),
+            ),
+            pytest.raises(SubprocessError) as excinfo,
+        ):
             run_checked(["x"])
         assert excinfo.value.returncode is None
         assert "late" in excinfo.value.stderr_tail

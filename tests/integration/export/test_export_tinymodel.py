@@ -34,10 +34,7 @@ def test_export_produces_valid_gguf() -> None:
     """
     vendor_root = Path(__file__).resolve().parents[3] / "vendor" / "llama.cpp"
     if not (vendor_root / "build" / "bin" / "llama-quantize").is_file():
-        pytest.skip(
-            "vendor/llama.cpp not built; "
-            "run `scripts/bump-llama-cpp.sh build` to enable."
-        )
+        pytest.skip("vendor/llama.cpp not built; run `scripts/bump-llama-cpp.sh build` to enable.")
 
     try:
         from tests.fixtures.tiny_model import tiny_model_path

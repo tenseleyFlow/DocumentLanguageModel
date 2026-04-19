@@ -60,8 +60,7 @@ class ExportPlan:
             raise ValueError(f"unknown quant {self.quant!r}; expected one of {valid_quants()}")
         if self.dequantize_confirmed and not self.merged:
             raise ValueError(
-                "--dequantize only makes sense with --merged; drop the flag "
-                "or add --merged."
+                "--dequantize only makes sense with --merged; drop the flag or add --merged."
             )
 
     def assert_merge_safe(self, *, was_qlora: bool) -> None:

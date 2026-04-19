@@ -72,9 +72,7 @@ class TestQuantizeArgs:
         vendor = _populate_vendor(tmp_path / "llama.cpp")
         fp16 = tmp_path / "base.fp16.gguf"
         out = tmp_path / "base.Q4_K_M.gguf"
-        args = build_quantize_args(
-            fp16, out_quant=out, quant="Q4_K_M", bin_override=vendor
-        )
+        args = build_quantize_args(fp16, out_quant=out, quant="Q4_K_M", bin_override=vendor)
         # binary, in, out, quant
         assert len(args) == 4
         assert args[-1] == "Q4_K_M"

@@ -183,10 +183,14 @@ def run(
         from dlm.eval import was_early_stopped
 
         hf_flag = _hf_early_stop_flag(sft)
-        early_stopped = hf_flag if hf_flag is not None else was_early_stopped(
-            max_steps_ran=steps,
-            configured_max_steps=max_steps,
-            num_epochs_done=float(getattr(sft.state, "epoch", 0.0)),
+        early_stopped = (
+            hf_flag
+            if hf_flag is not None
+            else was_early_stopped(
+                max_steps_ran=steps,
+                configured_max_steps=max_steps,
+                num_epochs_done=float(getattr(sft.state, "epoch", 0.0)),
+            )
         )
 
         # 8. Two-phase commit: save adapter + state into a pending
@@ -474,9 +478,7 @@ def _write_checkpoint(
     sft.save_model(str(pending_dir))
 
     # 2. Training state sidecar (optimizer/scheduler/RNG/step counters).
-    state = _snapshot_training_state(
-        sft, spec=spec, versions=versions, use_qlora=use_qlora
-    )
+    state = _snapshot_training_state(sft, spec=spec, versions=versions, use_qlora=use_qlora)
     save_state(pending_dir, state)
 
 

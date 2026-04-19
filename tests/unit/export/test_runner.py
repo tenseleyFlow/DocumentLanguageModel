@@ -106,7 +106,9 @@ class TestHappyPath:
         recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
 
         result = run_export(
-            store, _SPEC, plan,
+            store,
+            _SPEC,
+            plan,
             cached_base_dir=cached_base,
             subprocess_runner=recorder,
             vendor_override=vendor,
@@ -124,7 +126,9 @@ class TestHappyPath:
         plan = ExportPlan(quant="Q5_K_M", ollama_name="mydoc:latest")
         recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
         result = run_export(
-            store, _SPEC, plan,
+            store,
+            _SPEC,
+            plan,
             cached_base_dir=cached_base,
             subprocess_runner=recorder,
             vendor_override=vendor,
@@ -148,7 +152,9 @@ class TestCaching:
 
         recorder1 = _SubprocessRecorder(store.export_quant_dir(plan.quant))
         r1 = run_export(
-            store, _SPEC, plan,
+            store,
+            _SPEC,
+            plan,
             cached_base_dir=cached_base,
             subprocess_runner=recorder1,
             vendor_override=vendor,
@@ -158,7 +164,9 @@ class TestCaching:
 
         recorder2 = _SubprocessRecorder(store.export_quant_dir(plan.quant))
         r2 = run_export(
-            store, _SPEC, plan,
+            store,
+            _SPEC,
+            plan,
             cached_base_dir=cached_base,
             subprocess_runner=recorder2,
             vendor_override=vendor,
@@ -177,7 +185,9 @@ class TestMergeGate:
 
         with pytest.raises(UnsafeMergeError):
             run_export(
-                store, _SPEC, plan,
+                store,
+                _SPEC,
+                plan,
                 cached_base_dir=cached_base,
                 subprocess_runner=recorder,
                 vendor_override=vendor,
@@ -196,7 +206,9 @@ class TestMissingAdapter:
 
         with pytest.raises(ExportError, match="no current adapter"):
             run_export(
-                store, _SPEC, ExportPlan(),
+                store,
+                _SPEC,
+                ExportPlan(),
                 cached_base_dir=cached_base,
                 subprocess_runner=lambda _cmd: None,
             )
@@ -210,7 +222,9 @@ class TestManifestAppend:
         plan = ExportPlan(quant="Q4_K_M", ollama_name="tag")
         recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
         run_export(
-            store, _SPEC, plan,
+            store,
+            _SPEC,
+            plan,
             cached_base_dir=cached_base,
             subprocess_runner=recorder,
             vendor_override=vendor,

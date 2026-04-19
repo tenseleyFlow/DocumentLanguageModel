@@ -61,9 +61,7 @@ class SubprocessError(ExportError):
         stderr_tail: str,
     ) -> None:
         suffix = f" (exit {returncode})" if returncode is not None else " (timed out)"
-        super().__init__(
-            f"subprocess failed{suffix}: {cmd[0]!r}\n{stderr_tail}"
-        )
+        super().__init__(f"subprocess failed{suffix}: {cmd[0]!r}\n{stderr_tail}")
         self.cmd = list(cmd)
         self.returncode = returncode
         self.stderr_tail = stderr_tail
