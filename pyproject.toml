@@ -113,6 +113,19 @@ init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
 
+# HF ecosystem packages (Sprint 06/07/09) ship without stubs or py.typed markers.
+# Sprint 07 modules touch them through narrow boundaries; annotations are explicit
+# at our boundary so the rest of the codebase remains strict.
+[[tool.mypy.overrides]]
+module = [
+    "datasets.*",
+    "transformers.*",
+    "peft.*",
+    "trl.*",
+    "huggingface_hub.*",
+]
+ignore_missing_imports = true
+
 # -------- pytest --------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
