@@ -125,8 +125,12 @@ module = [
     "peft.*",
     "trl.*",
     "huggingface_hub.*",
+    "bitsandbytes.*",
 ]
 ignore_missing_imports = true
+# Treat calls into these stubless ecosystems as Any-typed; their
+# actual return types aren't reflected in stubs.
+disable_error_code = ["no-untyped-call"]
 
 # -------- pytest --------
 [tool.pytest.ini_options]
