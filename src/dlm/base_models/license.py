@@ -55,7 +55,7 @@ class LicenseAcceptance(BaseModel):
 
 
 def _utcnow() -> datetime:
-    """Timezone-aware UTC, microseconds dropped — matches Manifest's clock."""
+    """Tz-naive UTC, microseconds zeroed — matches Manifest's clock."""
     return datetime.now(UTC).replace(tzinfo=None, microsecond=0)
 
 
