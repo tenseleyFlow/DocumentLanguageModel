@@ -56,6 +56,11 @@ class TrainingRunSummary(BaseModel):
     final_val_loss: float | None = None
     status: Literal["running", "completed", "failed", "cancelled"] = "completed"
     pinned_versions: dict[str, str] = Field(default_factory=dict)
+    # Relative path (from store root) to the `logs/train-*.summary.json`
+    # file Sprint 10 writes alongside the adapter. `dlm show` (Sprint 13)
+    # reads this to surface "how did the last run go?" without globbing.
+    # `None` for runs recorded before audit-05 M3.
+    summary_path: str | None = None
 
 
 class ExportSummary(BaseModel):

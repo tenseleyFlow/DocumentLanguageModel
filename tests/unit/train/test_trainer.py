@@ -206,6 +206,29 @@ class TestRunHappyPath:
         # Second run's delta should be all-unchanged → no new frames appended.
         assert len(entries) == len(parsed.sections)
 
+    def test_manifest_run_summary_links_to_summary_json(self, tmp_path: Path) -> None:
+        """Audit-05 M3: TrainingRunSummary.summary_path resolves to the JSON file."""
+        from dlm.eval import load_summary
+        from dlm.store.manifest import load_manifest
+
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        result = run(store, _parsed(), spec, _plan(), trainer_factory=_mock_trainer_factory)
+        manifest = load_manifest(store.manifest)
+        run_summary = manifest.training_runs[0]
+
+        # summary_path populated + resolves to the real file.
+        assert run_summary.summary_path is not None
+        resolved = store.root / run_summary.summary_path
+        assert resolved.exists()
+        # Loaded summary matches the trainer's written values.
+        loaded = load_summary(resolved)
+        assert loaded.run_id == result.run_id
+        assert loaded.adapter_version == result.adapter_version
+
     def test_training_summary_json_written(self, tmp_path: Path) -> None:
         """Sprint 10: every run writes `logs/train-*.summary.json`."""
         from dlm.eval import load_summary

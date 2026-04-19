@@ -209,25 +209,9 @@ def run(
         #    addressed design; only `new` needs persisting here.
         _append_change_set_to_replay(replay, change_set, run_id=run_id)
 
-        # 10. Append the training-run summary + refresh `content_hashes`
-        #     on the manifest. The delta for the NEXT run is computed
-        #     against the hashes written here.
-        _append_training_run(
-            store=store,
-            run_id=run_id,
-            adapter_version=adapter_version,
-            seed=seed,
-            steps=steps,
-            final_train_loss=final_train_loss,
-            final_val_loss=final_val_loss,
-            base_model_revision=spec.revision,
-            versions=versions,
-            current_sections=list(parsed.sections),
-        )
-
-        # 11. Write the human-readable TrainingSummary JSON alongside
-        #     the JSONL log. Sprint 13's `dlm show` reads this to
-        #     report "how did the last run go?" without loading torch.
+        # 10. Write the human-readable TrainingSummary JSON alongside
+        #     the JSONL log (audit-05 M3: written BEFORE the manifest
+        #     append so the relative path can be recorded).
         summary_path = _write_training_summary(
             store=store,
             log_path=log_path,
@@ -241,6 +225,25 @@ def run(
             early_stopped=early_stopped,
             duration_seconds=elapsed,
             determinism=determinism,
+        )
+
+        # 11. Append the training-run summary + refresh `content_hashes`
+        #     on the manifest. The delta for the NEXT run is computed
+        #     against the hashes written here. `summary_path` is
+        #     stored relative to store root so migrations that move the
+        #     store root don't orphan the link.
+        _append_training_run(
+            store=store,
+            run_id=run_id,
+            adapter_version=adapter_version,
+            seed=seed,
+            steps=steps,
+            final_train_loss=final_train_loss,
+            final_val_loss=final_val_loss,
+            base_model_revision=spec.revision,
+            versions=versions,
+            current_sections=list(parsed.sections),
+            summary_path=summary_path,
         )
 
         log.log_event(
@@ -629,6 +632,7 @@ def _append_training_run(
     base_model_revision: str,
     versions: PinnedVersions,
     current_sections: list[Any],
+    summary_path: Path,
 ) -> None:
     """Append a TrainingRunSummary + refresh `content_hashes` (audit-04 M2).
 
@@ -637,10 +641,22 @@ def _append_training_run(
     it here is what makes the NEXT run classify things correctly as
     `new`/`unchanged`/`removed`.
 
+    `summary_path` is stored as a string relative to the store root
+    (audit-05 M3) so `dlm show` can load the summary without globbing
+    the logs directory.
+
     Manifest reads/writes go through the Sprint 04 atomic I/O path so
     a concurrent reader never sees a torn file.
     """
     from dlm.store.manifest import TrainingRunSummary, load_manifest, save_manifest
+
+    try:
+        summary_rel = str(summary_path.resolve().relative_to(store.root.resolve()))
+    except ValueError:
+        # Summary path isn't under store root — record absolute. Should
+        # not happen in practice (we always write into `store.logs`);
+        # the fallback keeps the manifest validator from failing.
+        summary_rel = str(summary_path)
 
     now = _utc_naive()
     summary = TrainingRunSummary(
@@ -655,6 +671,7 @@ def _append_training_run(
         final_val_loss=final_val_loss,
         status="completed",
         pinned_versions={k: v for k, v in versions.items() if isinstance(v, str)},
+        summary_path=summary_rel,
     )
 
     manifest_path = store.manifest
