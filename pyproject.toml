@@ -23,6 +23,8 @@ dependencies = [
     "pydantic>=2.9",          # schema validation (Sprint 03+)
     "pyyaml>=6.0",            # .dlm frontmatter (Sprint 03+)
     "psutil>=6.0",            # hardware doctor (Sprint 05)
+    "zstandard>=0.23",        # replay corpus framing (Sprint 08)
+    "cbor2>=5.6",             # replay snapshot encoding (Sprint 08)
 ]
 
 [project.scripts]
