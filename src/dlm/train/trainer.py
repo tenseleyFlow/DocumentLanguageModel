@@ -351,10 +351,10 @@ def _build_trainer(
             adapter_version_for_rng=adapter_version_for_rng,
         )
 
-    # pragma: no cover — exercised by the slow-marked integration test
+    # Exercised by the slow-marked integration test
     # `tests/integration/train/test_one_cycle_tinymodel.py` rather than
     # unit-tested (instantiating SFTTrainer requires a real HF model).
-    return _build_real_trainer(
+    return _build_real_trainer(  # pragma: no cover
         store=store,
         parsed=parsed,
         spec=spec,
