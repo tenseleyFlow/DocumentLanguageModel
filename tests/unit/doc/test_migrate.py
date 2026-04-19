@@ -160,6 +160,19 @@ class TestInvalidInputs:
 # --- CLI surface ---------------------------------------------------------
 
 
+def _joined_output(result: object) -> str:
+    """Normalize Rich's terminal-width wrapping before substring assertions.
+
+    `CliRunner` captures stdout + stderr separately; Rich may also break
+    a single logical line across `\\n` depending on console width (on
+    narrow CI terminals with long tmp paths, this is routine).
+    """
+    combined = getattr(result, "output", "") + getattr(result, "stderr", "")
+    # Collapse all whitespace (including Rich-inserted line breaks) into
+    # single spaces so multi-word substrings match regardless of wrap.
+    return " ".join(combined.split())
+
+
 class TestCli:
     def test_noop_prints_already_current(self, tmp_path: Path) -> None:
         runner = CliRunner()
@@ -168,7 +181,7 @@ class TestCli:
 
         result = runner.invoke(app, ["migrate", str(doc)])
         assert result.exit_code == 0, result.output
-        assert "already at" in (result.output + result.stderr)
+        assert "no migrations needed" in _joined_output(result)
 
     def test_dry_run_prints_plan_without_writing(self, tmp_path: Path, bumped_current: int) -> None:
         @register(from_version=1)
@@ -182,7 +195,7 @@ class TestCli:
 
         result = runner.invoke(app, ["migrate", str(doc), "--dry-run"])
         assert result.exit_code == 0, result.output
-        assert "dry-run" in (result.output + result.stderr)
+        assert "dry-run" in _joined_output(result)
         assert doc.read_text(encoding="utf-8") == before
 
     def test_bad_file_exits_nonzero(self, tmp_path: Path) -> None:
