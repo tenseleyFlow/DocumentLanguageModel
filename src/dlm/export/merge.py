@@ -15,12 +15,9 @@ decision function — is fully covered.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from dlm.export.plan import ExportPlan
-
-if TYPE_CHECKING:
-    from dlm.base_models import BaseModelSpec
 
 
 def check_merge_safety(plan: ExportPlan, *, was_qlora: bool) -> None:
@@ -35,11 +32,11 @@ def check_merge_safety(plan: ExportPlan, *, was_qlora: bool) -> None:
 
 
 def perform_merge(  # pragma: no cover
-    spec: BaseModelSpec,
     adapter_dir: Path,
     out_hf_dir: Path,
     *,
     was_qlora: bool,
+    cached_base_dir: Path,
 ) -> None:
     """Load base + adapter, merge_and_unload, save merged HF dir.
 
@@ -48,21 +45,32 @@ def perform_merge(  # pragma: no cover
     slow-marked integration test.
 
     Never entered without `check_merge_safety()` having passed first —
-    the runner enforces the order.
+    the runner enforces the order. `was_qlora=True` additionally
+    requires the plan's `--dequantize` flag to have been confirmed.
+
+    `cached_base_dir` is the HF snapshot dir produced by
+    `base_models.downloader.download_spec(spec).path`; we pass it in
+    (rather than re-`from_pretrained(spec.hf_id, ...)`) so the merge
+    path reuses the already-verified, sha256-pinned cache and never
+    touches the network at export time.
     """
     import torch
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    # Dequantize path: base was trained 4-bit, but we load fp16 here
-    # so the merge math happens at native precision. Acceptable only
-    # because the plan's `--dequantize` flag was checked.
-    torch_dtype = torch.float16 if was_qlora else torch.float16
+    # Both QLoRA and plain-LoRA adapters merge onto the upstream fp16
+    # base weights. For QLoRA, loading in fp16 (rather than re-running
+    # bnb 4-bit quantization) is the dequantization — the base weights
+    # in the cache are already fp16 upstream and LoRA deltas merge at
+    # native precision. `was_qlora` is kept in the signature for
+    # downstream logging / audit trails.
+    _ = was_qlora
+    torch_dtype = torch.float16
 
     base = AutoModelForCausalLM.from_pretrained(
-        spec.hf_id,
-        revision=spec.revision,
+        str(cached_base_dir),
         torch_dtype=torch_dtype,
+        local_files_only=True,
     )
     peft: Any = PeftModel.from_pretrained(base, str(adapter_dir))
     merged = peft.merge_and_unload()
@@ -70,5 +78,5 @@ def perform_merge(  # pragma: no cover
     out_hf_dir.mkdir(parents=True, exist_ok=True)
     merged.save_pretrained(str(out_hf_dir))
 
-    tokenizer = AutoTokenizer.from_pretrained(str(adapter_dir))
+    tokenizer = AutoTokenizer.from_pretrained(str(adapter_dir), local_files_only=True)
     tokenizer.save_pretrained(str(out_hf_dir))

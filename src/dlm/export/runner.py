@@ -198,13 +198,13 @@ def run_export(
         # The safety gate was already enforced; the full fp16-merge is
         # exercised by the slow integration test.
         _perform_merge_path(
-            spec=spec,
             adapter_path=adapter_path,
             export_dir=export_dir,
             base_gguf_path=base_gguf_path,
             plan=plan,
             was_qlora=was_qlora,
             run=run,
+            cached_base_dir=cached_base_dir,
         )
     else:
         adapter_gguf_path = export_dir / "adapter.gguf"
@@ -341,13 +341,13 @@ def _cached_base_matches(export_dir: Path, base_gguf_path: Path, quant: str) -> 
 
 def _perform_merge_path(  # pragma: no cover
     *,
-    spec: BaseModelSpec,
     adapter_path: Path,
     export_dir: Path,
     base_gguf_path: Path,
     plan: ExportPlan,
     was_qlora: bool,
     run: SubprocessRunner,
+    cached_base_dir: Path,
 ) -> None:
     """Load base + adapter in fp16, merge, save as HF, then re-quantize.
 
@@ -358,7 +358,12 @@ def _perform_merge_path(  # pragma: no cover
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_hf = Path(tmp) / "merged_hf"
-        merge.perform_merge(spec, adapter_path, tmp_hf, was_qlora=was_qlora)
+        merge.perform_merge(
+            adapter_path,
+            tmp_hf,
+            was_qlora=was_qlora,
+            cached_base_dir=cached_base_dir,
+        )
 
         fp16_path = export_dir / "merged.fp16.gguf"
         run(base_gguf.build_convert_hf_args(tmp_hf, out_fp16=fp16_path))
