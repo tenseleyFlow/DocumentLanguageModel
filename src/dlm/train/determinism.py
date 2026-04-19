@@ -87,8 +87,11 @@ def seed_everything(seed: int) -> DeterminismSummary:
                 "Use --strict-determinism on a CUDA box for byte-exact reproducibility."
             )
             class_ = "best_effort"
-        else:  # pragma: no cover — pure-CPU hosts exercise this in CI
-            notes.append("CPU-only training: deterministic but slow.")
+        else:
+            notes.append(
+                "CPU-only host: determinism is best-effort — deterministic kernels "
+                "enabled, but training is slower than on GPU."
+            )
             class_ = "best_effort"
 
         # Deterministic kernels. `warn_only` lets flash-attn + a handful
