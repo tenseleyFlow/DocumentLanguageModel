@@ -105,8 +105,9 @@ def test_closed_loop_go_vs_jinja_chatml() -> None:
         pytest.skip("no chatml goldens on disk.")
 
     try:
-        from tests.fixtures.tiny_model import tiny_model_path
         from transformers import AutoTokenizer
+
+        from tests.fixtures.tiny_model import tiny_model_path
 
         tokenizer = AutoTokenizer.from_pretrained(
             str(tiny_model_path()),
