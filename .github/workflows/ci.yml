@@ -139,7 +139,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/cli \
-            --cov=src/dlm/cli/reporter \
+            --cov=dlm.cli.reporter \
             --cov-report=term-missing \
             --cov-fail-under=95
 
