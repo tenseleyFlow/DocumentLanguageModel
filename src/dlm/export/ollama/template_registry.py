@@ -56,23 +56,44 @@ _REGISTRY: Final[dict[Dialect, DialectTemplate]] = {
     "chatml": DialectTemplate(
         dialect="chatml",
         template_path=_TEMPLATES_DIR / "chatml.gotmpl",
-        default_stops=("<|im_end|>", "<|endoftext|>"),
+        # Audit-04 Q4: Qwen 2.5 variants emit role-delimiter tokens like
+        # `<|im_start|>` at the top of each turn. Listing them as stops
+        # prevents runaway prompt-continuation when the model tries to
+        # synthesize a new turn instead of yielding.
+        default_stops=("<|im_end|>", "<|endoftext|>", "<|im_start|>"),
     ),
     "llama3": DialectTemplate(
         dialect="llama3",
         template_path=_TEMPLATES_DIR / "llama3.gotmpl",
-        default_stops=("<|eot_id|>", "<|end_of_text|>"),
+        # Llama-3 instruct uses `<|start_header_id|>` to begin a role
+        # block; include it so the model can't generate a spurious new
+        # turn. `<|eom_id|>` is Llama-3.1's tool-call terminator.
+        default_stops=(
+            "<|eot_id|>",
+            "<|end_of_text|>",
+            "<|start_header_id|>",
+            "<|eom_id|>",
+        ),
     ),
     "phi3": DialectTemplate(
         dialect="phi3",
         template_path=_TEMPLATES_DIR / "phi3.gotmpl",
-        default_stops=("<|end|>", "<|endoftext|>"),
+        # Phi-3.5-mini's chat template uses `<|user|>`, `<|assistant|>`,
+        # `<|system|>` role delimiters — the audit called these out.
+        default_stops=(
+            "<|end|>",
+            "<|endoftext|>",
+            "<|user|>",
+            "<|assistant|>",
+            "<|system|>",
+        ),
     ),
     "mistral": DialectTemplate(
         dialect="mistral",
         template_path=_TEMPLATES_DIR / "mistral.gotmpl",
-        # Mistral's stop sequences are v2's; older models use EOS only.
-        default_stops=("</s>", "[/INST]"),
+        # Mistral's instruct format wraps user turns in `[INST] ... [/INST]`;
+        # `[INST]` as a stop prevents the model from restarting a turn.
+        default_stops=("</s>", "[/INST]", "[INST]"),
     ),
 }
 

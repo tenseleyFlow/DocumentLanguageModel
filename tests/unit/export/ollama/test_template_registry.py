@@ -28,6 +28,23 @@ class TestRegistryCoverage:
         row = get_template(dialect)
         assert row.default_stops  # at least one
 
+    @pytest.mark.parametrize(
+        ("dialect", "required"),
+        [
+            ("chatml", {"<|im_end|>", "<|im_start|>"}),
+            ("llama3", {"<|eot_id|>", "<|start_header_id|>"}),
+            ("phi3", {"<|end|>", "<|user|>", "<|assistant|>"}),
+            ("mistral", {"</s>", "[/INST]", "[INST]"}),
+        ],
+    )
+    def test_role_delimiters_are_stops(self, dialect: str, required: set[str]) -> None:
+        """Audit-04 Q4: role-delimiter tokens in each template must appear as stops
+        so the model can't synthesize a new turn instead of yielding."""
+        row = get_template(dialect)
+        stops = set(row.default_stops)
+        missing = required - stops
+        assert not missing, f"{dialect} missing role-delimiter stops: {missing}"
+
 
 class TestRegistryLookup:
     def test_unknown_dialect_raises(self) -> None:
