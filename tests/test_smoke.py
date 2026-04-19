@@ -45,12 +45,12 @@ def test_cli_help_lists_all_v1_subcommands() -> None:
 
 
 def test_cli_subcommand_stub_raises_notimplementederror() -> None:
+    """`dlm init` is stubbed until Sprint 13; assert it raises cleanly."""
     runner = CliRunner()
-    # Typer surfaces the exception; invoke without catch_exceptions to capture.
-    result = runner.invoke(app, ["train", "nonexistent.dlm"], catch_exceptions=True)
+    result = runner.invoke(app, ["init", "nonexistent.dlm"], catch_exceptions=True)
     assert result.exit_code != 0
     assert isinstance(result.exception, NotImplementedError)
-    assert "Sprint 09" in str(result.exception)
+    assert "Sprint 13" in str(result.exception)
 
 
 def test_python_module_entrypoint_runs() -> None:
