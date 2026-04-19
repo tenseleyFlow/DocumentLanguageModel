@@ -12,6 +12,11 @@ from pathlib import Path
 
 import pytest
 
+# Load session-scoped fixtures from `tests/fixtures/` as plugins so
+# `tiny_model_dir` (and any future heavy fixtures) are discoverable
+# without per-directory conftest duplication.
+pytest_plugins = ["tests.fixtures.tiny_model"]
+
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
