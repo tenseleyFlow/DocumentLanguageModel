@@ -1,0 +1,158 @@
+name: Weekly chat-template drift (Sprint 12.6)
+
+# Runs the closed-loop Go↔Jinja check every Sunday:
+#   1. HF side — refresh-chat-template-goldens.py --check asserts no golden
+#      drifted since the last checked-in matrix. Fails fast if an upstream
+#      tokenizer revision silently changed its chat_template.
+#   2. Go side — install Ollama, build a tiny-model GGUF via vendored
+#      llama.cpp, register it with `ollama create`, then run
+#      tests/integration/export/test_template_closed_loop.py with
+#      OLLAMA_NAME pointing at the registered model. Ollama's
+#      prompt_eval_count must equal the HF golden for every scenario.
+#
+# Trigger: weekly cron + workflow_dispatch for operators bumping bases.
+
+on:
+  schedule:
+    # Sundays at 06:00 UTC — after quieter traffic windows for HF / Ollama pulls.
+    - cron: "0 6 * * 0"
+  workflow_dispatch: {}
+
+concurrency:
+  group: weekly-template-drift
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.11.6"
+  PYTHON_VERSION: "3.11"
+  # Pinned to BASE_MODELS["smollm2-135m"].revision (Sprint 06 registry).
+  # Same SHA as ci.yml — keep in sync when bumping.
+  TINY_MODEL_REVISION: "12fd25f77366fa6b3b4b768ec3050bf629380bac"
+
+jobs:
+  check-hf-side:
+    # Cheap half: no Ollama, no llama.cpp, no quant. If this fails the
+    # whole workflow is done — nothing to verify against.
+    name: HF goldens unchanged
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Restore HF cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.hf-cache
+          key: hf-tiny-${{ env.TINY_MODEL_REVISION }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            hf-tiny-${{ env.TINY_MODEL_REVISION }}-
+
+      - name: Pre-warm tiny model
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf-cache
+          DLM_TINY_MODEL_REVISION: ${{ env.TINY_MODEL_REVISION }}
+        run: |
+          uv run python - <<'PY'
+          from tests.fixtures.tiny_model import tiny_model_path
+          print("tiny model at:", tiny_model_path())
+          PY
+
+      - name: Refresh goldens in --check mode (chatml only — only cached dialect)
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf-cache
+        run: uv run python scripts/refresh-chat-template-goldens.py --check --dialect chatml
+
+  closed-loop:
+    # Expensive half: install Ollama, build a base GGUF, register it,
+    # and assert prompt_eval_count == HF golden.
+    name: Go↔Jinja closed loop (chatml)
+    needs: check-hf-side
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with llama.cpp submodule
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Restore HF cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.hf-cache
+          key: hf-tiny-${{ env.TINY_MODEL_REVISION }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            hf-tiny-${{ env.TINY_MODEL_REVISION }}-
+
+      - name: Pre-warm tiny model
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf-cache
+          DLM_TINY_MODEL_REVISION: ${{ env.TINY_MODEL_REVISION }}
+        run: |
+          uv run python - <<'PY'
+          from tests.fixtures.tiny_model import tiny_model_path
+          print("tiny model at:", tiny_model_path())
+          PY
+
+      - name: Restore llama.cpp build cache
+        id: llama-cpp-cache
+        uses: actions/cache@v4
+        with:
+          path: vendor/llama.cpp/build
+          key: llama-cpp-build-${{ hashFiles('.gitmodules', 'vendor/llama.cpp/VERSION') }}
+
+      - name: Build llama-quantize (if not cached)
+        if: steps.llama-cpp-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          command -v cmake >/dev/null 2>&1 || sudo apt-get install -y cmake
+          scripts/bump-llama-cpp.sh build
+
+      - name: Install Ollama
+        run: |
+          set -euxo pipefail
+          curl -fsSL https://ollama.com/install.sh | sh
+          # Start the ollama server in the background so `ollama create` /
+          # `ollama run` have something to talk to.
+          ollama serve >/tmp/ollama.log 2>&1 &
+          # Poll for readiness instead of a blind sleep.
+          for i in $(seq 1 30); do
+            if ollama list >/dev/null 2>&1; then
+              echo "ollama ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          ollama --version
+
+      - name: Export tiny model to Ollama (registers under dlm-test-chatml)
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf-cache
+          DLM_TINY_MODEL_REVISION: ${{ env.TINY_MODEL_REVISION }}
+        run: |
+          set -euxo pipefail
+          # Placeholder: the tiny-model export pipeline lands via Sprint 14.5.
+          # Until then the closed-loop job exits 0 after the HF-side check
+          # — the scaffold is in place for the runner to fill.
+          echo "export pipeline TBD — see Sprint 14.5"
+
+      - name: Run closed-loop integration test
+        if: false  # enabled once the export step above registers OLLAMA_NAME
+        env:
+          OLLAMA_NAME: "dlm-test-chatml:latest"
+          HF_HOME: ${{ github.workspace }}/.hf-cache
+          DLM_TINY_MODEL_REVISION: ${{ env.TINY_MODEL_REVISION }}
+        run: uv run pytest -m slow -v tests/integration/export/test_template_closed_loop.py
