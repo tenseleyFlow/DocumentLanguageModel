@@ -22,16 +22,14 @@ from pathlib import Path
 from typing import Final
 
 import yaml
-from pydantic import ValidationError
 
 from dlm.doc.errors import (
-    DlmVersionError,
     FenceError,
     FrontmatterError,
-    SchemaValidationError,
 )
-from dlm.doc.schema import CURRENT_SCHEMA_VERSION, DlmFrontmatter
+from dlm.doc.schema import DlmFrontmatter
 from dlm.doc.sections import Section, SectionType
+from dlm.doc.versioned import validate_versioned
 from dlm.io.text import read_text
 
 # --- public surface -----------------------------------------------------------
@@ -60,7 +58,6 @@ def parse_text(text: str, *, path: Path | None = None) -> ParsedDlm:
     """
     frontmatter_text, body, body_start_line = _split_frontmatter(text, path=path)
     frontmatter = _validate_frontmatter(frontmatter_text, path=path)
-    _check_version(frontmatter.dlm_version, path=path)
     sections = _tokenize_body(body, body_start_line=body_start_line, path=path)
     return ParsedDlm(
         frontmatter=frontmatter,
@@ -115,7 +112,12 @@ def _split_frontmatter(text: str, *, path: Path | None) -> tuple[str, str, int]:
 
 
 def _validate_frontmatter(yaml_text: str, *, path: Path | None) -> DlmFrontmatter:
-    """YAML-parse and Pydantic-validate the frontmatter text."""
+    """YAML-parse → migrate-if-needed → Pydantic-validate.
+
+    The Sprint 12b migration dispatcher runs between YAML parse and
+    Pydantic validate, so an older-but-known schema is upgraded to the
+    current shape before `extra="forbid"` enforcement.
+    """
     try:
         raw = yaml.safe_load(yaml_text) if yaml_text.strip() else {}
     except yaml.YAMLError as exc:
@@ -129,17 +131,7 @@ def _validate_frontmatter(yaml_text: str, *, path: Path | None) -> DlmFrontmatte
             line=2,
         )
 
-    try:
-        return DlmFrontmatter.model_validate(raw)
-    except ValidationError as exc:
-        # Pydantic doesn't know source-file line numbers; we cite the
-        # start of the frontmatter block and include the full field path
-        # in the message.
-        raise SchemaValidationError(
-            _format_pydantic_error(exc),
-            path=path,
-            line=2,
-        ) from exc
+    return validate_versioned(raw, path=path)
 
 
 def _yaml_error_location(exc: yaml.YAMLError) -> tuple[int, int]:
@@ -153,36 +145,6 @@ def _yaml_error_location(exc: yaml.YAMLError) -> tuple[int, int]:
     # The frontmatter parser feeds yaml the content *without* its
     # delimiters, so the reported line is offset by 1 (the opening `---`).
     return mark.line + 2, mark.column + 1
-
-
-def _format_pydantic_error(exc: ValidationError) -> str:
-    """Human-readable single-line summary of a Pydantic error."""
-    parts = []
-    for err in exc.errors():
-        loc = ".".join(str(p) for p in err.get("loc", ())) or "<root>"
-        msg = err.get("msg", "invalid value")
-        parts.append(f"{loc}: {msg}")
-    return "; ".join(parts) or "validation failed"
-
-
-def _check_version(version: int, *, path: Path | None) -> None:
-    if version == CURRENT_SCHEMA_VERSION:
-        return
-    if version > CURRENT_SCHEMA_VERSION:
-        raise DlmVersionError(
-            f"dlm_version {version} is newer than this parser ({CURRENT_SCHEMA_VERSION}); "
-            "upgrade dlm or check the source's schema",
-            path=path,
-            line=2,
-        )
-    # Older-but-positive versions route to the migration framework
-    # (Sprint 12b). Until that sprint lands, we refuse with a pointer.
-    raise DlmVersionError(
-        f"dlm_version {version} requires migration to {CURRENT_SCHEMA_VERSION}; "
-        "run `dlm migrate <path>` (Sprint 12b) to upgrade the document",
-        path=path,
-        line=2,
-    )
 
 
 def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> list[Section]:
