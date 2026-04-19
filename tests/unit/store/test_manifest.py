@@ -138,6 +138,29 @@ class TestRoundTrip:
         # And it's really a Path, not a string.
         assert isinstance(reloaded.source_path, Path)
 
+    def test_license_acceptance_round_trips(self, tmp_path: Path) -> None:
+        """Sprint 12b — Manifest.license_acceptance must serialize cleanly."""
+        from dlm.base_models import LicenseAcceptance
+
+        acceptance = LicenseAcceptance(
+            accepted_at=datetime(2026, 4, 19, 10, 30, 0),
+            license_url="https://www.llama.com/llama3_2/license/",
+            license_spdx="Other",
+            via="cli_flag",
+        )
+        path = tmp_path / "m.json"
+        manifest = _fresh_manifest(license_acceptance=acceptance)
+        save_manifest(path, manifest)
+        reloaded = load_manifest(path)
+        assert reloaded.license_acceptance == acceptance
+
+    def test_license_acceptance_absent_by_default(self, tmp_path: Path) -> None:
+        path = tmp_path / "m.json"
+        manifest = _fresh_manifest()
+        save_manifest(path, manifest)
+        reloaded = load_manifest(path)
+        assert reloaded.license_acceptance is None
+
 
 class TestCorruptHandling:
     def test_missing_file_raises(self, tmp_path: Path) -> None:
