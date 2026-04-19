@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
 
 from typer.testing import CliRunner
 
@@ -45,19 +44,29 @@ def test_cli_help_lists_all_v1_subcommands() -> None:
         assert name in result.output, f"`dlm --help` missing subcommand {name!r}"
 
 
-def test_cli_subcommand_stub_raises_notimplementederror(tmp_path: Path) -> None:
-    """Still-stubbed subcommands (Sprint 14's `dlm pack`) must raise with a
-    sprint pointer so `dlm --help` stays self-documenting about unreleased work.
+def test_cli_has_every_documented_subcommand() -> None:
+    """Every v1.0 subcommand is wired (Sprint 14 landed the last pair).
 
-    Updated each time a stub lands: this test migrates to the *next*
-    un-landed command so the smoke invariant outlives any one sprint.
+    Replaces the older 'stub raises NotImplementedError' smoke: no stubs
+    remain after Sprints 13 + 14. Re-introduce a targeted stub test if a
+    future sprint re-adds a placeholder command.
     """
     runner = CliRunner()
-    doc = tmp_path / "mydoc.dlm"
-    result = runner.invoke(app, ["pack", str(doc)], catch_exceptions=True)
-    assert result.exit_code != 0
-    assert isinstance(result.exception, NotImplementedError)
-    assert "Sprint 14" in str(result.exception)
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0, result.output
+    expected_commands = {
+        "init",
+        "train",
+        "prompt",
+        "export",
+        "pack",
+        "unpack",
+        "doctor",
+        "show",
+        "migrate",
+    }
+    for name in expected_commands:
+        assert name in result.output, f"`dlm --help` missing {name!r}"
 
 
 def test_python_module_entrypoint_runs() -> None:
