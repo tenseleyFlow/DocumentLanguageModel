@@ -39,6 +39,7 @@ def _ctx(
     training_sequence_len: int | None = None,
     override_temperature: float | None = None,
     override_top_p: float | None = None,
+    draft_model_ollama_name: str | None = None,
 ) -> ModelfileContext:
     plan = ExportPlan(quant="Q4_K_M", merged=merged)
     return ModelfileContext(
@@ -53,6 +54,7 @@ def _ctx(
         training_sequence_len=training_sequence_len,
         override_temperature=override_temperature,
         override_top_p=override_top_p,
+        draft_model_ollama_name=draft_model_ollama_name,
     )
 
 
@@ -105,6 +107,17 @@ class TestShape:
         """Audit-04 Q5: frontmatter export.default_temperature overrides the dialect default."""
         text = render_modelfile(_ctx(tmp_path, override_temperature=0.2))
         assert "PARAMETER temperature 0.2" in text
+
+    def test_draft_model_omitted_by_default(self, tmp_path: Path) -> None:
+        """Sprint 12.5: no draft set → no `PARAMETER draft_model`."""
+        text = render_modelfile(_ctx(tmp_path))
+        assert "PARAMETER draft_model" not in text
+
+    def test_draft_model_emitted_when_set(self, tmp_path: Path) -> None:
+        """Sprint 12.5: `PARAMETER draft_model <tag>` appears + pull reminder."""
+        text = render_modelfile(_ctx(tmp_path, draft_model_ollama_name="qwen2.5:0.5b"))
+        assert "PARAMETER draft_model qwen2.5:0.5b" in text
+        assert "ollama pull qwen2.5:0.5b" in text
 
     def test_override_top_p(self, tmp_path: Path) -> None:
         """Audit-04 Q5: frontmatter export.default_top_p overrides the dialect default."""

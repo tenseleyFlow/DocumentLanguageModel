@@ -61,6 +61,11 @@ class ModelfileContext:
     # (audit-04 Q5).
     override_temperature: float | None = None
     override_top_p: float | None = None
+    # Sprint 12.5: speculative-decoding draft. When set, emit
+    # `PARAMETER draft_model <tag>` so Ollama ≥ 0.5 runs this small
+    # model as a speculative drafter. Tag is an Ollama community
+    # reference (e.g. `qwen2.5:0.5b`); users `ollama pull` it once.
+    draft_model_ollama_name: str | None = None
 
 
 def render_modelfile(ctx: ModelfileContext) -> str:
@@ -89,6 +94,7 @@ def render_modelfile(ctx: ModelfileContext) -> str:
         temperature=temperature,
         top_p=top_p,
         num_ctx=num_ctx,
+        draft_model=ctx.draft_model_ollama_name,
     )
     system_line = _build_system_line(ctx.system_prompt)
     license_line = _build_license_line(ctx.spec)
@@ -216,6 +222,7 @@ def _build_param_lines(
     temperature: float,
     top_p: float,
     num_ctx: int | None,
+    draft_model: str | None,
 ) -> list[str]:
     """Emit the `PARAMETER stop ...` + defaults block."""
     lines: list[str] = []
@@ -225,6 +232,12 @@ def _build_param_lines(
     lines.append(f"PARAMETER top_p {top_p}")
     if num_ctx is not None:
         lines.append(f"PARAMETER num_ctx {num_ctx}")
+    if draft_model is not None:
+        # Sprint 12.5. The precede-with-comment pattern reminds users
+        # at `ollama show` time that they need to pull the draft
+        # separately; Ollama warns-not-errors on missing drafts.
+        lines.append(f"# Speculative decoding: `ollama pull {draft_model}` first.")
+        lines.append(f"PARAMETER draft_model {draft_model}")
     return lines
 
 
