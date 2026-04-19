@@ -243,3 +243,34 @@ class TestManifestAppend:
         assert export.merged is False
         assert export.base_gguf_sha256
         assert export.adapter_gguf_sha256
+
+    def test_append_holds_store_lock(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Concurrent export summary-append must serialize on the store lock (audit-04 B3)."""
+        from dlm.export import runner as runner_mod
+        from dlm.store.errors import LockHeldError
+        from dlm.store.lock import exclusive
+        from dlm.store.manifest import load_manifest
+
+        # Shrink the append lock timeout so the held-lock branch surfaces quickly.
+        monkeypatch.setattr(runner_mod, "_APPEND_LOCK_TIMEOUT", 0.2)
+
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M", ollama_name="tag")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+
+        # Hold the store lock from a "peer process"; the run_export
+        # append should then time out rather than racing the read.
+        with exclusive(store.lock, timeout=1.0), pytest.raises(LockHeldError):
+            run_export(
+                store,
+                _SPEC,
+                plan,
+                cached_base_dir=cached_base,
+                subprocess_runner=recorder,
+                vendor_override=vendor,
+                skip_ollama=True,
+            )
+
+        # Peer released → no export summary landed (we errored before save).
+        manifest = load_manifest(store.manifest)
+        assert len(manifest.exports) == 0

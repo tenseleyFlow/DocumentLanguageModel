@@ -42,6 +42,13 @@ _LOG = logging.getLogger(__name__)
 # Type alias for the subprocess injection seam.
 SubprocessRunner = Callable[[Sequence[str]], Any]
 
+# Timeout (s) for acquiring the store lock around `manifest.exports`
+# append. 60s is generous — the critical section is a single
+# JSON load/write and should complete in milliseconds — but tolerates
+# another `dlm train` / `dlm export` holding the lock on the same store.
+# Tests monkeypatch this down to exercise the timeout path.
+_APPEND_LOCK_TIMEOUT: float = 60.0
+
 
 @dataclass(frozen=True)
 class ExportResult:
@@ -412,11 +419,19 @@ def _append_export_summary(
         smoke_output_first_line=smoke_first_line,
     )
 
-    manifest = load_manifest(store.manifest)
-    updated = manifest.model_copy(
-        update={
-            "exports": [*manifest.exports, summary],
-            "updated_at": utc_now(),
-        }
-    )
-    save_manifest(store.manifest, updated)
+    # The manifest read-modify-write must be serialized: two concurrent
+    # `dlm export` invocations on the same store (different quants) would
+    # otherwise race and drop one summary. The per-store exclusive lock
+    # is the same one `dlm train` takes; holding it across load→save
+    # keeps `manifest.exports` append-atomic.
+    from dlm.store.lock import exclusive
+
+    with exclusive(store.lock, timeout=_APPEND_LOCK_TIMEOUT):
+        manifest = load_manifest(store.manifest)
+        updated = manifest.model_copy(
+            update={
+                "exports": [*manifest.exports, summary],
+                "updated_at": utc_now(),
+            }
+        )
+        save_manifest(store.manifest, updated)
