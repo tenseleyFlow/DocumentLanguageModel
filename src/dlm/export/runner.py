@@ -62,6 +62,7 @@ def run_export(
     *,
     cached_base_dir: Path,
     subprocess_runner: SubprocessRunner | None = None,
+    vendor_override: Path | None = None,
 ) -> ExportResult:
     """Execute one GGUF export end-to-end.
 
@@ -70,6 +71,10 @@ def run_export(
 
     `subprocess_runner` is a test seam — default wraps `run_checked`
     with a 10-min timeout + `SubprocessError` on failure.
+
+    `vendor_override` is a test hook; production code leaves it `None`
+    so `dlm.export.vendoring` resolves the real `vendor/llama.cpp/`
+    submodule. Unit tests pass a populated tmp dir.
     """
     run = subprocess_runner if subprocess_runner is not None else run_checked
 
@@ -105,6 +110,7 @@ def run_export(
             base_gguf_path=base_gguf_path,
             plan=plan,
             run=run,
+            vendor_override=vendor_override,
         )
 
     # 5. Adapter OR merged path.
@@ -125,7 +131,9 @@ def run_export(
     else:
         adapter_gguf_path = export_dir / "adapter.gguf"
         cmd = adapter_gguf.build_convert_lora_args(
-            adapter_path, out_gguf=adapter_gguf_path
+            adapter_path,
+            out_gguf=adapter_gguf_path,
+            script_override=vendor_override,
         )
         run(cmd)
         artifacts.append(adapter_gguf_path)
@@ -142,7 +150,7 @@ def run_export(
         ollama_name=plan.ollama_name,
         created_at=utc_now(),
         created_by=f"dlm-{dlm_version}",
-        llama_cpp_tag=pinned_tag(),
+        llama_cpp_tag=pinned_tag(vendor_override),
         base_model_hf_id=spec.hf_id,
         base_model_revision=spec.revision,
         adapter_version=adapter_version,
@@ -178,16 +186,22 @@ def _convert_and_quantize_base(
     base_gguf_path: Path,
     plan: ExportPlan,
     run: SubprocessRunner,
+    vendor_override: Path | None,
 ) -> None:
     """HF → fp16 GGUF → quantized GGUF. Removes the fp16 intermediate."""
     fp16_path = export_dir / "base.fp16.gguf"
     convert_cmd = base_gguf.build_convert_hf_args(
-        cached_base_dir, out_fp16=fp16_path
+        cached_base_dir,
+        out_fp16=fp16_path,
+        script_override=vendor_override,
     )
     run(convert_cmd)
 
     quant_cmd = base_gguf.build_quantize_args(
-        fp16_path, out_quant=base_gguf_path, quant=plan.quant
+        fp16_path,
+        out_quant=base_gguf_path,
+        quant=plan.quant,
+        bin_override=vendor_override,
     )
     run(quant_cmd)
 
