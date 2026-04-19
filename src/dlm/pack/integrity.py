@@ -44,9 +44,7 @@ def sha256_of_file(path: Path) -> str:
     return hasher.hexdigest()
 
 
-def write_checksums(
-    root: Path, *, exclude: Iterable[str] | None = None
-) -> dict[str, str]:
+def write_checksums(root: Path, *, exclude: Iterable[str] | None = None) -> dict[str, str]:
     """Walk `root` and write `CHECKSUMS.sha256`; return `{relpath: sha256}`.
 
     `exclude` is an iterable of *relpath strings* (forward slashes) to
@@ -119,14 +117,10 @@ def verify_checksums(root: Path) -> None:
     for relpath, expected_hash in expected.items():
         path = root / relpath
         if not path.is_file():
-            raise PackIntegrityError(
-                relpath=relpath, expected=expected_hash, actual="<missing>"
-            )
+            raise PackIntegrityError(relpath=relpath, expected=expected_hash, actual="<missing>")
         actual_hash = sha256_of_file(path)
         if actual_hash != expected_hash:
-            raise PackIntegrityError(
-                relpath=relpath, expected=expected_hash, actual=actual_hash
-            )
+            raise PackIntegrityError(relpath=relpath, expected=expected_hash, actual=actual_hash)
 
 
 def rollup_sha256(checksums: dict[str, str]) -> str:
@@ -139,5 +133,5 @@ def rollup_sha256(checksums: dict[str, str]) -> str:
     """
     hasher = hashlib.sha256()
     for relpath in sorted(checksums):
-        hasher.update(f"{relpath}\n{checksums[relpath]}\n".encode("utf-8"))
+        hasher.update(f"{relpath}\n{checksums[relpath]}\n".encode())
     return hasher.hexdigest()

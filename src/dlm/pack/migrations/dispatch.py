@@ -32,9 +32,7 @@ def apply_pending(root: Path, *, from_version: int) -> tuple[Path, list[int]]:
       `PackFormatVersionError` on a gap in the registry.
     """
     if from_version > CURRENT_PACK_FORMAT_VERSION:
-        raise PackFormatVersionError(
-            detected=from_version, supported=CURRENT_PACK_FORMAT_VERSION
-        )
+        raise PackFormatVersionError(detected=from_version, supported=CURRENT_PACK_FORMAT_VERSION)
 
     applied: list[int] = []
     current_root = root

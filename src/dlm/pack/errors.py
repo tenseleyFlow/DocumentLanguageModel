@@ -39,8 +39,7 @@ class PackIntegrityError(PackError):
 
     def __init__(self, relpath: str, expected: str, actual: str) -> None:
         super().__init__(
-            f"checksum mismatch for {relpath}: expected {expected[:12]}…, "
-            f"got {actual[:12]}…"
+            f"checksum mismatch for {relpath}: expected {expected[:12]}…, got {actual[:12]}…"
         )
         self.relpath = relpath
         self.expected = expected

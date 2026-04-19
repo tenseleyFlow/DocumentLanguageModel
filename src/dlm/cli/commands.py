@@ -518,7 +518,9 @@ def unpack_cmd(
     force: Annotated[bool, typer.Option("--force")] = False,
     out: Annotated[
         Path | None,
-        typer.Option("--out", help="Directory to place the restored .dlm (default: alongside the pack)."),
+        typer.Option(
+            "--out", help="Directory to place the restored .dlm (default: alongside the pack)."
+        ),
     ] = None,
 ) -> None:
     """Install a .dlm.pack into the local store."""
@@ -549,7 +551,9 @@ def unpack_cmd(
     console.print(f"  store:  {result.store_path}")
     console.print(f"  dlm_id: {result.dlm_id}")
     if result.applied_migrations:
-        steps = " → ".join(f"v{v}" for v in (*result.applied_migrations, result.header.pack_format_version + 1))
+        steps = " → ".join(
+            f"v{v}" for v in (*result.applied_migrations, result.header.pack_format_version + 1)
+        )
         console.print(f"  migrated: {steps}")
 
 
