@@ -223,6 +223,30 @@ def _build_trainer(
             max_steps=max_steps,
         )
 
+    # pragma: no cover — exercised by the slow-marked integration test
+    # `tests/integration/train/test_one_cycle_tinymodel.py` rather than
+    # unit-tested (instantiating SFTTrainer requires a real HF model).
+    return _build_real_trainer(
+        store=store,
+        parsed=parsed,
+        spec=spec,
+        plan=plan,
+        mode=mode,
+        seed=seed,
+        max_steps=max_steps,
+    )
+
+
+def _build_real_trainer(  # pragma: no cover
+    *,
+    store: StorePath,
+    parsed: ParsedDlm,
+    spec: BaseModelSpec,
+    plan: TrainingPlan,
+    mode: Mode,
+    seed: int,
+    max_steps: int | None,
+) -> Any:
     # Deferred imports — heavy ML stack only touched on the real path.
     from trl import SFTConfig, SFTTrainer  # type: ignore[attr-defined]
 

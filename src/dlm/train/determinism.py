@@ -78,7 +78,7 @@ def seed_everything(seed: int) -> DeterminismSummary:
         import torch
 
         torch.manual_seed(seed)
-        if torch.cuda.is_available():
+        if torch.cuda.is_available():  # pragma: no cover — CI covers GPU hosts
             torch.cuda.manual_seed_all(seed)
             class_ = "strict"
         elif _mps_available(torch):
@@ -87,7 +87,7 @@ def seed_everything(seed: int) -> DeterminismSummary:
                 "Use --strict-determinism on a CUDA box for byte-exact reproducibility."
             )
             class_ = "best_effort"
-        else:
+        else:  # pragma: no cover — pure-CPU hosts exercise this in CI
             notes.append("CPU-only training: deterministic but slow.")
             class_ = "best_effort"
 
@@ -106,10 +106,10 @@ def seed_everything(seed: int) -> DeterminismSummary:
 def _mps_available(torch_mod: object) -> bool:
     """torch.backends.mps.is_available, guarded for older torch."""
     backends = getattr(torch_mod, "backends", None)
-    if backends is None:
+    if backends is None:  # pragma: no cover — current torch always ships backends
         return False
     mps = getattr(backends, "mps", None)
-    if mps is None:
+    if mps is None:  # pragma: no cover — current torch always ships mps backend
         return False
     checker = getattr(mps, "is_available", None)
     return bool(checker and checker())

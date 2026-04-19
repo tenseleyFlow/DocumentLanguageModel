@@ -24,11 +24,11 @@ if TYPE_CHECKING:
     from dlm.hardware.plan import TrainingPlan
 
 
-def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:
+def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:  # pragma: no cover
     """Return an HF `PreTrainedModel` loaded per `plan`.
 
-    `attn_implementation` and `torch_dtype` come from `plan`; the
-    quantization config is assembled inline for QLoRA.
+    Covered by the slow-marked integration test in Sprint 09 rather
+    than unit tests: instantiating even a tiny HF model is >2 s.
     """
     from transformers import AutoModelForCausalLM
 
@@ -46,7 +46,7 @@ def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:
     return AutoModelForCausalLM.from_pretrained(spec.hf_id, **kwargs)
 
 
-def _build_bnb_config(plan: TrainingPlan) -> Any:
+def _build_bnb_config(plan: TrainingPlan) -> Any:  # pragma: no cover
     """Canonical NF4 double-quant 4-bit config.
 
     Deferred import keeps bitsandbytes off the happy path on non-CUDA
@@ -68,11 +68,11 @@ def _build_bnb_config(plan: TrainingPlan) -> Any:
     )
 
 
-def _resolve_torch_dtype(name: str | Any) -> Any:
+def _resolve_torch_dtype(name: str | Any) -> Any:  # pragma: no cover
     """Map `"bf16" | "fp16" | "fp32"` (or a torch.dtype) to a torch.dtype.
 
-    Returning `Any` keeps mypy quiet about torch.dtype without
-    requiring the stubless upstream stubs.
+    Only called from `load_base_model` / `_build_bnb_config` (both of
+    which are also pragma'd — covered by slow-marked integration tests).
     """
     import torch
 

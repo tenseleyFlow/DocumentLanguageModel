@@ -133,8 +133,7 @@ def load_state(directory: Path, *, runtime_versions: PinnedVersions) -> Training
     expected = sha_path.read_text(encoding="utf-8").strip()
     if actual != expected:
         raise ResumeIntegrityError(
-            f"training_state.pt sha256 mismatch: "
-            f"expected {expected[:16]}…, got {actual[:16]}…"
+            f"training_state.pt sha256 mismatch: expected {expected[:16]}…, got {actual[:16]}…"
         )
 
     try:

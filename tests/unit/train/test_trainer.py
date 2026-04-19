@@ -1,0 +1,173 @@
+"""`trainer.run()` end-to-end with a mocked SFTTrainer."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import MagicMock
+
+from dlm.base_models import BASE_MODELS
+from dlm.doc.parser import ParsedDlm
+from dlm.doc.schema import DlmFrontmatter, TrainingConfig
+from dlm.doc.sections import Section, SectionType
+from dlm.store.manifest import Manifest, save_manifest
+from dlm.store.paths import for_dlm
+from dlm.train.state_sidecar import STATE_FILENAME, STATE_SHA_FILENAME
+from dlm.train.trainer import run
+
+
+def _parsed() -> ParsedDlm:
+    return ParsedDlm(
+        frontmatter=DlmFrontmatter(
+            dlm_id="01KABCD" + "0" * 19,  # 26 chars total
+            base_model="smollm2-135m",
+            training=TrainingConfig(seed=42),
+        ),
+        sections=(
+            Section(type=SectionType.PROSE, content="Sample prose for training."),
+            Section(type=SectionType.PROSE, content="Another sample."),
+        ),
+    )
+
+
+def _plan() -> SimpleNamespace:
+    return SimpleNamespace(
+        precision="bf16",
+        attn_implementation="sdpa",
+        use_qlora=False,
+        quant_compute_dtype=None,
+        micro_batch_size=1,
+        grad_accum=1,
+        effective_batch_size=1,
+        gradient_checkpointing=False,
+        est_peak_vram_gb=1.0,
+        est_step_seconds=0.1,
+        reason="test",
+        to_dict=lambda: {"precision": "bf16"},
+    )
+
+
+def _mock_trainer_factory(**_: Any) -> MagicMock:
+    """Build a mock that looks like a real SFTTrainer to the orchestrator."""
+    sft = MagicMock()
+    sft.state = SimpleNamespace(global_step=20, epoch=1.0, best_metric=0.87)
+    sft.optimizer = SimpleNamespace(state_dict=lambda: {"lr": 1e-4})
+    sft.lr_scheduler = SimpleNamespace(state_dict=lambda: {"step": 20})
+    sft.scaler = None
+
+    train_result = SimpleNamespace(training_loss=1.23)
+    sft.train.return_value = train_result
+
+    def _save_model(path: str) -> None:
+        p = Path(path)
+        p.mkdir(parents=True, exist_ok=True)
+        # Write placeholder adapter files so the checkpoint commit
+        # has real bytes to flush.
+        (p / "adapter_config.json").write_text("{}")
+        (p / "adapter_model.safetensors").write_bytes(b"\x00" * 64)
+
+    sft.save_model.side_effect = _save_model
+    return sft
+
+
+class TestRunHappyPath:
+    def test_fresh_run_commits_adapter_and_appends_manifest(self, tmp_path: Path) -> None:
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+
+        spec = BASE_MODELS["smollm2-135m"]
+        result = run(
+            store,
+            _parsed(),
+            spec,
+            _plan(),
+            mode="fresh",
+            trainer_factory=_mock_trainer_factory,
+        )
+
+        # Adapter committed at v0001.
+        assert result.adapter_version == 1
+        assert result.adapter_path.name == "v0001"
+        assert (result.adapter_path / "adapter_config.json").exists()
+        # Training state + sha sidecar persisted.
+        assert (result.adapter_path / STATE_FILENAME).exists()
+        assert (result.adapter_path / STATE_SHA_FILENAME).exists()
+
+        # Current pointer flipped.
+        assert store.resolve_current_adapter() == result.adapter_path
+
+        # Manifest has one run appended.
+        from dlm.store.manifest import load_manifest
+
+        manifest = load_manifest(store.manifest)
+        assert len(manifest.training_runs) == 1
+        run_summary = manifest.training_runs[0]
+        assert run_summary.run_id == 1
+        assert run_summary.adapter_version == 1
+        assert run_summary.seed == 42
+        assert run_summary.steps == 20
+        assert run_summary.final_train_loss == 1.23
+        assert run_summary.status == "completed"
+
+        # Log file written with banner + complete event.
+        assert result.log_path.exists()
+        lines = result.log_path.read_text().strip().splitlines()
+        parsed = [json.loads(line) for line in lines]
+        assert parsed[0]["type"] == "banner"
+        assert any(p.get("type") == "run_complete" for p in parsed)
+
+    def test_second_run_gets_run_id_two(self, tmp_path: Path) -> None:
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        r1 = run(store, _parsed(), spec, _plan(), trainer_factory=_mock_trainer_factory)
+        r2 = run(store, _parsed(), spec, _plan(), trainer_factory=_mock_trainer_factory)
+        assert r1.run_id == 1
+        assert r2.run_id == 2
+        assert r1.adapter_version == 1
+        assert r2.adapter_version == 2
+
+    def test_seed_defaults_from_frontmatter(self, tmp_path: Path) -> None:
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        result = run(
+            store,
+            _parsed(),
+            spec,
+            _plan(),
+            trainer_factory=_mock_trainer_factory,
+        )
+        assert result.seed == 42  # from TrainingConfig default
+
+
+class TestRunBranches:
+    def test_disk_preflight_refuses_start(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        from dlm.train.errors import DiskSpaceError
+
+        store = for_dlm("01LOWDISK", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01LOWDISK", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        fake_usage = SimpleNamespace(total=1_000, used=0, free=1_000)
+        with patch("dlm.train.disk_preflight.shutil.disk_usage", return_value=fake_usage):
+            import pytest
+
+            with pytest.raises(DiskSpaceError):
+                run(
+                    store,
+                    _parsed(),
+                    spec,
+                    _plan(),
+                    trainer_factory=_mock_trainer_factory,
+                )

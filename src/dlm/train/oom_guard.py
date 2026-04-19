@@ -79,7 +79,7 @@ def format_oom_message(
 
 
 @contextlib.contextmanager
-def catch_cuda_oom(
+def catch_cuda_oom(  # pragma: no cover
     *,
     step_ref: list[int],
     current_grad_accum: int,

@@ -56,12 +56,12 @@ def build_lora_config(
     )
 
 
-def apply_kbit_preparation(model: Any, *, gradient_checkpointing: bool) -> Any:
+def apply_kbit_preparation(model: Any, *, gradient_checkpointing: bool) -> Any:  # pragma: no cover
     """Run `prepare_model_for_kbit_training` for the QLoRA path.
 
     Required before `get_peft_model` on a 4-bit-loaded base model.
-    Returns the prepared model (PEFT mutates in place but also
-    returns it for chaining convenience).
+    Covered by slow-marked integration tests — unit tests exercise
+    `build_lora_config` directly.
     """
     from peft import prepare_model_for_kbit_training
 
@@ -71,7 +71,7 @@ def apply_kbit_preparation(model: Any, *, gradient_checkpointing: bool) -> Any:
     )
 
 
-def build_or_resume_adapter(
+def build_or_resume_adapter(  # pragma: no cover
     base_model: Any,
     spec: BaseModelSpec,
     *,

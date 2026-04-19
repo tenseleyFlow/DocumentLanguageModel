@@ -109,11 +109,7 @@ def list_pending_versions(store: StorePath) -> list[Path]:
     existing = _existing_versions(store)
     current = store.resolve_current_adapter()
     current_n = _parse_version_number(current) if current is not None else None
-    return [
-        store.adapter_version(n)
-        for n in sorted(existing)
-        if n != current_n
-    ]
+    return [store.adapter_version(n) for n in sorted(existing) if n != current_n]
 
 
 def _existing_versions(store: StorePath) -> list[int]:
