@@ -17,6 +17,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+    # CLI / doc / lightweight plumbing.
     "typer>=0.12",
     "rich>=13.7",
     "python-ulid>=3.0",       # dlm_id generation (Sprint 13)
@@ -25,6 +26,26 @@ dependencies = [
     "psutil>=6.0",            # hardware doctor (Sprint 05)
     "zstandard>=0.23",        # replay corpus framing (Sprint 08)
     "cbor2>=5.6",             # replay snapshot encoding (Sprint 08)
+    "packaging>=24.0",        # lock policy semver parsing (Sprint 15)
+
+    # ML runtime. `dlm train`, `dlm prompt`, `dlm export` all import these;
+    # a `pip install dlm` that omits them would ImportError on first call
+    # (audit-05 B1).
+    "torch>=2.4",
+    "transformers>=4.45",
+    "peft>=0.13",
+    "trl>=0.12",
+    "datasets>=3.0",
+    "huggingface-hub>=0.25",
+    "safetensors>=0.4",       # GGUF conversion + adapter I/O (Sprint 11)
+]
+
+[project.optional-dependencies]
+# CUDA-only. `bitsandbytes` won't install on macOS / CPU-only boxes; gate
+# behind an extra so `pip install dlm` stays portable and `pip install
+# dlm[cuda]` unlocks QLoRA.
+cuda = [
+    "bitsandbytes>=0.43",
 ]
 
 [project.scripts]
@@ -36,20 +57,14 @@ Issues = "https://github.com/tenseleyFlow/DocumentLanguageModel/issues"
 
 [dependency-groups]
 dev = [
+    # Test + lint tooling only. ML runtime moved to [project].dependencies
+    # (audit-05 B1) so `pip install dlm` gives users a working CLI.
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "mypy>=1.11",
     "ruff>=0.6",
     "types-pyyaml>=6.0",
     "types-psutil>=6.0",
-    # Fixture infrastructure (Sprint 02). Promoted to runtime deps in Sprint 06.
-    "torch>=2.4",
-    "transformers>=4.45",
-    "huggingface-hub>=0.25",
-    # Training ecosystem (Sprint 07 dataset assembly, Sprint 09 trainer).
-    "datasets>=3.0",
-    "peft>=0.13",
-    "trl>=0.12",
     "hypothesis>=6.152.1",
 ]
 docs = [
