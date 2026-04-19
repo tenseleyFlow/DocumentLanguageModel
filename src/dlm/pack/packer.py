@@ -101,12 +101,16 @@ def pack(
     # Gate: `--include-base` on non-redistributable specs without
     # a licensee URL refuses (audit F21).
     spec = BASE_MODELS.get(manifest.base_model)
-    if include_base and spec is not None and not spec.redistributable:
-        if not licensee_acceptance_url:
-            raise BaseLicenseRefusedError(
-                base_key=manifest.base_model,
-                license_url=spec.license_url,
-            )
+    if (
+        include_base
+        and spec is not None
+        and not spec.redistributable
+        and not licensee_acceptance_url
+    ):
+        raise BaseLicenseRefusedError(
+            base_key=manifest.base_model,
+            license_url=spec.license_url,
+        )
 
     out_path = out if out is not None else dlm_path.with_suffix(dlm_path.suffix + ".pack")
 
@@ -144,9 +148,7 @@ def pack(
         # Checksums cover everything except itself and the manifest
         # (which we write after checksums so the rollup includes only
         # the real content, not the manifest's own sha256-of-sha256s).
-        checksums = write_checksums(
-            staging, exclude=(SHA256_FILENAME, MANIFEST_FILENAME)
-        )
+        checksums = write_checksums(staging, exclude=(SHA256_FILENAME, MANIFEST_FILENAME))
         manifest_model = PackManifest(
             dlm_id=parsed.frontmatter.dlm_id,
             base_model=manifest.base_model,
@@ -173,9 +175,7 @@ def pack(
 # --- internals --------------------------------------------------------------
 
 
-def _content_type(
-    *, include_base: bool, include_exports: bool, include_logs: bool
-) -> ContentType:
+def _content_type(*, include_base: bool, include_exports: bool, include_logs: bool) -> ContentType:
     """Coarse label for `PackHeader.content_type`."""
     _ = include_logs  # logs don't flip the coarse label
     if include_base and include_exports:
@@ -226,17 +226,19 @@ def _stage_tree(
             shutil.copy2(child, dest)
 
 
-
 def _write_tar_zstd(staging: Path, out_path: Path) -> None:
     """Tar the staging dir and stream through zstd level 10 to `out_path`."""
     import zstandard as zstd
 
     cctx = zstd.ZstdCompressor(level=10)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("wb") as fh, cctx.stream_writer(fh) as compressor:
-        with tarfile.open(fileobj=compressor, mode="w|") as tar:
-            # Entries sorted so the tar stream is deterministic for
-            # identical inputs — a property the DoD ratio test relies on.
-            for path in sorted(staging.rglob("*")):
-                arcname = path.relative_to(staging).as_posix()
-                tar.add(path, arcname=arcname, recursive=False)
+    with (
+        out_path.open("wb") as fh,
+        cctx.stream_writer(fh) as compressor,
+        tarfile.open(fileobj=compressor, mode="w|") as tar,
+    ):
+        # Entries sorted so the tar stream is deterministic for
+        # identical inputs — a property the DoD ratio test relies on.
+        for path in sorted(staging.rglob("*")):
+            arcname = path.relative_to(staging).as_posix()
+            tar.add(path, arcname=arcname, recursive=False)

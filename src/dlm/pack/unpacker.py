@@ -90,9 +90,7 @@ def unpack(
                 detected=header.pack_format_version,
                 supported=CURRENT_PACK_FORMAT_VERSION,
             )
-        migrated_root, applied = apply_pending(
-            staging, from_version=header.pack_format_version
-        )
+        migrated_root, applied = apply_pending(staging, from_version=header.pack_format_version)
 
         pack_manifest = _read_manifest(migrated_root)
         home_resolved = dlm_home(home)
@@ -131,24 +129,26 @@ def _extract_tar_zstd(pack_path: Path, staging: Path) -> None:
     import zstandard as zstd
 
     dctx = zstd.ZstdDecompressor()
-    with pack_path.open("rb") as fh, dctx.stream_reader(fh) as reader:
-        with tarfile.open(fileobj=reader, mode="r|") as tar:
-            # Defense-in-depth: reject entries with absolute paths or
-            # `..` components that could escape `staging`.
-            for member in tar:
-                if _is_unsafe_member(member.name):
-                    raise PackLayoutError(
-                        f"refusing to extract unsafe tar entry {member.name!r}"
-                    )
-            # Reset the stream; `tarfile` iterates once so we open a
-            # fresh reader to actually extract now that the names are
-            # validated.
-    with pack_path.open("rb") as fh, dctx.stream_reader(fh) as reader:
-        with tarfile.open(fileobj=reader, mode="r|") as tar:
-            # Python 3.12+ defaults to the `data` filter; we set it
-            # explicitly for earlier versions so path traversal +
-            # special-file attacks are blocked.
-            tar.extractall(path=staging, filter="data")
+    # First pass: defense-in-depth name scan. `tarfile` iterates once so
+    # we open a fresh reader below to actually extract.
+    with (
+        pack_path.open("rb") as fh,
+        dctx.stream_reader(fh) as reader,
+        tarfile.open(fileobj=reader, mode="r|") as tar,
+    ):
+        for member in tar:
+            if _is_unsafe_member(member.name):
+                raise PackLayoutError(f"refusing to extract unsafe tar entry {member.name!r}")
+
+    # Second pass: actually extract. Python 3.12+ defaults to the `data`
+    # filter; we set it explicitly so path traversal + special-file
+    # attacks are blocked on earlier versions too.
+    with (
+        pack_path.open("rb") as fh,
+        dctx.stream_reader(fh) as reader,
+        tarfile.open(fileobj=reader, mode="r|") as tar,
+    ):
+        tar.extractall(path=staging, filter="data")
 
 
 def _is_unsafe_member(name: str) -> bool:
@@ -163,9 +163,7 @@ def _assert_layout(staging: Path) -> None:
     """Every required entry must be present post-extraction."""
     for entry in REQUIRED_ENTRIES:
         if not (staging / entry).exists():
-            raise PackLayoutError(
-                f"pack missing required entry {entry!r}; not a valid .dlm.pack"
-            )
+            raise PackLayoutError(f"pack missing required entry {entry!r}; not a valid .dlm.pack")
 
 
 def _read_header(staging: Path) -> PackHeader:
@@ -175,9 +173,7 @@ def _read_header(staging: Path) -> PackHeader:
     try:
         raw = json.loads((staging / HEADER_FILENAME).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise PackLayoutError(
-            f"cannot read {HEADER_FILENAME}: {exc}"
-        ) from exc
+        raise PackLayoutError(f"cannot read {HEADER_FILENAME}: {exc}") from exc
     return PackHeader.model_validate(raw)
 
 
@@ -188,9 +184,7 @@ def _read_manifest(staging: Path) -> PackManifest:
     try:
         raw = json.loads((staging / MANIFEST_FILENAME).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise PackLayoutError(
-            f"cannot read {MANIFEST_FILENAME}: {exc}"
-        ) from exc
+        raise PackLayoutError(f"cannot read {MANIFEST_FILENAME}: {exc}") from exc
     return PackManifest.model_validate(raw)
 
 
