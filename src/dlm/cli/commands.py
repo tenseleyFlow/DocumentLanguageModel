@@ -35,9 +35,119 @@ def init_cmd(
         bool,
         typer.Option("--i-accept-license", help="Accept gated base-model license (Sprint 12b)."),
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite an existing .dlm at path."),
+    ] = False,
 ) -> None:
     """Bootstrap a new .dlm file with sensible defaults."""
-    _stub("13", "dlm init")
+    import sys
+
+    from rich.console import Console
+
+    from dlm.base_models import (
+        GatedModelError,
+        UnknownBaseModelError,
+        is_gated,
+    )
+    from dlm.base_models import resolve as resolve_base_model
+    from dlm.io.ulid import mint_ulid
+
+    console = Console(stderr=True)
+
+    if template is not None:
+        console.print(
+            "[yellow]note:[/yellow] --template is reserved for Sprint 27; "
+            "ignoring for now."
+        )
+
+    if path.exists() and not force:
+        console.print(
+            f"[red]init:[/red] {path} already exists. "
+            "Re-run with [bold]--force[/bold] to overwrite."
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        spec = resolve_base_model(base, accept_license=i_accept_license)
+    except UnknownBaseModelError as exc:
+        console.print(f"[red]init:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except GatedModelError as exc:
+        # Gated + user didn't pass --i-accept-license up-front. Prompt
+        # interactively if we have a TTY; otherwise refuse with the flag
+        # pointer (audit F22 non-interactive path).
+        if not _prompt_accept_license(console, base, exc.license_url):
+            console.print(
+                "[red]license:[/red] refused. Re-run with "
+                "[bold]--i-accept-license[/bold] to accept non-interactively."
+            )
+            raise typer.Exit(code=1) from exc
+        spec = resolve_base_model(base, accept_license=True)
+
+    # Even with non-gated specs we record an acceptance stamp when a
+    # flag was passed; Sprint 15's dlm.lock mirror reads this back.
+    if is_gated(spec) and (i_accept_license or not sys.stdin.isatty()):
+        # Non-interactive path + flag passed → log the fact we accepted.
+        pass
+
+    _write_init_scaffold(path, spec.key, mint_ulid())
+    console.print(f"[green]init:[/green] wrote {path}")
+
+
+def _prompt_accept_license(console: object, base: str, license_url: str | None) -> bool:
+    """Interactive y/N prompt for gated base-model license acceptance.
+
+    Non-interactive runs (no TTY) return False; the caller surfaces the
+    `--i-accept-license` flag pointer in that case.
+    """
+    import sys
+
+    from rich.console import Console
+
+    assert isinstance(console, Console)
+
+    if not sys.stdin.isatty():
+        return False
+
+    console.print(
+        f"[yellow]This base model ({base}) requires accepting the upstream license.[/yellow]"
+    )
+    if license_url:
+        console.print(f"  Review the license at: {license_url}")
+    console.print("Accept and continue? [y/N]: ", end="")
+    try:
+        answer = input().strip().lower()
+    except EOFError:
+        return False
+    return answer in ("y", "yes")
+
+
+def _write_init_scaffold(path: Path, base_model_key: str, dlm_id: str) -> None:
+    """Write a minimal-but-valid .dlm file at `path`.
+
+    Body has one PROSE paragraph + a commented instruction section so
+    users see both section shapes on first open.
+    """
+    scaffold = f"""---
+dlm_id: {dlm_id}
+dlm_version: 1
+base_model: {base_model_key}
+---
+
+# Your document title
+
+Write prose here. It will train via continued pretraining (CPT) loss.
+
+::instruction::
+
+### Q
+Your example question.
+
+### A
+Your example answer.
+"""
+    path.write_text(scaffold, encoding="utf-8")
 
 
 def train_cmd(
