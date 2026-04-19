@@ -29,7 +29,12 @@ def init_cmd(
         str, typer.Option("--base", help="Base model key or hf:org/name.")
     ] = "qwen2.5-1.5b",
     template: Annotated[
-        str | None, typer.Option("--template", help="Starter template name (Sprint 27).")
+        str | None,
+        typer.Option(
+            "--template",
+            help="(reserved) Pick a starter template once the template library ships.",
+            hidden=True,
+        ),
     ] = None,
     i_accept_license: Annotated[
         bool,
@@ -57,7 +62,8 @@ def init_cmd(
 
     if template is not None:
         console.print(
-            "[yellow]note:[/yellow] --template is reserved for Sprint 27; ignoring for now."
+            "[yellow]note:[/yellow] --template is reserved; no starter templates "
+            "ship yet — the scaffold below is the default."
         )
 
     if path.exists() and not force:

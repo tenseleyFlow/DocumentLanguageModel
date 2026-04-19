@@ -104,4 +104,4 @@ class TestTemplateReserved:
             ["init", str(out), "--base", "smollm2-135m", "--template", "starter"],
         )
         assert result.exit_code == 0, result.output
-        assert "Sprint 27" in _joined_output(result)
+        assert "reserved" in _joined_output(result).lower()
