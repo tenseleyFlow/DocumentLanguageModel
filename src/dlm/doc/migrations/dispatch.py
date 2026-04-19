@@ -41,8 +41,20 @@ def apply_pending(
             raise UnsupportedMigrationError(
                 f"dlm_version must be int, got {type(version).__name__}",
             )
-        if version >= target_version:
+        if version == target_version:
             return current, applied
+        if version > target_version:
+            # Audit-05 M7: forward-dated document — refuse rather than
+            # silently reporting "already at target". The read-path
+            # (parse_file) already raises DlmVersionError on future
+            # versions; migrate should match that contract.
+            from dlm.doc.errors import DlmVersionError
+
+            raise DlmVersionError(
+                f"dlm_version {version} is newer than this CLI supports "
+                f"(CURRENT_SCHEMA_VERSION={target_version}). Upgrade dlm "
+                "to a version that knows this schema."
+            )
         migrator = MIGRATORS.get(version)
         if migrator is None:
             raise UnsupportedMigrationError(

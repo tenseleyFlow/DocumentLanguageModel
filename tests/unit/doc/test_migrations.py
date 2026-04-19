@@ -51,12 +51,15 @@ class TestApplyPending:
         assert migrated == raw
         assert applied == []
 
-    def test_higher_than_target_is_noop(self, scratch_registry: None) -> None:
-        """Sprint 14+ users who bumped ahead don't get downgraded."""
+    def test_higher_than_target_raises(self, scratch_registry: None) -> None:
+        """Audit-05 M7: a forward-dated document is refused, not silently
+        reported as already-migrated. The parser read-path raises
+        `DlmVersionError` on future versions; migrate matches."""
+        from dlm.doc.errors import DlmVersionError
+
         raw = {"dlm_version": 5}
-        migrated, applied = apply_pending(raw, target_version=3)
-        assert migrated == raw
-        assert applied == []
+        with pytest.raises(DlmVersionError, match="newer than this CLI supports"):
+            apply_pending(raw, target_version=3)
 
     def test_chain_runs_in_order(self, scratch_registry: None) -> None:
         @register(from_version=1)
