@@ -26,6 +26,7 @@ from dlm.train.oom_guard import format_oom_message, recommend_grad_accum
 from dlm.train.state_sidecar import (
     STATE_FILENAME,
     STATE_SHA_FILENAME,
+    TRAINING_RUN_FILENAME,
     VERSIONS_FILENAME,
     PinnedVersions,
     TrainingState,
@@ -45,6 +46,7 @@ __all__ = [
     "STATE_FILENAME",
     "STATE_SHA_FILENAME",
     "StepLogger",
+    "TRAINING_RUN_FILENAME",
     "TrainingError",
     "TrainingRunResult",
     "TrainingState",

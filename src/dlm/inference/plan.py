@@ -136,18 +136,31 @@ def resolve_inference(adapter_dir: Path, caps: Any) -> InferencePlan:
 
 
 def _was_adapter_qlora(adapter_dir: Path) -> bool:
-    """Inspect `adapter_dir/pinned_versions.json` for a non-None bnb entry.
+    """Read the explicit `use_qlora` flag from the training-run sidecar.
 
-    The training-state sidecar writes `pinned_versions.json` alongside
-    the adapter (Sprint 09 `state_sidecar.save_state`). The `bitsandbytes`
-    key is `None` on hosts where bnb isn't installed; if training
-    captured a non-None version, QLoRA was the load path.
+    Audit-05 M1: earlier versions inferred this from the `bitsandbytes`
+    package pin, which false-positived on plain LoRA runs on
+    CUDA+bnb hosts. The training-state sidecar now writes
+    `training_run.json` with an explicit `use_qlora: bool` that records
+    what the *training plan* decided, not what happened to be installed.
 
-    Missing file → assume LoRA (the conservative path: non-QLoRA loads
-    are always safe to use for QLoRA adapters, but the user will get
-    a fp16 copy of a 4-bit-quantized weight matrix, which is larger
-    than needed but correct).
+    Missing or malformed `training_run.json` → fall back to the bnb
+    pin heuristic for backwards compatibility with adapters trained
+    before Sprint 10's audit-05 patch.
     """
+    training_run_path = adapter_dir / "training_run.json"
+    if training_run_path.exists():
+        try:
+            data = json.loads(training_run_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pass
+        else:
+            if "use_qlora" in data:
+                return bool(data["use_qlora"])
+
+    # Legacy fallback: pre-audit-05 adapters only have pinned_versions.json.
+    # This is imprecise (see audit-05 M1) but preserves behavior for
+    # already-written checkpoints that don't have the explicit flag.
     pinned_path = adapter_dir / "pinned_versions.json"
     if not pinned_path.exists():
         return False

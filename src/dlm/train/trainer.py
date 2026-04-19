@@ -194,6 +194,7 @@ def run(
                 sft=sft,
                 spec=spec,
                 versions=versions,
+                use_qlora=plan.use_qlora,
             ),
         )
         adapter_version = int(adapter_path.name.lstrip("v"))
@@ -404,6 +405,7 @@ def _write_checkpoint(
     sft: Any,
     spec: BaseModelSpec,
     versions: PinnedVersions,
+    use_qlora: bool,
 ) -> None:
     """Populate a pending adapter version dir with everything to resume.
 
@@ -413,7 +415,9 @@ def _write_checkpoint(
     sft.save_model(str(pending_dir))
 
     # 2. Training state sidecar (optimizer/scheduler/RNG/step counters).
-    state = _snapshot_training_state(sft, spec=spec, versions=versions)
+    state = _snapshot_training_state(
+        sft, spec=spec, versions=versions, use_qlora=use_qlora
+    )
     save_state(pending_dir, state)
 
 
@@ -422,6 +426,7 @@ def _snapshot_training_state(
     *,
     spec: BaseModelSpec,
     versions: PinnedVersions,
+    use_qlora: bool,
 ) -> TrainingState:
     """Gather everything needed for a bit-exact resume.
 
@@ -455,6 +460,7 @@ def _snapshot_training_state(
         dlm_manifest_hash=None,  # Sprint 13 fills this in
         base_model_revision=spec.revision,
         pinned_versions=versions,
+        use_qlora=use_qlora,
     )
 
 

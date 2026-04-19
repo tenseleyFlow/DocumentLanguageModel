@@ -13,6 +13,7 @@ from dlm.train.errors import ResumeIntegrityError, VersionDriftWarning
 from dlm.train.state_sidecar import (
     STATE_FILENAME,
     STATE_SHA_FILENAME,
+    TRAINING_RUN_FILENAME,
     VERSIONS_FILENAME,
     TrainingState,
     capture_runtime_versions,
@@ -21,7 +22,7 @@ from dlm.train.state_sidecar import (
 )
 
 
-def _mock_state() -> TrainingState:
+def _mock_state(*, use_qlora: bool = False) -> TrainingState:
     return TrainingState(
         optimizer_state_dict={"lr": 1e-4},
         scheduler_state_dict={"step": 5},
@@ -36,6 +37,7 @@ def _mock_state() -> TrainingState:
         dlm_manifest_hash=None,
         base_model_revision="a" * 40,
         pinned_versions={"torch": torch.__version__},
+        use_qlora=use_qlora,
     )
 
 
@@ -139,6 +141,26 @@ class TestVersionDrift:
 
         with pytest.warns(VersionDriftWarning, match="bitsandbytes.*missing"):
             load_state(tmp_path, runtime_versions={"torch": torch.__version__})
+
+
+class TestTrainingRunSidecar:
+    """Audit-05 M1: explicit use_qlora flag persisted alongside the adapter."""
+
+    def test_training_run_json_written_on_save(self, tmp_path: Path) -> None:
+        import json
+
+        save_state(tmp_path, _mock_state(use_qlora=True))
+        training_run = tmp_path / TRAINING_RUN_FILENAME
+        assert training_run.exists()
+        data = json.loads(training_run.read_text())
+        assert data["use_qlora"] is True
+
+    def test_training_run_defaults_false_when_lora(self, tmp_path: Path) -> None:
+        import json
+
+        save_state(tmp_path, _mock_state(use_qlora=False))
+        data = json.loads((tmp_path / TRAINING_RUN_FILENAME).read_text())
+        assert data["use_qlora"] is False
 
 
 class TestCaptureRuntimeVersions:
