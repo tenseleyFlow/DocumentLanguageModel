@@ -21,6 +21,7 @@ from dlm.base_models.errors import (
     UnknownBaseModelError,
 )
 from dlm.base_models.registry import BASE_MODELS, known_keys
+from dlm.base_models.resolver import resolve, resolve_hf
 from dlm.base_models.schema import BaseModelSpec
 
 __all__ = [
@@ -33,4 +34,6 @@ __all__ = [
     "ProbeResult",
     "UnknownBaseModelError",
     "known_keys",
+    "resolve",
+    "resolve_hf",
 ]
