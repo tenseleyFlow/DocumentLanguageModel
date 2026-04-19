@@ -23,7 +23,6 @@ class TestDiffAgainstManifest:
         assert {s.section_id for s in cs.new} == {s1.section_id, s2.section_id}
         assert cs.unchanged == []
         assert cs.removed == []
-        assert cs.changed == []
 
     def test_unchanged_classified_correctly(self) -> None:
         s1 = Section(type=SectionType.PROSE, content="hello")
@@ -39,13 +38,18 @@ class TestDiffAgainstManifest:
         cs = diff_against_manifest([s1], m)
         assert cs.removed == [ghost_sid]
 
-    def test_changed_always_empty_under_current_design(self) -> None:
-        """Content-addressed sections: a content edit is new+removed, not changed."""
+    def test_content_edit_is_new_plus_removed(self) -> None:
+        """Content-addressed sections: an edit produces a different section_id.
+
+        Under the current identity scheme a content edit is observed as
+        two independent events — the old id is `removed`, the new id is
+        `new`. No `changed` category exists (audit-04 m9); Sprint 20 may
+        re-introduce it with explicit anchors.
+        """
         old = Section(type=SectionType.PROSE, content="v1")
         new = Section(type=SectionType.PROSE, content="v2")
         m = _manifest({old.section_id: old.section_id})
         cs = diff_against_manifest([new], m)
-        assert cs.changed == []
         assert [s.section_id for s in cs.new] == [new.section_id]
         assert cs.removed == [old.section_id]
 

@@ -5,20 +5,22 @@
 `manifest.content_hashes` that's missing from the current document as
 `removed`.
 
-`changed` is reserved empty
---------------------------
+No `changed` field
+------------------
 
 Sections are identified purely by their content hash (`doc.sections`
 computes `sha256(type || content)[:16]`). There is no stable
 cross-edit identity — a section whose content changes gets a different
 `section_id`, so it appears as `new` (plus the previous id in
 `removed`). Distinguishing "edited" from "replaced" requires an
-explicit per-section anchor that Sprint 20 may introduce. Until then
-`changed` is always `[]` and consumers should not rely on it.
+explicit per-section anchor. If Sprint 20 introduces anchor-based
+identity, it can re-add `ChangeSet.changed` with a real implementation
+at that point; carrying a reserved-but-always-empty field today just
+invites consumers to write code against it that never fires.
 
-The sampler in Sprint 08 only needs `new ∪ unchanged` (for anti-boost
-weighting of fresh content) and `removed` (for forgetting bookkeeping),
-so an empty `changed` is non-lossy under the current design.
+The sampler in Sprint 08 needs only `new` (freshly-append-to-replay),
+`unchanged` (already-present training signal), and `removed` (for
+forgetting bookkeeping) — all three are non-lossy under this design.
 """
 
 from __future__ import annotations
@@ -36,8 +38,6 @@ class ChangeSet:
     new: list[Section] = field(default_factory=list)
     unchanged: list[Section] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
-    # Reserved; see module docstring. Always empty under the current design.
-    changed: list[tuple[Section, str]] = field(default_factory=list)
 
 
 def diff_against_manifest(sections: list[Section], manifest: Manifest) -> ChangeSet:

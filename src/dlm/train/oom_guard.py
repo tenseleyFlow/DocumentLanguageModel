@@ -93,18 +93,15 @@ def catch_cuda_oom(  # pragma: no cover
     Callers on non-CUDA devices can skip this — re-raising a
     non-CUDA OOM as an `OOMError` would be actively misleading.
     """
+    # Import torch up-front (audit-04 m4) so that a missing torch
+    # surfaces as a clean error at context-enter rather than inside the
+    # exception handler, where it would silently tunnel any caught
+    # exception past the OOM-reformatting path.
+    import torch
+
     try:
         yield
-    except Exception as exc:  # broad on purpose; torch OOM is a subclass
-        # Deferred import — torch isn't guaranteed.
-        try:
-            import torch
-        except ImportError:  # pragma: no cover
-            raise
-
-        if not isinstance(exc, torch.cuda.OutOfMemoryError):
-            raise
-
+    except torch.cuda.OutOfMemoryError as exc:
         step = step_ref[-1] if step_ref else 0
         peak = int(torch.cuda.max_memory_allocated())
         # `free` is the amount free at the start of the step — we

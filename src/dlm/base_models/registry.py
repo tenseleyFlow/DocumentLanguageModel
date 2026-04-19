@@ -8,8 +8,13 @@ Notes on individual entries:
 - `qwen2.5-3b` ships under the Qwen Research License (free for entities
   with <100M MAU). We record it as `license_spdx="Other"` and surface
   the URL via `license_url`; it remains `redistributable=True` because
-  the license permits bundling + redistribution with attribution. Users
-  at scale should read the license.
+  the license permits bundling + redistribution with attribution.
+  **Caveat (audit-04 m11):** the boolean `redistributable` field does
+  not express the MAU threshold or attribution requirement. A
+  `redistributable_conditions: str | None` field on `BaseModelSpec`
+  plus a pack-time attestation checkbox would encode this properly —
+  deferred to Sprint 12b's license-UX extension. Until then, users
+  at the scale threshold must consult the license text themselves.
 - Llama-3.2 models are gated on HuggingFace (`requires_acceptance=True`)
   and their license does NOT permit bundling into a `.dlm.pack`
   (`redistributable=False`) — enforced by Sprint 14's pack gate and

@@ -86,9 +86,7 @@ def train_cmd(
             accept_license=i_accept_license,
         )
     except GatedModelError as exc:
-        console.print(
-            f"[red]license:[/red] base model {parsed.frontmatter.base_model!r} is gated."
-        )
+        console.print(f"[red]license:[/red] base model {parsed.frontmatter.base_model!r} is gated.")
         if exc.license_url:
             console.print(f"  review the license at: {exc.license_url}")
         console.print(

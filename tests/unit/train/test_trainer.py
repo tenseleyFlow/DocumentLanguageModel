@@ -183,9 +183,7 @@ class TestRunHappyPath:
         expected_sids = {s.section_id for s in parsed.sections}
         assert corpus_sids == expected_sids
 
-    def test_second_run_reclassifies_unchanged_and_does_not_duplicate(
-        self, tmp_path: Path
-    ) -> None:
+    def test_second_run_reclassifies_unchanged_and_does_not_duplicate(self, tmp_path: Path) -> None:
         """After run #1 writes content_hashes, run #2 sees everything as unchanged."""
         from dlm.replay import ReplayStore
 
@@ -204,6 +202,46 @@ class TestRunHappyPath:
         assert len({e.section_id for e in entries}) == len(parsed.sections)
         # Second run's delta should be all-unchanged → no new frames appended.
         assert len(entries) == len(parsed.sections)
+
+    def test_resume_mode_sees_prior_adapter(self, tmp_path: Path) -> None:
+        """Audit-04 m12: mode='resume' propagates + prior adapter is resolvable."""
+        store = for_dlm("01TEST", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01TEST", base_model="smollm2-135m"))
+        spec = BASE_MODELS["smollm2-135m"]
+
+        # First run lays down v0001 and flips the current pointer.
+        r1 = run(
+            store,
+            _parsed(),
+            spec,
+            _plan(),
+            mode="fresh",
+            trainer_factory=_mock_trainer_factory,
+        )
+        assert store.resolve_current_adapter() == r1.adapter_path
+
+        # Second run in resume mode: the factory should observe mode='resume'
+        # AND a resolvable prior-adapter path while it's inside the call.
+        observed: dict[str, object] = {}
+
+        def _capturing_factory(**kwargs: Any) -> MagicMock:
+            observed["mode"] = kwargs["mode"]
+            observed["resume_path"] = kwargs["store"].resolve_current_adapter()
+            return _mock_trainer_factory(**kwargs)
+
+        r2 = run(
+            store,
+            _parsed(),
+            spec,
+            _plan(),
+            mode="resume",
+            trainer_factory=_capturing_factory,
+        )
+        assert observed["mode"] == "resume"
+        assert observed["resume_path"] == r1.adapter_path
+        # And the new run commits a fresh version on top.
+        assert r2.adapter_version == 2
 
 
 class TestRunBranches:

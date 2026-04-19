@@ -55,9 +55,7 @@ class TestVerifyResumeTokenizerCompat:
 
     def _write_adapter_config(self, path: Path, modules_to_save: list[str] | None) -> None:
         path.mkdir(parents=True, exist_ok=True)
-        (path / "adapter_config.json").write_text(
-            json.dumps({"modules_to_save": modules_to_save})
-        )
+        (path / "adapter_config.json").write_text(json.dumps({"modules_to_save": modules_to_save}))
 
     def test_both_no_embeddings_passes(self, tmp_path: Path) -> None:
         self._write_adapter_config(tmp_path, modules_to_save=None)

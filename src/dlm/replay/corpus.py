@@ -18,9 +18,13 @@ Design notes
   each snapshot. Concurrent writers are caller's problem (store lock
   in Sprint 04 handles it); this module assumes single-writer access.
 - **No partial-frame recovery.** If a write crashes mid-frame, the
-  corpus tail may have a garbage zstd frame. The caller is expected
-  to run `verify_tail()` after lock acquisition; if it reports
-  corruption, the caller decides whether to truncate or rebuild.
+  corpus tail may have a garbage zstd frame. A tail-verification
+  helper was scoped for Sprint 09 but deferred (the store lock +
+  atomic index write already prevent the worst case: the index never
+  references a partial frame). If a crash leaves unreferenced bytes
+  at the end of `corpus.zst`, they are effectively dead and are
+  reclaimed by the Sprint 14 pack-time compaction. Sprint 11 may add
+  explicit tail-repair if the slow-integration tests surface a need.
 """
 
 from __future__ import annotations

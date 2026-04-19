@@ -62,9 +62,7 @@ def build_lora_config(
     )
 
 
-def verify_resume_tokenizer_compat(
-    adapter_dir: Path, *, tokenizer_grew: bool
-) -> None:
+def verify_resume_tokenizer_compat(adapter_dir: Path, *, tokenizer_grew: bool) -> None:
     """Assert the saved adapter's `modules_to_save` agrees with the current tokenizer.
 
     Audit-04 M5: on resume, we load a LoRA adapter whose `adapter_config.json`
@@ -80,8 +78,7 @@ def verify_resume_tokenizer_compat(
     config_path = adapter_dir / "adapter_config.json"
     if not config_path.exists():
         raise ResumeIntegrityError(
-            f"adapter directory {adapter_dir} is missing adapter_config.json; "
-            "re-train fresh."
+            f"adapter directory {adapter_dir} is missing adapter_config.json; re-train fresh."
         )
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))

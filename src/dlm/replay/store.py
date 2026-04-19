@@ -63,8 +63,15 @@ class ReplayStore:
         """Append one snapshot, persist an updated index, return its entry.
 
         Index save happens on every append so a crash mid-training
-        leaves the corpus + index consistent. For bulk imports, call
-        `append_many` to batch index writes.
+        leaves the corpus + index consistent.
+
+        **Performance (audit-04 m2):** each call does a full
+        `load_index → append → save_index` cycle, which is O(n) in the
+        existing index size. Fine for the one-shot append the trainer
+        makes after each training cycle; **not** fine for loops like
+        corpus imports or recovery flows. Use `append_many` whenever
+        you have more than a handful of snapshots to add — the batch
+        variant saves the index exactly once.
         """
         entry = append_snapshot(self.corpus_path, snapshot)
         self.save([*self.load(), entry])
