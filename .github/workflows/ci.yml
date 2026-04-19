@@ -13,8 +13,8 @@ concurrency:
 env:
   UV_VERSION: "0.11.6"
   PYTHON_VERSION: "3.11"
-  # TODO(sprint-06): replace with pinned 40-char SHA from the base-model registry.
-  TINY_MODEL_REVISION: "main"
+  # Pinned to BASE_MODELS["smollm2-135m"].revision (Sprint 06 registry).
+  TINY_MODEL_REVISION: "12fd25f77366fa6b3b4b768ec3050bf629380bac"
 
 jobs:
   lint-type-test:
@@ -68,6 +68,14 @@ jobs:
         run: |
           uv run pytest tests/unit/hardware \
             --cov=src/dlm/hardware \
+            --cov-report=term-missing \
+            --cov-fail-under=95
+
+      - name: Coverage gate — src/dlm/base_models ≥ 95% (Sprint 06)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          uv run pytest tests/unit/base_models \
+            --cov=src/dlm/base_models \
             --cov-report=term-missing \
             --cov-fail-under=95
 
