@@ -145,6 +145,37 @@ class TestRedistributionGate:
         assert result.content_type == "no-exports"
 
 
+class TestByteIdentical:
+    """Audit-04 B5: two packs of identical input bytes produce identical pack bytes.
+
+    Pins `datetime.now` (PackHeader timestamp) and relies on the
+    normalized TarInfo filter (no mtime / uid / gid / uname / gname)
+    added by this fix.
+    """
+
+    def test_same_content_produces_same_bytes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from datetime import UTC, datetime
+
+        import dlm.pack.packer as packer_mod
+
+        frozen = datetime(2026, 4, 19, 12, 0, 0, tzinfo=UTC)
+
+        class _FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz: Any = None) -> datetime:  # type: ignore[override]
+                return frozen
+
+        monkeypatch.setattr(packer_mod, "datetime", _FrozenDatetime)
+
+        doc = _scaffold_doc_and_store(tmp_path)
+        a = pack(doc, out=tmp_path / "a.pack")
+        b = pack(doc, out=tmp_path / "b.pack")
+
+        assert a.path.read_bytes() == b.path.read_bytes()
+
+
 class TestStoreLock:
     def test_acquires_lock_during_pack(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

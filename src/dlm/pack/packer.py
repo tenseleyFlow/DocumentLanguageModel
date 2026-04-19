@@ -149,6 +149,14 @@ def pack(
         # (which we write after checksums so the rollup includes only
         # the real content, not the manifest's own sha256-of-sha256s).
         checksums = write_checksums(staging, exclude=(SHA256_FILENAME, MANIFEST_FILENAME))
+        # `content_sha256` further excludes the header: header carries
+        # `created_at` / `tool_version` / `platform_hint`, which vary
+        # across hosts and invocations. Rolling them into the content
+        # hash would make two packs of identical user content produce
+        # different rollups and defeat byte-identical reproducibility
+        # (audit-04 B5). CHECKSUMS.sha256 still covers the header file
+        # for tamper detection.
+        content_checksums = {k: v for k, v in checksums.items() if k != HEADER_FILENAME}
         manifest_model = PackManifest(
             dlm_id=parsed.frontmatter.dlm_id,
             base_model=manifest.base_model,
@@ -156,7 +164,7 @@ def pack(
             base_model_sha256=manifest.base_model_sha256,
             adapter_version=manifest.adapter_version,
             entries={rel: (staging / rel).stat().st_size for rel in checksums},
-            content_sha256=rollup_sha256(checksums),
+            content_sha256=rollup_sha256(content_checksums),
         )
         (staging / MANIFEST_FILENAME).write_text(
             manifest_model.model_dump_json(indent=2) + "\n", encoding="utf-8"
@@ -226,6 +234,27 @@ def _stage_tree(
             shutil.copy2(child, dest)
 
 
+def _normalize_tarinfo(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    """Strip host-specific metadata so two packs of identical content match byte-for-byte.
+
+    Default `TarInfo` carries the file's `mtime`, owner `uid/gid/uname/
+    gname` — all of which vary across hosts and invocations. For
+    byte-identical packs (audit-04 B5), we zero them and pin `mode` to
+    a canonical 0o644 (files) / 0o755 (dirs). Content bytes stay
+    intact; only the tar entry *header* is normalized.
+    """
+    info.mtime = 0
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    if info.isdir():
+        info.mode = 0o755
+    else:
+        info.mode = 0o644
+    return info
+
+
 def _write_tar_zstd(staging: Path, out_path: Path) -> None:
     """Tar the staging dir and stream through zstd level 10 to `out_path`."""
     import zstandard as zstd
@@ -241,4 +270,4 @@ def _write_tar_zstd(staging: Path, out_path: Path) -> None:
         # identical inputs — a property the DoD ratio test relies on.
         for path in sorted(staging.rglob("*")):
             arcname = path.relative_to(staging).as_posix()
-            tar.add(path, arcname=arcname, recursive=False)
+            tar.add(path, arcname=arcname, recursive=False, filter=_normalize_tarinfo)
