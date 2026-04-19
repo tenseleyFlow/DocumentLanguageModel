@@ -94,6 +94,27 @@ def init_cmd(
     console.print(f"[green]init:[/green] wrote {path}")
 
 
+def _previously_accepted(store_manifest_path: Path) -> bool:
+    """Return True iff the store manifest already holds a LicenseAcceptance.
+
+    `dlm prompt` and `dlm export` operate on an already-trained adapter;
+    the gated-base license was accepted at `dlm train --i-accept-license`
+    time and persisted into `manifest.license_acceptance` (Sprint 12b).
+    Replaying that acceptance here is correct; silently hardcoding
+    `accept_license=True` is not — it would let a never-accepted
+    gated base slip through.
+    """
+    if not store_manifest_path.exists():
+        return False
+    try:
+        from dlm.store.manifest import load_manifest
+
+        manifest = load_manifest(store_manifest_path)
+    except Exception:
+        return False
+    return manifest.license_acceptance is not None
+
+
 def _prompt_accept_license(console: object, base: str, license_url: str | None) -> bool:
     """Interactive y/N prompt for gated base-model license acceptance.
 
@@ -279,11 +300,20 @@ def prompt_cmd(
 
     console = Console(stderr=True)
 
-    parsed = parse_file(path)
-    spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
-    caps = doctor().capabilities
+    from dlm.base_models import GatedModelError
 
+    parsed = parse_file(path)
     store = for_dlm(parsed.frontmatter.dlm_id)
+    already_accepted = _previously_accepted(store.manifest)
+    try:
+        spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=already_accepted)
+    except GatedModelError as exc:
+        console.print(
+            f"[red]license:[/red] base {parsed.frontmatter.base_model!r} is gated and has "
+            "no recorded acceptance in this store; run `dlm train --i-accept-license` first."
+        )
+        raise typer.Exit(code=1) from exc
+    caps = doctor().capabilities
 
     try:
         loaded = load_for_inference(store, spec, caps)
@@ -368,8 +398,10 @@ def export_cmd(
     console = Console(stderr=True)
 
     parsed = parse_file(path)
+    store = for_dlm(parsed.frontmatter.dlm_id)
+    already_accepted = _previously_accepted(store.manifest)
     try:
-        spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
+        spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=already_accepted)
     except GatedModelError as exc:
         console.print(f"[red]license:[/red] base model {parsed.frontmatter.base_model!r} is gated.")
         if exc.license_url:
@@ -390,7 +422,6 @@ def export_cmd(
         console.print(f"[red]export:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
 
     try:
