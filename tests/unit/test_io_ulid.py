@@ -50,6 +50,19 @@ class TestSortability:
         assert a[:10] <= b[:10]
 
 
+class TestInternals:
+    def test_wrong_payload_size_raises(self) -> None:
+        """`_encode_crockford` rejects anything other than exactly 16 bytes."""
+        import pytest
+
+        from dlm.io.ulid import _encode_crockford
+
+        with pytest.raises(ValueError, match="16 bytes"):
+            _encode_crockford(b"\x00" * 15)
+        with pytest.raises(ValueError, match="16 bytes"):
+            _encode_crockford(b"\x00" * 17)
+
+
 class TestValidatorCompat:
     def test_accepted_by_frontmatter_validator(self) -> None:
         """Round-trip: mint → validate against the schema's ULID regex."""
