@@ -1,28 +1,26 @@
-"""End-to-end: `dlm train` one full cycle on the SmolLM2-135M fixture.
+"""End-to-end: `dlm.train.run()` one full cycle on SmolLM2-135M (Sprint 09).
 
-Sprint 09 DoD: write adapter + state sidecar, update manifest, assert
-training loss is finite. The mock-factory unit tests in
-`tests/unit/train/test_trainer.py` cover orchestration plumbing; this
-test exercises the real `_build_real_trainer` → SFTTrainer path that
-the unit tests pragma-skip.
+Replaces the audit-04 M4 scaffold with a real body. Exercises the live
+`_build_real_trainer` → SFTTrainer path — the one the unit suite
+pragma-skips because it demands torch, transformers, and model weights.
 
-Marked `@pytest.mark.slow` so the default `pytest` run skips it; CI
-invokes it via `pytest -m slow`.
+The shared `trained_store` fixture (Sprint 14.5) handles setup; this test
+only asserts the aftermath:
 
-Tokens of evidence this test should produce:
-- `adapter_config.json` + `adapter_model.safetensors` in `v0001/`
-- `training_state.pt` + `.sha256` that round-trips via `load_state`
-- `manifest.json` with exactly one `TrainingRunSummary` and populated
-  `content_hashes`
-- `logs/train-000001-*.jsonl` with banner + at least one step record
-
-Runs ≤20 steps with a tiny batch size so CPU/MPS wall-clock stays in
-the 1–2 minute range on a reasonable dev box.
+- Adapter version directory `v0001/` under the store carries
+  `adapter_config.json`, `adapter_model.safetensors`,
+  `training_state.pt`, and the matching `.sha256`.
+- `load_state` round-trips the sidecar (integrity: hash still matches
+  the file on disk after training wrote it).
+- `manifest.json` has exactly one `TrainingRunSummary` with populated
+  `content_hashes` (audit-04 M2 wired the delta → manifest loop).
+- `logs/train-000001-*.jsonl` exists, contains a banner + at least one
+  step record.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+import json
 
 import pytest
 
@@ -30,30 +28,43 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.mark.slow
-def test_one_cycle_on_smollm2_135m(tmp_path: Path) -> None:
-    """Full training cycle on the tiny-model fixture.
+def test_one_cycle_produces_adapter_sidecar_manifest_log(trained_store) -> None:
+    from dlm.store.manifest import load_manifest
+    from dlm.train.state_sidecar import STATE_FILENAME, STATE_SHA_FILENAME, load_state
 
-    Implementation deferred — this test asserts the plumbing exists
-    but depends on the SmolLM2-135M fixture being resolvable offline
-    AND the CI runner having ≥4GB of RAM free. Until a dedicated
-    slow-job runner is provisioned, `pytest -m slow` will collect
-    this test and skip via the xfail below when the fixture isn't
-    available.
-    """
-    from tests.fixtures.tiny_model import tiny_model_path
+    store = trained_store.store
 
-    try:
-        tiny_model_path()
-    except Exception as exc:  # pragma: no cover
-        pytest.skip(f"tiny model fixture unavailable: {exc}")
+    adapter_dir = store.resolve_current_adapter()
+    assert adapter_dir is not None, "trained_store fixture didn't set adapter/current.txt"
+    assert adapter_dir.name == "v0001", f"expected v0001, got {adapter_dir.name}"
 
-    # TODO(sprint-09-integration): flesh out the end-to-end run.
-    # Blocking:
-    #   1. Writing a synthetic `.dlm` via tests.fixtures.dlm_factory
-    #   2. `for_dlm(dlm_id, home=tmp_path).ensure_layout()`
-    #   3. `save_manifest(Manifest(dlm_id=..., base_model="smollm2-135m"))`
-    #   4. `spec = BASE_MODELS["smollm2-135m"]`
-    #   5. `plan = doctor().plan` (CI host must support bf16 or fp16)
-    #   6. `run(store, parsed, spec, plan, mode="fresh", max_steps=20)`
-    #   7. Assertions per docstring.
-    pytest.xfail("slow integration test scaffolded; body deferred to first CI slow run")
+    # PEFT artifacts.
+    assert (adapter_dir / "adapter_config.json").is_file()
+    assert (adapter_dir / "adapter_model.safetensors").is_file()
+
+    # Training-state sidecar (Sprint 09 audit F12 two-phase commit).
+    assert (adapter_dir / STATE_FILENAME).is_file()
+    assert (adapter_dir / STATE_SHA_FILENAME).is_file()
+    # `load_state` raises on sha mismatch — proves integrity survived the write.
+    state = load_state(adapter_dir)
+    assert state["global_step"] > 0
+
+    # Manifest: one TrainingRunSummary + populated content_hashes (audit-04 M2).
+    manifest = load_manifest(store.manifest)
+    assert len(manifest.training_runs) == 1, manifest.training_runs
+    run = manifest.training_runs[0]
+    assert run.run_id == 1
+    assert run.steps == state["global_step"]
+    assert run.seed == 42
+    assert manifest.content_hashes, "content_hashes empty — delta → manifest loop regressed"
+
+    # JSONL log — banner + at least one step record.
+    log_files = sorted(store.logs.glob("train-000001-*.jsonl"))
+    assert log_files, f"no train-000001 log under {store.logs}"
+    rows = [json.loads(line) for line in log_files[-1].read_text().splitlines() if line.strip()]
+    assert rows, "log file is empty"
+    row_types = {row.get("type") for row in rows}
+    assert "banner" in row_types
+    assert any(row.get("type") == "step" for row in rows), (
+        f"no step records in {log_files[-1]}: {row_types}"
+    )
