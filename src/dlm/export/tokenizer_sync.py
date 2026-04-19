@@ -38,6 +38,12 @@ if TYPE_CHECKING:
 
 _GGUF_MAGIC: Final[bytes] = b"GGUF"
 
+# Upper bound on a GGUF metadata string — chosen wildly larger than any
+# credible real value (tokens are ≤ a few hundred bytes; chat templates
+# run tens of KB at most) but small enough to reject a crafted GGUF that
+# claims a multi-GB string and drives `f.read(length)` into OOM.
+_MAX_STRING_BYTES: Final[int] = 16 * 1024 * 1024
+
 # GGUF value types per llama.cpp's gguf spec (stable v2+v3).
 _TYPE_UINT8: Final[int] = 0
 _TYPE_INT8: Final[int] = 1
@@ -198,6 +204,8 @@ def _read_u64(f: Any) -> int:
 
 def _read_string(f: Any) -> str:
     length = _read_u64(f)
+    if length > _MAX_STRING_BYTES:
+        raise struct.error(f"GGUF string length {length} exceeds bound {_MAX_STRING_BYTES}")
     raw = f.read(length)
     if len(raw) != length:
         raise struct.error("short read in string")
@@ -211,6 +219,8 @@ def _skip_value(f: Any, value_type: int) -> None:
         return
     if value_type == _TYPE_STRING:
         length = _read_u64(f)
+        if length > _MAX_STRING_BYTES:
+            raise struct.error(f"GGUF string length {length} exceeds bound {_MAX_STRING_BYTES}")
         f.seek(length, 1)
         return
     if value_type == _TYPE_ARRAY:
@@ -222,6 +232,10 @@ def _skip_value(f: Any, value_type: int) -> None:
         if elem_type == _TYPE_STRING:
             for _ in range(count):
                 length = _read_u64(f)
+                if length > _MAX_STRING_BYTES:
+                    raise struct.error(
+                        f"GGUF string length {length} exceeds bound {_MAX_STRING_BYTES}"
+                    )
                 f.seek(length, 1)
             return
         # Nested arrays aren't used by llama.cpp's vocab metadata; treat

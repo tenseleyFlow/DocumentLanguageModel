@@ -167,6 +167,44 @@ class TestReadVocabSize:
         with pytest.raises(PreflightError, match="cannot parse GGUF"):
             read_gguf_vocab_size(path)
 
+    def test_crafted_string_length_rejected(self, tmp_path: Path) -> None:
+        """A GGUF claiming a multi-GB string key must be rejected, not `f.read(huge)`."""
+        import struct as _s
+
+        header = bytearray()
+        header.extend(b"GGUF")
+        header.extend(_s.pack("<I", 3))
+        header.extend(_s.pack("<Q", 0))
+        header.extend(_s.pack("<Q", 1))  # kv_count=1
+        # Key length claims 1 TiB. File only has a few bytes after.
+        header.extend(_s.pack("<Q", 2**40))
+        header.extend(b"a")  # body truncated — the bound check should fire first
+
+        path = tmp_path / "oom_bomb.gguf"
+        path.write_bytes(bytes(header))
+        with pytest.raises(PreflightError, match="cannot parse GGUF"):
+            read_gguf_vocab_size(path)
+
+    def test_crafted_skip_string_length_rejected(self, tmp_path: Path) -> None:
+        """A GGUF whose skipped string KV claims huge length must be rejected."""
+        import struct as _s
+
+        body = bytearray()
+        _write_string(body, "to_skip")
+        body.extend(_s.pack("<I", _TYPE_STRING))
+        body.extend(_s.pack("<Q", 2**40))  # bogus length on the value
+        _write_kv_string_array(body, "tokenizer.ggml.tokens", ["a"])
+
+        header = bytearray()
+        header.extend(b"GGUF")
+        header.extend(_s.pack("<I", 3))
+        header.extend(_s.pack("<Q", 0))
+        header.extend(_s.pack("<Q", 2))  # kv_count=2
+        path = tmp_path / "skip_bomb.gguf"
+        path.write_bytes(bytes(header) + bytes(body))
+        with pytest.raises(PreflightError, match="cannot parse GGUF"):
+            read_gguf_vocab_size(path)
+
     def test_nested_array_raises(self, tmp_path: Path) -> None:
         """Array-of-array is not supported by llama.cpp's vocab metadata."""
         import struct as _s
