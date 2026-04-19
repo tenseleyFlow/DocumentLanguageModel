@@ -30,6 +30,7 @@ import tarfile
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 from dlm.pack.errors import (
     PackFormatVersionError,
@@ -46,6 +47,20 @@ from dlm.pack.layout import (
     STORE_DIR,
 )
 from dlm.pack.migrations.dispatch import apply_pending
+
+# Defense against zstd bombs: a small stream that claims a huge window
+# size decompresses slowly and can exhaust RAM. 512 MiB covers every
+# realistic dlm pack member (GGUFs chunk much smaller) while refusing
+# pathological inputs. Python's zstandard defaults to 128 MiB already;
+# we set it explicitly as a contract.
+_MAX_ZSTD_WINDOW_BYTES: Final[int] = 512 * 1024 * 1024
+
+# Defense against tar bombs: cap per-member size and total pack size.
+# A single tar entry claiming to be 1 PB is a red flag; the largest
+# legitimate member (a multi-gig base GGUF) stays well under 16 GiB.
+# 64 GiB total is absurd for a `.dlm` store; flagging it costs nothing.
+_MAX_TAR_MEMBER_BYTES: Final[int] = 16 * 1024**3
+_MAX_PACK_DECOMPRESSED_BYTES: Final[int] = 64 * 1024**3
 
 
 @dataclass(frozen=True)
@@ -147,12 +162,26 @@ def unpack(
 
 
 def _extract_tar_zstd(pack_path: Path, staging: Path) -> None:
-    """Stream-decompress the pack's zstd+tar into `staging/`."""
+    """Stream-decompress the pack's zstd+tar into `staging/` under DoS bounds.
+
+    Three defenses (audit-04 B7):
+
+    1. `max_window_size` on the zstd decompressor — refuses streams
+       that claim to need > 512 MiB decompression state.
+    2. Per-member size cap at iteration time — a tar entry claiming
+       absurd `size` fails the layout gate before we touch disk.
+    3. Total cumulative size cap — sum of member sizes must stay
+       under 64 GiB or we refuse the whole archive.
+
+    Bundled with the pre-existing `_is_unsafe_member` traversal guard
+    and `filter="data"` on extraction.
+    """
     import zstandard as zstd
 
-    dctx = zstd.ZstdDecompressor()
-    # First pass: defense-in-depth name scan. `tarfile` iterates once so
-    # we open a fresh reader below to actually extract.
+    dctx = zstd.ZstdDecompressor(max_window_size=_MAX_ZSTD_WINDOW_BYTES)
+    # First pass: defense-in-depth name scan + size bounds. `tarfile`
+    # iterates once so we open a fresh reader below to actually extract.
+    total_size = 0
     with (
         pack_path.open("rb") as fh,
         dctx.stream_reader(fh) as reader,
@@ -161,6 +190,17 @@ def _extract_tar_zstd(pack_path: Path, staging: Path) -> None:
         for member in tar:
             if _is_unsafe_member(member.name):
                 raise PackLayoutError(f"refusing to extract unsafe tar entry {member.name!r}")
+            if member.size > _MAX_TAR_MEMBER_BYTES:
+                raise PackLayoutError(
+                    f"tar entry {member.name!r} size {member.size} exceeds "
+                    f"per-member cap {_MAX_TAR_MEMBER_BYTES}"
+                )
+            total_size += max(member.size, 0)
+            if total_size > _MAX_PACK_DECOMPRESSED_BYTES:
+                raise PackLayoutError(
+                    f"pack total decompressed size exceeds cap "
+                    f"{_MAX_PACK_DECOMPRESSED_BYTES} at entry {member.name!r}"
+                )
 
     # Second pass: actually extract. Python 3.12+ defaults to the `data`
     # filter; we set it explicitly so path traversal + special-file

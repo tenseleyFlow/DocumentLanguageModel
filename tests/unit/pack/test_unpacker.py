@@ -180,6 +180,57 @@ class TestLayoutGate:
         with pytest.raises(PackLayoutError):
             unpack(out, home=tmp_path / "home")
 
+    def test_oversized_member_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Audit-04 B7: a tar entry exceeding the per-member cap is rejected
+        before we touch disk. Monkeypatches the cap down to a tiny value
+        so we can build a real fixture without writing 16 GiB."""
+        import dlm.pack.unpacker as unpacker_mod
+
+        monkeypatch.setattr(unpacker_mod, "_MAX_TAR_MEMBER_BYTES", 10)
+
+        staging = tmp_path / "s"
+        staging.mkdir()
+        # 100 bytes — 10× the patched cap.
+        big = staging / "big"
+        big.write_bytes(b"A" * 100)
+
+        out = tmp_path / "bomb.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                tar.add(big, arcname="big")
+
+        with pytest.raises(PackLayoutError, match="exceeds per-member cap"):
+            unpack(out, home=tmp_path / "home")
+
+    def test_total_decompressed_size_cap(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Audit-04 B7: the cumulative size cap fires even when each member
+        fits under the per-member cap."""
+        import dlm.pack.unpacker as unpacker_mod
+
+        monkeypatch.setattr(unpacker_mod, "_MAX_TAR_MEMBER_BYTES", 100)
+        monkeypatch.setattr(unpacker_mod, "_MAX_PACK_DECOMPRESSED_BYTES", 150)
+
+        staging = tmp_path / "s"
+        staging.mkdir()
+        # Two 100-byte members — each under the cap, together over it.
+        (staging / "a").write_bytes(b"A" * 100)
+        (staging / "b").write_bytes(b"B" * 100)
+
+        out = tmp_path / "two.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                for name in ("a", "b"):
+                    tar.add(staging / name, arcname=name)
+
+        with pytest.raises(PackLayoutError, match="total decompressed size"):
+            unpack(out, home=tmp_path / "home")
+
     def test_unsafe_tar_entry_refused(self, tmp_path: Path) -> None:
         """An entry whose path escapes the extraction root is rejected."""
         staging = tmp_path / "s"
