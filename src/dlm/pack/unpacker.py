@@ -96,6 +96,12 @@ def unpack(
         home_resolved = dlm_home(home)
         target_store = home_resolved / "store" / pack_manifest.dlm_id
 
+        target_store.parent.mkdir(parents=True, exist_ok=True)
+        # Atomic-swap install: stage the old store out of the way first
+        # so an interrupted move doesn't leave the caller with "no store
+        # at all" (audit-04 B6). `.old-<pid>` isolates concurrent
+        # unpacks and keeps the original recoverable on step-2 failure.
+        quarantine: Path | None = None
         if target_store.exists():
             if not force:
                 raise PackIntegrityError(
@@ -103,9 +109,25 @@ def unpack(
                     expected="<not-present>",
                     actual="<exists>",
                 )
-            shutil.rmtree(target_store)
-        target_store.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(migrated_root / STORE_DIR), str(target_store))
+            import os
+
+            quarantine = target_store.parent / f".{target_store.name}.old-{os.getpid()}"
+            if quarantine.exists():
+                shutil.rmtree(quarantine)
+            target_store.rename(quarantine)
+
+        try:
+            shutil.move(str(migrated_root / STORE_DIR), str(target_store))
+        except Exception:
+            # Roll back: restore the quarantined old store so the caller
+            # doesn't see a disappeared store on failure.
+            if quarantine is not None and not target_store.exists():
+                quarantine.rename(target_store)
+                quarantine = None
+            raise
+
+        if quarantine is not None:
+            shutil.rmtree(quarantine, ignore_errors=True)
 
         dlm_src = _find_dlm_file(migrated_root / DLM_DIR)
         out_dir.mkdir(parents=True, exist_ok=True)

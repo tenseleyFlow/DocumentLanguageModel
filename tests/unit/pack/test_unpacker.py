@@ -216,6 +216,39 @@ class TestForce:
         unpack(pack_path, home=home, force=True, out_dir=tmp_path / "out2")
         assert not marker.exists()
 
+    def test_move_failure_rolls_back_to_prior_store(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Audit-04 B6: interrupted install must not leave caller with no store.
+
+        Before the fix: `rmtree(old); move(new)` — failure between them
+        wipes the old store and leaves a gap. After: old is quarantined,
+        move is attempted, and on failure the quarantine is restored.
+        """
+        import shutil as shutil_mod
+
+        pack_path = _synth_pack(tmp_path)
+        home = tmp_path / "home"
+        unpack(pack_path, home=home, out_dir=tmp_path / "out1")
+        target = home / "store" / "01TEST"
+        (target / "sentinel.txt").write_text("pre-existing")
+
+        # Force the move to fail — simulating power loss / OOM mid-install.
+        def _boom(*_a: object, **_kw: object) -> None:
+            raise OSError("simulated crash during move")
+
+        monkeypatch.setattr(shutil_mod, "move", _boom)
+
+        with pytest.raises(OSError, match="simulated crash"):
+            unpack(pack_path, home=home, force=True, out_dir=tmp_path / "out2")
+
+        # Prior store must still be present and intact.
+        assert target.exists()
+        assert (target / "sentinel.txt").read_text() == "pre-existing"
+        # No orphan quarantine left behind.
+        orphans = [p for p in target.parent.iterdir() if p.name.startswith(".01TEST.old-")]
+        assert orphans == [], f"quarantine not cleaned up: {orphans}"
+
 
 # Keep tempfile import reachable for downstream contributors extending this file.
 _ = tempfile
