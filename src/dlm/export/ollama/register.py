@@ -19,6 +19,7 @@ Modelfile (`./base.gguf`, `./adapter.gguf`) resolve. 10-minute timeout.
 from __future__ import annotations
 
 import os
+import re
 import subprocess  # nosec B404
 from pathlib import Path
 
@@ -28,6 +29,39 @@ from dlm.store.lock import exclusive
 
 _DEFAULT_TIMEOUT_SECONDS = 600.0
 _DEFAULT_LOCK_TIMEOUT_SECONDS = 120.0
+
+# Conservative match for `[namespace/]name[:tag]` per Ollama's model-name
+# grammar — alphanumerics, `.`, `-`, `_`, with optional single namespace
+# segment and optional tag. Rejects shell metacharacters, whitespace,
+# leading dots, and traversal (`..`) before Ollama ever sees them so we
+# fail fast with a useful error instead of a mid-registry subprocess crash.
+_NAME_SEGMENT = r"[a-zA-Z0-9][a-zA-Z0-9._-]*"
+_NAME_RE = re.compile(rf"^(?:{_NAME_SEGMENT}/)?{_NAME_SEGMENT}(?::{_NAME_SEGMENT})?$")
+_MAX_NAME_LEN = 128
+
+
+def _validate_name(name: str) -> None:
+    if not name or len(name) > _MAX_NAME_LEN:
+        raise OllamaCreateError(
+            stdout="",
+            stderr=(
+                f"ollama model name is empty or exceeds {_MAX_NAME_LEN} chars; "
+                "use `[namespace/]name[:tag]` with alphanumerics, `.`, `-`, `_`."
+            ),
+        )
+    if ".." in name:
+        raise OllamaCreateError(
+            stdout="",
+            stderr=f"ollama model name {name!r} contains `..` (path traversal).",
+        )
+    if not _NAME_RE.match(name):
+        raise OllamaCreateError(
+            stdout="",
+            stderr=(
+                f"ollama model name {name!r} does not match "
+                "`[namespace/]name[:tag]` with alphanumerics, `.`, `-`, `_`."
+            ),
+        )
 
 
 def ollama_lock_path(dlm_home: Path | None = None) -> Path:
@@ -58,6 +92,7 @@ def ollama_create(
 
     `binary` / `dlm_home` are test hooks.
     """
+    _validate_name(name)
     exe = binary or locate_ollama()
     lock_path = ollama_lock_path(dlm_home)
 

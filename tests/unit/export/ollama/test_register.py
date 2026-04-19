@@ -130,6 +130,92 @@ class TestOllamaCreate:
         assert lock_observed["existed"]
 
 
+class TestNameValidation:
+    """`name` is validated before subprocess runs — audit-04 F5."""
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "dlm",
+            "dlm-01test",
+            "dlm-01test:v0001",
+            "user/dlm",
+            "user/dlm:latest",
+            "a.b.c",
+            "A",
+        ],
+    )
+    def test_valid_names_pass(self, tmp_path: Path, name: str) -> None:
+        exe = tmp_path / "ollama"
+        exe.write_text("")
+        modelfile = tmp_path / "Modelfile"
+        modelfile.write_text("x")
+        with patch(
+            "dlm.export.ollama.register.subprocess.run",
+            return_value=_ok_proc(),
+        ):
+            ollama_create(
+                name=name,
+                modelfile_path=modelfile,
+                cwd=tmp_path,
+                binary=exe,
+                dlm_home=tmp_path,
+            )
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "",
+            "foo; rm -rf /",
+            "foo bar",
+            "foo\nbar",
+            "../evil",
+            "../../etc/passwd",
+            "$(whoami)",
+            "`whoami`",
+            ".hidden",
+            "-dashstart",
+            "a/b/c",  # only one namespace segment allowed
+            "a:b:c",  # only one tag segment allowed
+        ],
+    )
+    def test_invalid_names_raise_before_subprocess(self, tmp_path: Path, name: str) -> None:
+        exe = tmp_path / "ollama"
+        exe.write_text("")
+        modelfile = tmp_path / "Modelfile"
+        modelfile.write_text("x")
+        with (
+            patch("dlm.export.ollama.register.subprocess.run") as mock_run,
+            pytest.raises(OllamaCreateError),
+        ):
+            ollama_create(
+                name=name,
+                modelfile_path=modelfile,
+                cwd=tmp_path,
+                binary=exe,
+                dlm_home=tmp_path,
+            )
+        assert mock_run.call_count == 0
+
+    def test_overlong_name_rejected(self, tmp_path: Path) -> None:
+        exe = tmp_path / "ollama"
+        exe.write_text("")
+        modelfile = tmp_path / "Modelfile"
+        modelfile.write_text("x")
+        with (
+            patch("dlm.export.ollama.register.subprocess.run") as mock_run,
+            pytest.raises(OllamaCreateError, match="exceeds"),
+        ):
+            ollama_create(
+                name="a" * 200,
+                modelfile_path=modelfile,
+                cwd=tmp_path,
+                binary=exe,
+                dlm_home=tmp_path,
+            )
+        assert mock_run.call_count == 0
+
+
 class TestLockContention:
     def test_held_lock_blocks_second_caller(self, tmp_path: Path) -> None:
         """A second caller times out while the store-lock holds the file."""
