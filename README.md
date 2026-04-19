@@ -7,8 +7,10 @@ No telemetry, no uploads, no cloud. Built on PyTorch + HuggingFace with a
 hardware-aware planner that picks precision, attention, and batching for your
 box.
 
-**Status:** pre-alpha. The foundation (CLI, document parser, content-addressed
-store, hardware doctor) is landing now; real training lands next.
+**Status:** pre-release. The full v1.0 command surface is wired —
+`init`, `train`, `prompt`, `export`, `pack`, `unpack`, `doctor`,
+`show`, `migrate`. Reproducibility-lock and docs polish are the
+remaining Phase 3 work before a tagged release.
 
 ## What it does
 
@@ -56,8 +58,6 @@ is pinned in the CLI; `dlm doctor` reports it).
 
 ## Quickstart
 
-Once training lands (Sprint 9 — not shipped yet), the loop is:
-
 ```sh
 uv run dlm init mydoc.dlm                 # scaffold a new .dlm
 # edit mydoc.dlm — write prose, add ### Q / ### A pairs, etc.
@@ -67,8 +67,10 @@ uv run dlm export mydoc.dlm --name mydoc  # register with Ollama
 ollama run mydoc                          # use it
 ```
 
-Today, `dlm doctor` and the `.dlm` parser surface are functional; other
-subcommands are stubs that report which release will implement them.
+`dlm pack mydoc.dlm` produces a portable `.dlm.pack` bundle you can
+hand off to another machine; `dlm unpack` installs it on the other end.
+`dlm show mydoc.dlm` prints training history, exports, and adapter
+state; `dlm doctor` reports the resolved hardware plan.
 
 ## Principles
 
