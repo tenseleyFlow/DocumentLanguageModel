@@ -110,27 +110,27 @@ class TestVersionGating:
         with pytest.raises(DlmVersionError, match="newer than this parser"):
             parse_text(text)
 
-    def test_sub_current_version_points_at_dlm_migrate(self) -> None:
-        """Audit-02 M5: the sub-CURRENT branch of _check_version must
-        surface a `dlm migrate` pointer (Sprint 12b hand-off).
+    def test_sub_current_version_without_migrator_refuses(self) -> None:
+        """Sprint 12b: sub-CURRENT documents route through the migration
+        dispatcher; a gap in the `MIGRATORS` registry raises
+        `UnsupportedMigrationError` (subclass of `DlmVersionError`).
 
-        `dlm_version: 0` exercises the migration-pointer branch;
-        pydantic's `ge=1` constraint rejects `0` as a schema error before
-        the version check fires, so we use a positive value that is still
-        less than CURRENT once CURRENT >= 2. Until Sprint 18 bumps
-        CURRENT, we simulate by monkey-patching the module constant.
+        Simulate CURRENT=2 with no v1 migrator registered; the dispatcher
+        refuses to silently accept a v1 dict. The coverage test in
+        `tests/unit/doc/test_migrations.py` is the static enforcement;
+        this is the runtime gate.
         """
-        from dlm.doc import parser as parser_module
+        from dlm.doc import versioned as versioned_module
+        from dlm.doc.errors import UnsupportedMigrationError
 
-        # Feed a `dlm_version: 1` doc while CURRENT is temporarily 2.
         text = f"---\ndlm_id: {VALID_ULID}\nbase_model: smollm2-135m\ndlm_version: 1\n---\n"
-        original = parser_module.CURRENT_SCHEMA_VERSION
-        parser_module.CURRENT_SCHEMA_VERSION = original + 1
+        original = versioned_module.CURRENT_SCHEMA_VERSION
+        versioned_module.CURRENT_SCHEMA_VERSION = original + 1
         try:
-            with pytest.raises(DlmVersionError, match="dlm migrate"):
+            with pytest.raises(UnsupportedMigrationError, match="no migrator"):
                 parse_text(text)
         finally:
-            parser_module.CURRENT_SCHEMA_VERSION = original
+            versioned_module.CURRENT_SCHEMA_VERSION = original
 
 
 class TestFenceGrammar:
