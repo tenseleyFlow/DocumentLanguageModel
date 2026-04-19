@@ -64,6 +64,8 @@ packages = ["src/dlm"]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
+# Vendored third-party code (llama.cpp) — don't lint or format it.
+extend-exclude = ["vendor/llama.cpp"]
 
 [tool.ruff.lint]
 select = [
