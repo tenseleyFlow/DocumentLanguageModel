@@ -21,22 +21,32 @@ from dlm.base_models.errors import (
     ProbeResult,
     UnknownBaseModelError,
 )
+from dlm.base_models.license import (
+    AcceptanceVia,
+    LicenseAcceptance,
+    is_gated,
+    require_acceptance,
+)
 from dlm.base_models.registry import BASE_MODELS, known_keys
 from dlm.base_models.resolver import resolve, resolve_hf
 from dlm.base_models.schema import BaseModelSpec
 
 __all__ = [
     "BASE_MODELS",
+    "AcceptanceVia",
     "BaseModelError",
     "BaseModelSpec",
     "DownloadResult",
     "GatedModelError",
+    "LicenseAcceptance",
     "ProbeFailedError",
     "ProbeReport",
     "ProbeResult",
     "UnknownBaseModelError",
     "download_spec",
+    "is_gated",
     "known_keys",
+    "require_acceptance",
     "resolve",
     "resolve_hf",
     "sha256_of_directory",
