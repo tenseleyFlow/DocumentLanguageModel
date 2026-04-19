@@ -80,3 +80,19 @@ class TestRoundTrip:
         payload = original.model_dump(mode="json")
         restored = DlmLock.model_validate(payload)
         assert restored == original
+
+
+class TestLockErrors:
+    def test_lock_validation_error_joins_reasons(self) -> None:
+        from pathlib import Path
+
+        from dlm.lock.errors import LockValidationError
+
+        exc = LockValidationError(
+            path=Path("/tmp/dlm.lock"),
+            reasons=["torch drift", "base revision changed"],
+        )
+        assert exc.path == Path("/tmp/dlm.lock")
+        assert exc.reasons == ["torch drift", "base revision changed"]
+        assert "torch drift" in str(exc)
+        assert "base revision changed" in str(exc)

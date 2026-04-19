@@ -159,6 +159,14 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=95
 
+      - name: Coverage gate — src/dlm/lock ≥ 95% (Sprint 15)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          uv run pytest tests/unit/lock \
+            --cov=src/dlm/lock \
+            --cov-report=term-missing \
+            --cov-fail-under=95
+
   no-network-sandbox:
     # audit F13: dlm init / doctor / show must work with zero outbound network.
     name: no-network sandbox (ubuntu-latest)
