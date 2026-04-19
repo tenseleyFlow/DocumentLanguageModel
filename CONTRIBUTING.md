@@ -92,3 +92,5 @@ A few things we actively don't want:
 - Telemetry or network calls outside of model download. Ever.
 
 Thanks again — reach out in issues if anything's unclear.
+
+-mfw
