@@ -39,7 +39,15 @@ def validate_versioned(raw: dict[str, object], *, path: Path | None = None) -> D
             applicable migrations.
     """
     version = raw.get("dlm_version", 1)
-    if isinstance(version, int) and version > CURRENT_SCHEMA_VERSION:
+    # `isinstance(v, int)` is True for `bool`, so exclude it explicitly —
+    # `dlm_version: true` would otherwise coerce to version 1 silently.
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise SchemaValidationError(
+            f"dlm_version must be an integer, got {type(version).__name__}",
+            path=path,
+            line=2,
+        )
+    if version > CURRENT_SCHEMA_VERSION:
         raise DlmVersionError(
             f"dlm_version {version} is newer than this parser "
             f"({CURRENT_SCHEMA_VERSION}); upgrade dlm or check the source's schema",

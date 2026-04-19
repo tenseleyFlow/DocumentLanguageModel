@@ -53,6 +53,24 @@ class TestFutureVersion:
             )
 
 
+class TestMalformedVersionField:
+    """`dlm_version` must be an `int` — strings/floats/bools get caught early."""
+
+    @pytest.mark.parametrize(
+        "bad",
+        ["1", "5", 2.0, True, False, None, [1]],
+    )
+    def test_non_int_version_raises_schema_error(self, bad: object) -> None:
+        with pytest.raises(SchemaValidationError, match="dlm_version must be an integer"):
+            validate_versioned(
+                {
+                    "dlm_id": _VALID_ULID,
+                    "base_model": "smollm2-135m",
+                    "dlm_version": bad,
+                }
+            )
+
+
 class TestMigratedPath:
     def test_migration_applied_before_pydantic(self, scratch_registry: None) -> None:
         """A registered v1 migrator rewrites the dict before validation."""
