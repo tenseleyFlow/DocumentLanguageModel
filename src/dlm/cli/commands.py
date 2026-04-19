@@ -372,6 +372,24 @@ def export_cmd(
             ),
         ),
     ] = False,
+    draft: Annotated[
+        str | None,
+        typer.Option(
+            "--draft",
+            help=(
+                "Speculative-decoding draft model Ollama tag "
+                "(e.g. qwen2.5:0.5b). Default uses the registered pair "
+                "for this base; override here to pick a custom draft."
+            ),
+        ),
+    ] = None,
+    no_draft: Annotated[
+        bool,
+        typer.Option(
+            "--no-draft",
+            help="Suppress PARAMETER draft_model emission even when a pair is registered.",
+        ),
+    ] = False,
     skip_ollama: Annotated[
         bool,
         typer.Option(
@@ -412,6 +430,10 @@ def export_cmd(
     from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
+
+    if draft is not None and no_draft:
+        console.print("[red]error:[/red] --draft and --no-draft are mutually exclusive; pick one.")
+        raise typer.Exit(code=2)
 
     parsed = parse_file(path)
     store = for_dlm(parsed.frontmatter.dlm_id)
@@ -466,6 +488,8 @@ def export_cmd(
             training_sequence_len=parsed.frontmatter.training.sequence_len,
             override_temperature=parsed.frontmatter.export.default_temperature,
             override_top_p=parsed.frontmatter.export.default_top_p,
+            draft_override=draft,
+            draft_disabled=no_draft,
         )
     except UnsafeMergeError as exc:
         console.print(f"[red]merge:[/red] {exc}")

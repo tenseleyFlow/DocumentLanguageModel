@@ -147,6 +147,8 @@ def run_export(
     training_sequence_len: int | None = None,
     override_temperature: float | None = None,
     override_top_p: float | None = None,
+    draft_override: str | None = None,
+    draft_disabled: bool = False,
 ) -> ExportResult:
     """Execute one GGUF export end-to-end.
 
@@ -273,6 +275,8 @@ def run_export(
             training_sequence_len=training_sequence_len,
             override_temperature=override_temperature,
             override_top_p=override_top_p,
+            draft_override=draft_override,
+            draft_disabled=draft_disabled,
         )
 
     # 7. Write export_manifest.json.
@@ -508,12 +512,15 @@ def _run_ollama_stage(
     training_sequence_len: int | None,
     override_temperature: float | None,
     override_top_p: float | None,
+    draft_override: str | None,
+    draft_disabled: bool,
 ) -> tuple[Path, str, str | None, str | None]:
     """Render Modelfile → ollama_create → optional ollama_run (smoke).
 
     Returns `(modelfile_path, ollama_name, ollama_version, smoke_first_line)`.
     """
     from dlm import __version__ as dlm_version
+    from dlm.export.draft_registry import resolve_draft
     from dlm.export.ollama import (
         ModelfileContext,
         check_ollama_version,
@@ -530,6 +537,9 @@ def _run_ollama_stage(
     detected = check_ollama_version()
     ver_str = f"{detected[0]}.{detected[1]}.{detected[2]}"
 
+    # Sprint 12.5: resolve the speculative-decoding draft, if any.
+    draft_tag = resolve_draft(spec, override=draft_override, disabled=draft_disabled)
+
     # Modelfile rendering.
     ctx = ModelfileContext(
         spec=spec,
@@ -545,6 +555,7 @@ def _run_ollama_stage(
         training_sequence_len=training_sequence_len,
         override_temperature=override_temperature,
         override_top_p=override_top_p,
+        draft_model_ollama_name=draft_tag,
     )
     modelfile_text = render_modelfile(ctx)
     modelfile_path = export_dir / "Modelfile"

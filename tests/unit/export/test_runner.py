@@ -464,6 +464,64 @@ class TestImatrixWiring:
         assert "--imatrix" in quantize[0]
 
 
+class TestDraftWiring:
+    """Sprint 12.5: runner routes draft override/disable through to the Modelfile."""
+
+    def test_override_tag_written_to_modelfile(self, tmp_path: Path) -> None:
+        """--draft custom:tag propagates to PARAMETER draft_model."""
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M", ollama_name="mydoc")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+
+        # skip_ollama=True stops before ollama_create but *after* the
+        # Modelfile is rendered? Actually no — the Modelfile is only
+        # rendered when skip_ollama=False. Switch to a mock ollama_create.
+        def _ollama_create(*, name: str, modelfile_path: Path, cwd: Path) -> None:
+            _ = name, cwd
+            assert modelfile_path.is_file()
+            text = modelfile_path.read_text()
+            assert "PARAMETER draft_model custom:tag" in text
+
+        run_export(
+            store,
+            _SPEC,
+            plan,
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=False,
+            skip_smoke=True,
+            vocab_checker=lambda _a, _g: None,
+            embedding_checker=lambda _a, _g: None,
+            ollama_create_runner=_ollama_create,
+            draft_override="custom:tag",
+        )
+
+    def test_no_draft_suppresses_emission(self, tmp_path: Path) -> None:
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M", ollama_name="mydoc")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+
+        def _ollama_create(*, name: str, modelfile_path: Path, cwd: Path) -> None:
+            _ = name, cwd
+            assert "PARAMETER draft_model" not in modelfile_path.read_text()
+
+        run_export(
+            store,
+            _SPEC,
+            plan,
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=False,
+            skip_smoke=True,
+            vocab_checker=lambda _a, _g: None,
+            embedding_checker=lambda _a, _g: None,
+            ollama_create_runner=_ollama_create,
+            draft_disabled=True,
+        )
+
+
 class TestDefaultEmbeddingCheck:
     """Exercise `_default_check_embedding_rows`'s skip path (audit-04 Q2)."""
 
