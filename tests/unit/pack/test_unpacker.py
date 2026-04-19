@@ -1,0 +1,221 @@
+"""`dlm.pack.unpacker` — extract + verify + header gate + install (Sprint 14)."""
+
+from __future__ import annotations
+
+import json
+import tarfile
+import tempfile
+from pathlib import Path
+
+import pytest
+import zstandard as zstd
+
+from dlm.pack.errors import (
+    PackFormatVersionError,
+    PackIntegrityError,
+    PackLayoutError,
+)
+from dlm.pack.integrity import rollup_sha256, write_checksums
+from dlm.pack.layout import (
+    HEADER_FILENAME,
+    MANIFEST_FILENAME,
+    SHA256_FILENAME,
+)
+from dlm.pack.unpacker import unpack
+
+
+def _synth_pack(
+    tmp_path: Path,
+    *,
+    pack_format_version: int = 1,
+    content_override: bytes | None = None,
+    skip_entry: str | None = None,
+) -> Path:
+    """Hand-assemble a tarball/zstd pack with full control over shape.
+
+    Used to exercise the unpacker's header/layout/checksum gates
+    without running the real packer (which always produces valid
+    output).
+    """
+    staging = tmp_path / "stage"
+    staging.mkdir()
+    dlm_dir = staging / "dlm"
+    dlm_dir.mkdir()
+    (dlm_dir / "mydoc.dlm").write_text("---\ndlm_id: 01TEST\nbase_model: smollm2-135m\n---\n")
+
+    store_dir = staging / "store"
+    store_dir.mkdir()
+    (store_dir / "manifest.json").write_text(
+        json.dumps({"dlm_id": "01TEST", "base_model": "smollm2-135m"})
+    )
+
+    header = {
+        "pack_format_version": pack_format_version,
+        "created_at": "2026-04-19T12:00:00",
+        "tool_version": "0.1.0",
+        "content_type": "minimal",
+        "platform_hint": "linux",
+        "licensee_acceptance_url": None,
+    }
+    (staging / HEADER_FILENAME).write_text(json.dumps(header))
+
+    checksums = write_checksums(staging, exclude=(SHA256_FILENAME, MANIFEST_FILENAME))
+    pack_manifest = {
+        "dlm_id": "01TEST",
+        "base_model": "smollm2-135m",
+        "base_model_revision": None,
+        "base_model_sha256": None,
+        "adapter_version": 0,
+        "entries": {rel: (staging / rel).stat().st_size for rel in checksums},
+        "content_sha256": rollup_sha256(checksums),
+    }
+    (staging / MANIFEST_FILENAME).write_text(json.dumps(pack_manifest))
+
+    # Optional post-write mutations for negative tests.
+    if content_override is not None:
+        (staging / "dlm" / "mydoc.dlm").write_bytes(content_override)
+    if skip_entry is not None:
+        (staging / skip_entry).unlink()
+
+    out = tmp_path / "synth.pack"
+    cctx = zstd.ZstdCompressor(level=1)
+    with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+        with tarfile.open(fileobj=compressor, mode="w|") as tar:
+            for path in sorted(staging.rglob("*")):
+                if path.is_file():
+                    tar.add(path, arcname=path.relative_to(staging).as_posix())
+    return out
+
+
+class TestHappyPath:
+    def test_unpacks_into_dlm_home(self, tmp_path: Path) -> None:
+        pack_path = _synth_pack(tmp_path)
+        result = unpack(pack_path, home=tmp_path / "home", out_dir=tmp_path / "out")
+        assert result.dlm_id == "01TEST"
+        assert result.store_path == tmp_path / "home" / "store" / "01TEST"
+        assert (result.store_path / "manifest.json").exists()
+        assert result.dlm_path == tmp_path / "out" / "mydoc.dlm"
+        assert result.dlm_path.read_text().startswith("---")
+
+
+class TestVersionGate:
+    def test_newer_than_current_refused(self, tmp_path: Path) -> None:
+        pack_path = _synth_pack(tmp_path, pack_format_version=999)
+        with pytest.raises(PackFormatVersionError):
+            unpack(pack_path, home=tmp_path / "home")
+
+
+class TestIntegrity:
+    def test_corrupted_pack_refused(self, tmp_path: Path) -> None:
+        """Build a pack whose .dlm content disagrees with the recorded checksum."""
+        staging = tmp_path / "stage"
+        staging.mkdir()
+        (staging / "dlm").mkdir()
+        (staging / "dlm" / "x.dlm").write_text("original")
+        (staging / "store").mkdir()
+        (staging / "store" / "manifest.json").write_text("{}")
+        (staging / HEADER_FILENAME).write_text(
+            json.dumps(
+                {
+                    "pack_format_version": 1,
+                    "created_at": "2026-04-19T12:00:00",
+                    "tool_version": "0.1.0",
+                    "content_type": "minimal",
+                    "platform_hint": "linux",
+                    "licensee_acceptance_url": None,
+                }
+            )
+        )
+
+        # Freeze checksums against the original content, then tamper.
+        write_checksums(staging, exclude=(SHA256_FILENAME, MANIFEST_FILENAME))
+        (staging / "dlm" / "x.dlm").write_text("TAMPERED!")
+
+        # Manifest is required for layout but its content_sha256 isn't
+        # rechecked at unpack (integrity gate catches the tamper first).
+        (staging / MANIFEST_FILENAME).write_text(
+            json.dumps(
+                {
+                    "dlm_id": "01TEST",
+                    "base_model": "smollm2-135m",
+                    "base_model_revision": None,
+                    "base_model_sha256": None,
+                    "adapter_version": 0,
+                    "entries": {},
+                    "content_sha256": "0" * 64,
+                }
+            )
+        )
+
+        out = tmp_path / "tampered.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                for path in sorted(staging.rglob("*")):
+                    if path.is_file():
+                        tar.add(path, arcname=path.relative_to(staging).as_posix())
+
+        with pytest.raises(PackIntegrityError):
+            unpack(out, home=tmp_path / "home")
+
+
+class TestLayoutGate:
+    def test_missing_header_refused(self, tmp_path: Path) -> None:
+        # Build a tarball without PACK_HEADER.json.
+        staging = tmp_path / "stage"
+        staging.mkdir()
+        (staging / "dlm").mkdir()
+        (staging / "dlm" / "x.dlm").write_text("x")
+        (staging / "store").mkdir()
+        (staging / "store" / "manifest.json").write_text("{}")
+        (staging / MANIFEST_FILENAME).write_text("{}")
+        write_checksums(staging, exclude=(SHA256_FILENAME, MANIFEST_FILENAME))
+        out = tmp_path / "no-header.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                for path in sorted(staging.rglob("*")):
+                    if path.is_file():
+                        tar.add(path, arcname=path.relative_to(staging).as_posix())
+        with pytest.raises(PackLayoutError):
+            unpack(out, home=tmp_path / "home")
+
+    def test_unsafe_tar_entry_refused(self, tmp_path: Path) -> None:
+        """An entry whose path escapes the extraction root is rejected."""
+        staging = tmp_path / "s"
+        staging.mkdir()
+        evil = staging / "evil"
+        evil.write_text("x")
+        out = tmp_path / "evil.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                info = tar.gettarinfo(evil, arcname="../escape")
+                with evil.open("rb") as src:
+                    tar.addfile(info, src)
+        with pytest.raises(PackLayoutError):
+            unpack(out, home=tmp_path / "home")
+
+
+class TestForce:
+    def test_existing_store_refused_without_force(self, tmp_path: Path) -> None:
+        pack_path = _synth_pack(tmp_path)
+        home = tmp_path / "home"
+        unpack(pack_path, home=home, out_dir=tmp_path / "out1")
+        # Second unpack without force fails because the store exists.
+        with pytest.raises(PackIntegrityError):
+            unpack(pack_path, home=home, out_dir=tmp_path / "out2")
+
+    def test_force_replaces_existing_store(self, tmp_path: Path) -> None:
+        pack_path = _synth_pack(tmp_path)
+        home = tmp_path / "home"
+        unpack(pack_path, home=home, out_dir=tmp_path / "out1")
+        # Add a marker to the prior store; --force should wipe it.
+        marker = home / "store" / "01TEST" / "marker.txt"
+        marker.write_text("prior")
+        unpack(pack_path, home=home, force=True, out_dir=tmp_path / "out2")
+        assert not marker.exists()
+
+
+# Keep tempfile import reachable for downstream contributors extending this file.
+_ = tempfile
