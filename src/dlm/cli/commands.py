@@ -205,14 +205,159 @@ def prompt_cmd(
 
 def export_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm file to export.")],
-    quant: Annotated[str, typer.Option("--quant")] = "Q4_K_M",
+    quant: Annotated[
+        str | None,
+        typer.Option("--quant", help="GGUF quant level (defaults to frontmatter)."),
+    ] = None,
     merged: Annotated[bool, typer.Option("--merged")] = False,
     dequantize: Annotated[bool, typer.Option("--dequantize")] = False,
     name: Annotated[str | None, typer.Option("--name", help="Ollama model name.")] = None,
+    no_template: Annotated[
+        bool,
+        typer.Option("--no-template", help="Skip writing TEMPLATE into the Modelfile."),
+    ] = False,
     no_smoke: Annotated[bool, typer.Option("--no-smoke")] = False,
+    skip_ollama: Annotated[
+        bool,
+        typer.Option(
+            "--skip-ollama",
+            help="Emit GGUFs + manifest only; do not touch the Ollama binary.",
+        ),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", help="Log each subprocess command as it launches."),
+    ] = False,
 ) -> None:
     """Export the adapter to an Ollama-registered model."""
-    _stub("11+12", "dlm export")
+    from collections.abc import Sequence
+
+    from rich.console import Console
+
+    from dlm.base_models import GatedModelError, download_spec
+    from dlm.base_models import resolve as resolve_base_model
+    from dlm.doc.parser import parse_file
+    from dlm.export import (
+        ExportError,
+        PreflightError,
+        SubprocessError,
+        UnsafeMergeError,
+        VendoringError,
+        resolve_export_plan,
+        run_export,
+    )
+    from dlm.export.ollama import (
+        OllamaBinaryNotFoundError,
+        OllamaCreateError,
+        OllamaError,
+        OllamaSmokeError,
+        OllamaVersionError,
+    )
+    from dlm.export.quantize import run_checked
+    from dlm.store.paths import for_dlm
+
+    console = Console(stderr=True)
+
+    parsed = parse_file(path)
+    try:
+        spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
+    except GatedModelError as exc:
+        console.print(f"[red]license:[/red] base model {parsed.frontmatter.base_model!r} is gated.")
+        if exc.license_url:
+            console.print(f"  review the license at: {exc.license_url}")
+        console.print(
+            "  accept via `dlm train --i-accept-license` before exporting."
+        )
+        raise typer.Exit(code=1) from exc
+
+    try:
+        plan = resolve_export_plan(
+            cli_quant=quant,
+            cli_merged=merged,
+            cli_dequantize=dequantize,
+            cli_no_template=no_template,
+            cli_ollama_name=name,
+            frontmatter_default_quant=parsed.frontmatter.export.default_quant,
+        )
+    except ValueError as exc:
+        console.print(f"[red]export:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+
+    store = for_dlm(parsed.frontmatter.dlm_id)
+    store.ensure_layout()
+
+    try:
+        cached = download_spec(spec, local_files_only=True)
+    except RuntimeError as exc:
+        console.print(
+            f"[red]export:[/red] base model not in local cache — run `dlm train` first.\n  {exc}"
+        )
+        raise typer.Exit(code=1) from exc
+
+    def _verbose_runner(cmd: Sequence[str]) -> object:
+        console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
+        return run_checked(cmd)
+
+    try:
+        result = run_export(
+            store,
+            spec,
+            plan,
+            cached_base_dir=cached.path,
+            subprocess_runner=_verbose_runner if verbose else None,
+            skip_ollama=skip_ollama,
+            skip_smoke=no_smoke,
+            source_dlm_path=path.resolve(),
+        )
+    except UnsafeMergeError as exc:
+        console.print(f"[red]merge:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except VendoringError as exc:
+        console.print(
+            f"[red]vendor:[/red] {exc}\n"
+            "  run `scripts/bump-llama-cpp.sh build` or "
+            "`git submodule update --init --recursive`."
+        )
+        raise typer.Exit(code=1) from exc
+    except PreflightError as exc:
+        console.print(f"[red]preflight[{exc.probe}]:[/red] {exc.detail}")
+        raise typer.Exit(code=1) from exc
+    except SubprocessError as exc:
+        console.print(f"[red]subprocess:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except OllamaBinaryNotFoundError as exc:
+        console.print(
+            f"[red]ollama:[/red] {exc}\n"
+            "  install from https://ollama.com/download "
+            "or re-run with `--skip-ollama`."
+        )
+        raise typer.Exit(code=1) from exc
+    except OllamaVersionError as exc:
+        console.print(f"[red]ollama:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except OllamaCreateError as exc:
+        console.print(f"[red]ollama create:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except OllamaSmokeError as exc:
+        console.print(
+            f"[red]smoke:[/red] {exc}\n  re-run with `--no-smoke` to skip the smoke test."
+        )
+        raise typer.Exit(code=1) from exc
+    except OllamaError as exc:
+        console.print(f"[red]ollama:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except ExportError as exc:
+        console.print(f"[red]export:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    cached_tag = " [dim](cached base)[/dim]" if result.cached else ""
+    console.print(f"[green]exported:[/green] {result.export_dir}{cached_tag}")
+    for artifact in result.artifacts:
+        console.print(f"  {artifact.name}")
+    if result.ollama_name:
+        console.print(f"ollama:  {result.ollama_name} (v{result.ollama_version})")
+    if result.smoke_output_first_line:
+        console.print(f"smoke:   {result.smoke_output_first_line}")
 
 
 def pack_cmd(
