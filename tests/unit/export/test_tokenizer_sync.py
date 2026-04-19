@@ -21,6 +21,7 @@ from dlm.export.tokenizer_sync import (
 # --- GGUF synthesis -------------------------------------------------------
 
 _TYPE_UINT32 = 4
+_TYPE_FLOAT32 = 6
 _TYPE_STRING = 8
 _TYPE_ARRAY = 9
 _TYPE_UINT64 = 10
@@ -128,6 +129,88 @@ class TestReadVocabSize:
         path.write_bytes(b"GGUF" + b"\x00\x00")
         with pytest.raises(PreflightError, match="cannot parse GGUF"):
             read_gguf_vocab_size(path)
+
+    def test_tokens_with_non_string_elem_raises(self, tmp_path: Path) -> None:
+        """A malformed GGUF where `tokens` is an int array → PreflightError."""
+        import struct as _s
+
+        header = bytearray()
+        header.extend(b"GGUF")
+        header.extend(_s.pack("<I", 3))
+        header.extend(_s.pack("<Q", 0))  # tensor_count
+        header.extend(_s.pack("<Q", 1))  # kv_count=1
+        _write_string(header, "tokenizer.ggml.tokens")
+        header.extend(_s.pack("<I", _TYPE_ARRAY))
+        header.extend(_s.pack("<I", _TYPE_UINT32))  # wrong elem type
+        header.extend(_s.pack("<Q", 3))
+        header.extend(_s.pack("<III", 1, 2, 3))
+
+        path = tmp_path / "bad_tokens.gguf"
+        path.write_bytes(bytes(header))
+        with pytest.raises(PreflightError, match="element type"):
+            read_gguf_vocab_size(path)
+
+    def test_unknown_value_type_raises(self, tmp_path: Path) -> None:
+        """Value type outside the GGUF spec set bubbles up as a parse error."""
+        import struct as _s
+
+        header = bytearray()
+        header.extend(b"GGUF")
+        header.extend(_s.pack("<I", 3))
+        header.extend(_s.pack("<Q", 0))
+        header.extend(_s.pack("<Q", 2))  # kv_count=2
+        _write_string(header, "bad_kv")
+        header.extend(_s.pack("<I", 99))  # unknown type
+        header.extend(b"\x00" * 8)  # whatever
+        _write_kv_string_array(header, "tokenizer.ggml.tokens", ["a"])
+        path = tmp_path / "bad_type.gguf"
+        path.write_bytes(bytes(header))
+        with pytest.raises(PreflightError, match="cannot parse GGUF"):
+            read_gguf_vocab_size(path)
+
+    def test_nested_array_raises(self, tmp_path: Path) -> None:
+        """Array-of-array is not supported by llama.cpp's vocab metadata."""
+        import struct as _s
+
+        header = bytearray()
+        header.extend(b"GGUF")
+        header.extend(_s.pack("<I", 3))
+        header.extend(_s.pack("<Q", 0))
+        header.extend(_s.pack("<Q", 2))
+        _write_string(header, "bad_array")
+        header.extend(_s.pack("<I", _TYPE_ARRAY))
+        header.extend(_s.pack("<I", _TYPE_ARRAY))  # nested array
+        header.extend(_s.pack("<Q", 1))
+        _write_kv_string_array(header, "tokenizer.ggml.tokens", ["a"])
+        path = tmp_path / "nested.gguf"
+        path.write_bytes(bytes(header))
+        with pytest.raises(PreflightError, match="cannot parse GGUF"):
+            read_gguf_vocab_size(path)
+
+    def test_skip_scalar_kv_and_string_array_kv(self, tmp_path: Path) -> None:
+        """Exercise `_skip_value` fixed-width scalar + string-array branches."""
+        import struct as _s
+
+        body = bytearray()
+        # Scalar uint32 KV (exercises the fixed-width skip branch).
+        _write_string(body, "general.file_type")
+        body.extend(_s.pack("<I", _TYPE_UINT32))
+        body.extend(_s.pack("<I", 15))
+        # String-array KV (exercises the array-of-strings skip branch).
+        _write_kv_string_array(
+            body, "tokenizer.ggml.merges", ["a b", "c d", "e f"]
+        )
+        # Finally the target.
+        _write_kv_string_array(body, "tokenizer.ggml.tokens", ["x", "y"])
+
+        header = bytearray()
+        header.extend(b"GGUF")
+        header.extend(_s.pack("<I", 3))
+        header.extend(_s.pack("<Q", 0))
+        header.extend(_s.pack("<Q", 3))
+        path = tmp_path / "skip.gguf"
+        path.write_bytes(bytes(header + body))
+        assert read_gguf_vocab_size(path) == 2
 
 
 # --- assert_gguf_vocab_matches tests -------------------------------------
