@@ -83,9 +83,7 @@ class TestPrefixMapping:
         err = capsys.readouterr().err
         assert "inference:" in err
 
-    def test_base_model_unknown_prefix(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_base_model_unknown_prefix(self, capsys: pytest.CaptureFixture[str]) -> None:
         from dlm.base_models.errors import UnknownBaseModelError
 
         exc = UnknownBaseModelError("no-such-key", ("qwen2.5-1.5b", "smollm2-135m"))
@@ -153,9 +151,7 @@ class TestRunWrapper:
 
         assert run_with_reporter(app) == 0
 
-    def test_system_exit_string_prints_and_fails(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_system_exit_string_prints_and_fails(self, capsys: pytest.CaptureFixture[str]) -> None:
         def app() -> None:
             raise SystemExit("goodbye")
 
