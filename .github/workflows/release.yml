@@ -1,0 +1,142 @@
+name: release
+
+# Tag-driven release: push a `v*` tag, the workflow builds the wheel +
+# sdist and publishes to PyPI via trusted-publisher OIDC (configure
+# the publisher under the project's PyPI settings before the first
+# real run). The docs site is deployed separately via `docs.yml`.
+#
+# Dry-run to test.pypi.org by pushing a `v*-rc*` tag (e.g. `v1.0.0-rc1`).
+# The publish step routes to the test index when the tag ends in `-rc*`.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  # Required for trusted-publisher OIDC flow.
+  id-token: write
+  # Required so the workflow can read the repo on a tag push.
+  contents: read
+
+env:
+  UV_VERSION: "0.11.6"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  ci-gate:
+    name: full CI must pass
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Sync (all groups)
+        run: uv sync --all-extras --dev
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy src/dlm
+
+      - name: Pytest (non-slow)
+        run: uv run pytest -m "not slow and not online and not gpu"
+
+  build:
+    name: build wheel + sdist
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Build
+        run: uv build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    name: publish to test.pypi.org (RC tags only)
+    needs: build
+    if: contains(github.ref, '-rc')
+    runs-on: ubuntu-latest
+    environment:
+      name: test-pypi
+      url: https://test.pypi.org/project/dlm/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: publish to pypi.org (release tags)
+    needs: build
+    if: ${{ !contains(github.ref, '-rc') }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/dlm/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  deploy-docs:
+    name: deploy docs for release
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Sync docs group
+        run: uv sync --group docs
+
+      - name: Build site
+        run: uv run mkdocs build --clean --site-dir site/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
