@@ -48,9 +48,7 @@ class SectionSnapshot(BaseModel):
     @classmethod
     def _validate_section_id(cls, value: str) -> str:
         if len(value) != _SECTION_ID_RE or not all(c in "0123456789abcdef" for c in value):
-            raise ValueError(
-                f"section_id must be a 16-char lowercase hex string, got {value!r}"
-            )
+            raise ValueError(f"section_id must be a 16-char lowercase hex string, got {value!r}")
         return value
 
 
@@ -69,7 +67,5 @@ class IndexEntry(BaseModel):
     @classmethod
     def _validate_section_id(cls, value: str) -> str:
         if len(value) != _SECTION_ID_RE or not all(c in "0123456789abcdef" for c in value):
-            raise ValueError(
-                f"section_id must be a 16-char lowercase hex string, got {value!r}"
-            )
+            raise ValueError(f"section_id must be a 16-char lowercase hex string, got {value!r}")
         return value
