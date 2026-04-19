@@ -14,7 +14,7 @@ from dlm.base_models.probes import (
     probe_architecture,
     probe_chat_template,
     probe_gguf_arch_supported,
-    probe_pretokenizer_hash,
+    probe_pretokenizer_label,
     run_all,
 )
 
@@ -133,29 +133,29 @@ class TestProbeGgufArch:
         assert "demo" in result.detail
 
 
-class TestProbePretokenizerHash:
+class TestProbePretokenizerLabel:
     def test_skips_when_table_missing(self, tmp_path: Path) -> None:
-        result = probe_pretokenizer_hash(_spec(), hashes_path=tmp_path / "absent.json")
+        result = probe_pretokenizer_label(_spec(), hashes_path=tmp_path / "absent.json")
         assert result.skipped is True
         assert result.passed is True
 
     def test_known_label_passes(self, tmp_path: Path) -> None:
         hashes = tmp_path / "h.json"
         hashes.write_text(json.dumps(["demo", "qwen2", "llama-bpe"]), encoding="utf-8")
-        result = probe_pretokenizer_hash(_spec(), hashes_path=hashes)
+        result = probe_pretokenizer_label(_spec(), hashes_path=hashes)
         assert result.passed is True
 
     def test_unknown_label_fails(self, tmp_path: Path) -> None:
         hashes = tmp_path / "h.json"
         hashes.write_text(json.dumps(["qwen2", "llama-bpe"]), encoding="utf-8")
-        result = probe_pretokenizer_hash(_spec(), hashes_path=hashes)
+        result = probe_pretokenizer_label(_spec(), hashes_path=hashes)
         assert result.passed is False
         assert "demo" in result.detail
 
     def test_unreadable_table_fails(self, tmp_path: Path) -> None:
         hashes = tmp_path / "h.json"
         hashes.write_text("not json", encoding="utf-8")
-        result = probe_pretokenizer_hash(_spec(), hashes_path=hashes)
+        result = probe_pretokenizer_label(_spec(), hashes_path=hashes)
         assert result.passed is False
 
 
@@ -174,5 +174,5 @@ class TestRunAll:
             "architecture",
             "chat_template",
             "gguf_arch",
-            "pretokenizer_hash",
+            "pretokenizer_label",
         }

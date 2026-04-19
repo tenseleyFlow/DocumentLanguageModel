@@ -16,10 +16,15 @@ Four probes:
    `convert_hf_to_gguf.py` for a `@Model.register("<arch>")` matching
    `spec.gguf_arch`. Sprint 11 owns the vendored submodule; until then
    the probe skips with a clear message.
-4. `probe_pretokenizer_hash` — reads `vendor/llama_cpp_pretokenizer_hashes.json`
+4. `probe_pretokenizer_label` — reads `vendor/llama_cpp_pretokenizer_hashes.json`
    (populated by `scripts/bump-llama-cpp.sh`) and checks the spec's
-   `tokenizer_pre` is a known label. Silent drift here causes silent
-   GGUF export failures per findings §9; the probe catches it early.
+   `tokenizer_pre` is a known **label**. Silent drift here causes
+   silent GGUF export failures per findings §9; the probe catches it
+   early. NOTE (audit-04 M7): this is a label-membership check, not a
+   real hash probe. Sprint 11 adds `probe_pretokenizer_hash` that
+   canonically sha256-digests `tokenizer.json` merges+pre_tokenizer
+   config and compares against llama.cpp's table. The current probe
+   is deliberately named `_label` so the contract matches the code.
 
 Heavy imports (`transformers.AutoConfig`, `AutoTokenizer`) happen
 inside each probe so the module loads cheaply.
@@ -178,7 +183,7 @@ def probe_gguf_arch_supported(
     )
 
 
-def probe_pretokenizer_hash(
+def probe_pretokenizer_label(
     spec: BaseModelSpec,
     *,
     hashes_path: Path | None = None,
@@ -187,11 +192,16 @@ def probe_pretokenizer_hash(
 
     The vendored table is a JSON array of label strings that llama.cpp
     recognizes in `get_vocab_base_pre()`. Missing table → skip.
+
+    NOTE (audit-04 M7): this is a *label* probe, not a hash probe.
+    Sprint 11 will add real `probe_pretokenizer_hash` that canonically
+    digests `tokenizer.json` and compares against llama.cpp's fingerprint
+    table. For now we check coarse compatibility via the label.
     """
     path = hashes_path or VENDOR_PRETOKENIZER_HASHES_DEFAULT
     if not path.exists():
         return ProbeResult(
-            name="pretokenizer_hash",
+            name="pretokenizer_label",
             passed=True,
             detail=f"skipped: {path} not present (bump-llama-cpp.sh maintains it)",
             skipped=True,
@@ -201,28 +211,28 @@ def probe_pretokenizer_hash(
         labels = set(json.loads(path.read_text(encoding="utf-8")))
     except (OSError, json.JSONDecodeError) as exc:
         return ProbeResult(
-            name="pretokenizer_hash",
+            name="pretokenizer_label",
             passed=False,
             detail=f"table unreadable: {exc}",
         )
     except TypeError as exc:
         return ProbeResult(
-            name="pretokenizer_hash",
+            name="pretokenizer_label",
             passed=False,
             detail=f"table has wrong shape (expected list[str]): {exc}",
         )
 
     if spec.tokenizer_pre in labels:
         return ProbeResult(
-            name="pretokenizer_hash",
+            name="pretokenizer_label",
             passed=True,
             detail=f"{spec.tokenizer_pre!r} known to llama.cpp",
         )
     return ProbeResult(
-        name="pretokenizer_hash",
+        name="pretokenizer_label",
         passed=False,
         detail=(
-            f"{spec.tokenizer_pre!r} not in vendored hash table; "
+            f"{spec.tokenizer_pre!r} not in vendored label table; "
             "run scripts/bump-llama-cpp.sh or pick another base"
         ),
     )
@@ -242,6 +252,6 @@ def run_all(spec: BaseModelSpec) -> ProbeReport:
         probe_architecture(spec),
         probe_chat_template(spec),
         probe_gguf_arch_supported(spec),
-        probe_pretokenizer_hash(spec),
+        probe_pretokenizer_label(spec),
     )
     return ProbeReport(hf_id=spec.hf_id, results=results)

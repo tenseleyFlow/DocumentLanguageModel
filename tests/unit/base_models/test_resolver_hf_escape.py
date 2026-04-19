@@ -124,7 +124,7 @@ class TestResolveHfHappyPath:
                 ProbeResult(name="architecture", passed=True, detail="ok"),
                 ProbeResult(name="chat_template", passed=True, detail="ok"),
                 ProbeResult(name="gguf_arch", passed=True, detail="ok", skipped=True),
-                ProbeResult(name="pretokenizer_hash", passed=True, detail="ok", skipped=True),
+                ProbeResult(name="pretokenizer_label", passed=True, detail="ok", skipped=True),
             ),
         )
         with (
@@ -154,7 +154,7 @@ class TestResolveHfHappyPath:
                 ProbeResult(name="architecture", passed=True, detail="ok"),
                 ProbeResult(name="chat_template", passed=False, detail="missing"),
                 ProbeResult(name="gguf_arch", passed=True, detail="ok", skipped=True),
-                ProbeResult(name="pretokenizer_hash", passed=True, detail="ok", skipped=True),
+                ProbeResult(name="pretokenizer_label", passed=True, detail="ok", skipped=True),
             ),
         )
         with (
@@ -213,7 +213,7 @@ class TestResolveHfHappyPath:
                 ProbeResult(name="architecture", passed=True, detail="ok"),
                 ProbeResult(name="chat_template", passed=True, detail="ok"),
                 ProbeResult(name="gguf_arch", passed=True, detail="ok", skipped=True),
-                ProbeResult(name="pretokenizer_hash", passed=True, detail="ok", skipped=True),
+                ProbeResult(name="pretokenizer_label", passed=True, detail="ok", skipped=True),
             ),
         )
         with (
