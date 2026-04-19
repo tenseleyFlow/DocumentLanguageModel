@@ -506,6 +506,7 @@ def show_cmd(
 ) -> None:
     """Show training history, exports, and adapter state."""
     import json as _json
+    import sys
 
     from rich.console import Console
 
@@ -529,7 +530,7 @@ def show_cmd(
     # informational state rather than an error — useful after `dlm init`.
     if not store.manifest.exists():
         if json_out:
-            out_console.print(
+            sys.stdout.write(
                 _json.dumps(
                     {
                         "dlm_id": parsed.frontmatter.dlm_id,
@@ -539,6 +540,7 @@ def show_cmd(
                     },
                     indent=2,
                 )
+                + "\n"
             )
         else:
             out_console.print(f"[bold]{path}[/bold]")
@@ -554,7 +556,9 @@ def show_cmd(
         raise typer.Exit(code=1) from exc
 
     if json_out:
-        out_console.print(_json.dumps(_inspection_to_dict(inspection), indent=2, default=str))
+        # Write JSON to raw stdout — Rich's Console wraps lines at the
+        # terminal width and would corrupt the JSON.
+        sys.stdout.write(_json.dumps(_inspection_to_dict(inspection), indent=2, default=str) + "\n")
         return
 
     _render_inspection_text(out_console, path, inspection)
