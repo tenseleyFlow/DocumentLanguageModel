@@ -1,3 +1,7 @@
 [submodule "vendor/llama.cpp"]
 	path = vendor/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp
+	# Don't surface build-artifact noise in the outer repo's git status.
+	# `scripts/bump-llama-cpp.sh build` writes under vendor/llama.cpp/build/
+	# which the submodule's own .gitignore covers.
+	ignore = untracked

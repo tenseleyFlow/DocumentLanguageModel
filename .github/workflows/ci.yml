@@ -173,10 +173,15 @@ jobs:
   slow-tests:
     # Sprint 02: marker-gated tests that touch HF. Cache-keyed on
     # (pyproject.toml hash, tiny-model revision) per audit guidance.
-    name: slow tests (hf-cache)
+    # Sprint 11: also initializes + builds `vendor/llama.cpp` so export
+    # integration tests can exercise real GGUF conversion.
+    name: slow tests (hf-cache + llama.cpp)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout with llama.cpp submodule
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -206,6 +211,22 @@ jobs:
           from tests.fixtures.tiny_model import tiny_model_path
           print("tiny model at:", tiny_model_path())
           PY
+
+      - name: Restore llama.cpp build cache
+        id: llama-cpp-cache
+        uses: actions/cache@v4
+        with:
+          path: vendor/llama.cpp/build
+          # Cache key: submodule HEAD sha. Bumping llama.cpp invalidates the cache.
+          key: llama-cpp-build-${{ hashFiles('.gitmodules', 'vendor/llama.cpp/VERSION') }}
+
+      - name: Build llama-quantize (if not cached)
+        if: steps.llama-cpp-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          # ubuntu-latest ships cmake; `sudo apt-get install -y cmake` is a no-op fallback.
+          command -v cmake >/dev/null 2>&1 || sudo apt-get install -y cmake
+          scripts/bump-llama-cpp.sh build
 
       - name: Run slow tests
         env:
