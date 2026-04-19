@@ -222,6 +222,9 @@ class TestVerifyTokenCount:
         assert tokenizer.last_kwargs is not None
         assert tokenizer.last_kwargs.get("add_generation_prompt") is True
         assert tokenizer.last_kwargs.get("tokenize") is True
+        # Pin list-of-ids return type so HF's BatchEncoding default
+        # doesn't silently feed `len()` the number of dict keys.
+        assert tokenizer.last_kwargs.get("return_dict") is False
 
     def test_empty_messages_falls_back_to_hello_prompt(self, tmp_path: Path) -> None:
         """Edge case: zero-message scenario shouldn't crash — we still probe."""

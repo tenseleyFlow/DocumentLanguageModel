@@ -117,10 +117,14 @@ def verify_token_count(
     `apply_chat_template(add_generation_prompt=True)` does the same.
     An identical number = identical rendered prompt tokens.
     """
+    # `return_dict=False` pins the return type to `list[int]`. Without
+    # it newer HF tokenizers hand back a `BatchEncoding` whose
+    # `len(...)` counts dict keys (2), not tokens — a silent off-by-2.
     hf_tokens = hf_tokenizer.apply_chat_template(
         messages,
         add_generation_prompt=True,
         tokenize=True,
+        return_dict=False,
     )
     hf_count = len(hf_tokens)
 
