@@ -98,14 +98,20 @@ do_build() {
   fi
   echo "--> configuring llama.cpp via cmake"
   cmake -S "$VENDOR_DIR" -B "$VENDOR_DIR/build" -DCMAKE_BUILD_TYPE=Release
-  echo "--> building llama-quantize + siblings"
-  cmake --build "$VENDOR_DIR/build" --target llama-quantize --config Release
-  if [ -f "$VENDOR_DIR/build/bin/llama-quantize" ]; then
-    echo "OK: $VENDOR_DIR/build/bin/llama-quantize"
-  else
-    echo "error: build finished but llama-quantize not found under build/bin" >&2
-    exit 1
-  fi
+  # `llama-quantize` does the actual per-tensor quantization; `llama-imatrix`
+  # produces the importance-matrix file we feed to quantize for k-quant
+  # calibration (Sprint 11.6). Both are required for the full export
+  # pipeline; building them separately means a missing target fails the
+  # build loudly rather than silently shipping a half-built toolchain.
+  for target in llama-quantize llama-imatrix; do
+    echo "--> building $target"
+    cmake --build "$VENDOR_DIR/build" --target "$target" --config Release
+    if [ ! -f "$VENDOR_DIR/build/bin/$target" ]; then
+      echo "error: build finished but $target not found under build/bin" >&2
+      exit 1
+    fi
+    echo "OK: $VENDOR_DIR/build/bin/$target"
+  done
 }
 
 case "$cmd" in

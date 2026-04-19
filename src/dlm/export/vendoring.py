@@ -40,6 +40,17 @@ _LLAMA_QUANTIZE_CANDIDATES: Final[tuple[str, ...]] = (
     "bin/quantize",
     "quantize",
 )
+# `llama-imatrix` produces the importance matrix we feed to quantize for
+# k-quant calibration (Sprint 11.6). Same build layout as llama-quantize.
+_LLAMA_IMATRIX_CANDIDATES: Final[tuple[str, ...]] = (
+    "build/bin/llama-imatrix",
+    "bin/llama-imatrix",
+    "llama-imatrix",
+    # Legacy pre-rename (pre-llama.cpp b3600-ish).
+    "build/bin/imatrix",
+    "bin/imatrix",
+    "imatrix",
+)
 
 
 def llama_cpp_root(override: Path | None = None) -> Path:
@@ -93,6 +104,24 @@ def llama_quantize_bin(override: Path | None = None) -> Path:
             return path
     raise VendoringError(
         f"llama-quantize binary not found under {root}. "
+        "Run `scripts/bump-llama-cpp.sh build` to compile it."
+    )
+
+
+def llama_imatrix_bin(override: Path | None = None) -> Path:
+    """Path to the `llama-imatrix` binary (Sprint 11.6).
+
+    Same resolver shape as `llama_quantize_bin` — checks several known
+    build-layout locations. `VendoringError` with the bump-script
+    pointer if the binary is absent.
+    """
+    root = llama_cpp_root(override)
+    for candidate in _LLAMA_IMATRIX_CANDIDATES:
+        path = root / candidate
+        if path.is_file():
+            return path
+    raise VendoringError(
+        f"llama-imatrix binary not found under {root}. "
         "Run `scripts/bump-llama-cpp.sh build` to compile it."
     )
 

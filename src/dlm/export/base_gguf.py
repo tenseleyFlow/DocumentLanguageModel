@@ -58,11 +58,21 @@ def build_quantize_args(
     out_quant: Path,
     quant: QuantLevel,
     bin_override: Path | None = None,
+    imatrix_path: Path | None = None,
 ) -> list[str]:
     """Assemble the `llama-quantize <in> <out> <QUANT>` argv.
 
     Note: `llama-quantize` takes the quant string as a POSITIONAL
     argument (no `--quant` flag upstream). Pass it verbatim.
+
+    `imatrix_path` threads Sprint 11.6's importance-matrix flag in as
+    `--imatrix <path>` before the positional arguments. The upstream
+    tool ignores imatrix on non-k-quant levels (`Q8_0`, `F16`) so we
+    don't branch here — callers decide whether to pass a path at all.
     """
     binary = vendoring.llama_quantize_bin(bin_override)
-    return [str(binary), str(fp16_gguf), str(out_quant), quant]
+    argv: list[str] = [str(binary)]
+    if imatrix_path is not None:
+        argv.extend(["--imatrix", str(imatrix_path)])
+    argv.extend([str(fp16_gguf), str(out_quant), quant])
+    return argv
