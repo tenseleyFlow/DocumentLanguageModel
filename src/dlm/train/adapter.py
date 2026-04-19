@@ -49,7 +49,9 @@ def build_lora_config(
     """
     from peft import LoraConfig, TaskType
 
-    modules_to_save = ["embed_tokens", "lm_head"] if tokenizer_grew else None
+    from dlm.data.tokenizer_contract import modules_to_save_for_growth
+
+    modules_to_save = modules_to_save_for_growth(tokenizer_grew) or None
 
     return LoraConfig(
         r=lora_r,
