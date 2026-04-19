@@ -49,10 +49,23 @@ class ExportResult:
 
     export_dir: Path
     manifest_path: Path
+    modelfile_path: Path | None
     artifacts: list[Path]
     plan: ExportPlan
     merged: bool
     cached: bool
+    ollama_name: str | None
+    ollama_version: str | None
+    smoke_output_first_line: str | None
+
+
+def default_ollama_name(dlm_id: str, adapter_version: int) -> str:
+    """Default Ollama model tag: `dlm-<lowercased-dlm_id>:v<NNNN>`.
+
+    Users override via `--name` on the CLI. The ULID is lowercased
+    because Ollama rejects uppercase tag components.
+    """
+    return f"dlm-{dlm_id.lower()}:v{adapter_version:04d}"
 
 
 def run_export(
@@ -63,6 +76,12 @@ def run_export(
     cached_base_dir: Path,
     subprocess_runner: SubprocessRunner | None = None,
     vendor_override: Path | None = None,
+    skip_ollama: bool = False,
+    skip_smoke: bool = False,
+    system_prompt: str | None = None,
+    source_dlm_path: Path | None = None,
+    ollama_create_runner: Callable[..., str] | None = None,
+    ollama_run_runner: Callable[..., str] | None = None,
 ) -> ExportResult:
     """Execute one GGUF export end-to-end.
 
@@ -75,6 +94,17 @@ def run_export(
     `vendor_override` is a test hook; production code leaves it `None`
     so `dlm.export.vendoring` resolves the real `vendor/llama.cpp/`
     submodule. Unit tests pass a populated tmp dir.
+
+    `skip_ollama=True` stops after writing the export manifest; no
+    Modelfile is emitted and no `ollama create` runs. Used by CI
+    where Ollama isn't installed.
+
+    `skip_smoke=True` emits the Modelfile + runs `ollama create` but
+    skips the `ollama run` smoke test. Matches the `dlm export
+    --no-smoke` flag.
+
+    `ollama_create_runner` / `ollama_run_runner` are test seams for
+    substituting the real `ollama_create` / `ollama_run` functions.
     """
     run = subprocess_runner if subprocess_runner is not None else run_checked
 
@@ -138,16 +168,39 @@ def run_export(
         run(cmd)
         artifacts.append(adapter_gguf_path)
 
-    # 6. Write export_manifest.json.
+    # 6. Ollama Modelfile + optional registration + optional smoke.
+    adapter_version = int(adapter_path.name.lstrip("v"))
+    ollama_name: str | None = None
+    ollama_ver_str: str | None = None
+    smoke_first_line: str | None = None
+    modelfile_path: Path | None = None
+    if not skip_ollama:
+        modelfile_path, ollama_name, ollama_ver_str, smoke_first_line = (
+            _run_ollama_stage(
+                store=store,
+                spec=spec,
+                plan=plan,
+                adapter_path=adapter_path,
+                export_dir=export_dir,
+                base_gguf_path=base_gguf_path,
+                adapter_version=adapter_version,
+                system_prompt=system_prompt,
+                source_dlm_path=source_dlm_path,
+                skip_smoke=skip_smoke,
+                ollama_create_runner=ollama_create_runner,
+                ollama_run_runner=ollama_run_runner,
+            )
+        )
+
+    # 7. Write export_manifest.json.
     from dlm import __version__ as dlm_version
     from dlm.export.vendoring import pinned_tag
 
-    adapter_version = int(adapter_path.name.lstrip("v"))
     em = ExportManifest(
         quant=plan.quant,
         merged=plan.merged,
         dequantized=plan.dequantize_confirmed,
-        ollama_name=plan.ollama_name,
+        ollama_name=ollama_name or plan.ollama_name,
         created_at=utc_now(),
         created_by=f"dlm-{dlm_version}",
         llama_cpp_tag=pinned_tag(vendor_override),
@@ -158,21 +211,28 @@ def run_export(
     )
     manifest_path = save_export_manifest(export_dir, em)
 
-    # 7. Append to store manifest.exports.
+    # 8. Append to store manifest.exports.
     _append_export_summary(
         store=store,
         plan=plan,
         llama_cpp_tag=em.llama_cpp_tag,
         artifacts=em.artifacts,
+        ollama_name=em.ollama_name,
+        ollama_version_str=ollama_ver_str,
+        smoke_first_line=smoke_first_line,
     )
 
     return ExportResult(
         export_dir=export_dir,
         manifest_path=manifest_path,
+        modelfile_path=modelfile_path,
         artifacts=artifacts,
         plan=plan,
         merged=plan.merged,
         cached=cached,
+        ollama_name=em.ollama_name,
+        ollama_version=ollama_ver_str,
+        smoke_output_first_line=smoke_first_line,
     )
 
 
@@ -261,12 +321,80 @@ def _perform_merge_path(  # pragma: no cover
             fp16_path.unlink()
 
 
+def _run_ollama_stage(
+    *,
+    store: StorePath,
+    spec: BaseModelSpec,
+    plan: ExportPlan,
+    adapter_path: Path,
+    export_dir: Path,
+    base_gguf_path: Path,
+    adapter_version: int,
+    system_prompt: str | None,
+    source_dlm_path: Path | None,
+    skip_smoke: bool,
+    ollama_create_runner: Callable[..., str] | None,
+    ollama_run_runner: Callable[..., str] | None,
+) -> tuple[Path, str, str | None, str | None]:
+    """Render Modelfile → ollama_create → optional ollama_run (smoke).
+
+    Returns `(modelfile_path, ollama_name, ollama_version, smoke_first_line)`.
+    """
+    from dlm import __version__ as dlm_version
+    from dlm.export.ollama import (
+        ModelfileContext,
+        check_ollama_version,
+        first_line,
+        ollama_create,
+        ollama_run,
+        render_modelfile,
+    )
+
+    create_fn = ollama_create_runner or ollama_create
+    run_fn = ollama_run_runner or ollama_run
+
+    # Ollama version gate (audit F16).
+    detected = check_ollama_version()
+    ver_str = f"{detected[0]}.{detected[1]}.{detected[2]}"
+
+    # Modelfile rendering.
+    ctx = ModelfileContext(
+        spec=spec,
+        plan=plan,
+        adapter_dir=adapter_path,
+        base_gguf_name=base_gguf_path.name,
+        adapter_gguf_name=None if plan.merged else "adapter.gguf",
+        dlm_id=store.root.name,
+        adapter_version=adapter_version,
+        system_prompt=system_prompt,
+        source_dlm_path=source_dlm_path,
+        dlm_version=dlm_version,
+    )
+    modelfile_text = render_modelfile(ctx)
+    modelfile_path = export_dir / "Modelfile"
+    modelfile_path.write_text(modelfile_text, encoding="utf-8")
+
+    # Name + registration (audit F14 serialized).
+    name = plan.ollama_name or default_ollama_name(store.root.name, adapter_version)
+    create_fn(name=name, modelfile_path=modelfile_path, cwd=export_dir)
+
+    smoke_first_line: str | None = None
+    if not skip_smoke:
+        stdout = run_fn(name=name)
+        smoke_first_line = first_line(stdout)
+
+    return modelfile_path, name, ver_str, smoke_first_line
+
+
 def _append_export_summary(
     *,
     store: StorePath,
     plan: ExportPlan,
     llama_cpp_tag: str | None,
     artifacts: list[Any],
+    ollama_name: str | None,
+    ollama_version_str: str | None,
+    smoke_first_line: str | None,
 ) -> None:
     """Update `manifest.exports` with a new `ExportSummary` row."""
     from dlm.store.manifest import ExportSummary, load_manifest, save_manifest
@@ -278,10 +406,12 @@ def _append_export_summary(
         exported_at=utc_now(),
         quant=plan.quant,
         merged=plan.merged,
-        ollama_name=plan.ollama_name,
+        ollama_name=ollama_name,
+        ollama_version=ollama_version_str,
         llama_cpp_tag=llama_cpp_tag,
         base_gguf_sha256=base_sha,
         adapter_gguf_sha256=adapter_sha,
+        smoke_output_first_line=smoke_first_line,
     )
 
     manifest = load_manifest(store.manifest)

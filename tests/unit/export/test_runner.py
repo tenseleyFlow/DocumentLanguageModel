@@ -112,6 +112,7 @@ class TestHappyPath:
             cached_base_dir=cached_base,
             subprocess_runner=recorder,
             vendor_override=vendor,
+            skip_ollama=True,
         )
 
         assert isinstance(result, ExportResult)
@@ -132,6 +133,7 @@ class TestHappyPath:
             cached_base_dir=cached_base,
             subprocess_runner=recorder,
             vendor_override=vendor,
+            skip_ollama=True,
         )
 
         em = load_export_manifest(result.export_dir)
@@ -158,6 +160,7 @@ class TestCaching:
             cached_base_dir=cached_base,
             subprocess_runner=recorder1,
             vendor_override=vendor,
+            skip_ollama=True,
         )
         assert r1.cached is False
         assert len(recorder1.commands) == 3  # convert_hf + quantize + convert_lora
@@ -170,6 +173,7 @@ class TestCaching:
             cached_base_dir=cached_base,
             subprocess_runner=recorder2,
             vendor_override=vendor,
+            skip_ollama=True,
         )
         assert r2.cached is True
         # Only the adapter conversion runs on the cached path.
@@ -228,6 +232,7 @@ class TestManifestAppend:
             cached_base_dir=cached_base,
             subprocess_runner=recorder,
             vendor_override=vendor,
+            skip_ollama=True,
         )
 
         manifest = load_manifest(store.manifest)
