@@ -231,6 +231,86 @@ class TestLayoutGate:
         with pytest.raises(PackLayoutError, match="total decompressed size"):
             unpack(out, home=tmp_path / "home")
 
+    def test_symlink_member_blocked_by_data_filter(self, tmp_path: Path) -> None:
+        """Python's `data` extraction filter refuses symlink members entirely
+        (audit-04 T5). We double-check the layout scan accepts them (they're
+        not path-traversing) but extraction itself blocks the write."""
+        staging = tmp_path / "s"
+        staging.mkdir()
+        (staging / "real.txt").write_bytes(b"real")
+
+        out = tmp_path / "symlink.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                info = tarfile.TarInfo(name="link_to_real")
+                info.type = tarfile.SYMTYPE
+                info.linkname = "real.txt"
+                tar.addfile(info)
+
+        # The data filter raises on symlinks; pipeline surfaces the
+        # failure up as a tarfile error that the caller sees.
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            unpack(out, home=tmp_path / "home")
+
+    def test_duplicate_entry_name_refused(self, tmp_path: Path) -> None:
+        """Two tar members with the same name would let a later entry
+        silently overwrite an earlier one post-extraction. Audit-04 T5:
+        reject at layout scan via CHECKSUMS verification — the second
+        overwrite breaks the recorded hash."""
+        # Build a pack that would otherwise be valid, then repack with a
+        # duplicated entry, re-extract, and check pipeline rejects.
+        staging = tmp_path / "s"
+        staging.mkdir()
+        (staging / "dlm").mkdir()
+        (staging / "dlm" / "a.dlm").write_text("x")
+        (staging / "store").mkdir()
+        (staging / "store" / "manifest.json").write_text("{}")
+        (staging / HEADER_FILENAME).write_text(
+            json.dumps(
+                {
+                    "pack_format_version": 1,
+                    "created_at": "2026-04-19T12:00:00",
+                    "tool_version": "0.1.0",
+                    "content_type": "minimal",
+                    "platform_hint": "linux",
+                    "licensee_acceptance_url": None,
+                }
+            )
+        )
+        write_checksums(staging, exclude=(SHA256_FILENAME, MANIFEST_FILENAME))
+        (staging / MANIFEST_FILENAME).write_text(
+            json.dumps(
+                {
+                    "dlm_id": "01TEST",
+                    "base_model": "smollm2-135m",
+                    "base_model_revision": None,
+                    "base_model_sha256": None,
+                    "adapter_version": 0,
+                    "entries": {},
+                    "content_sha256": "0" * 64,
+                }
+            )
+        )
+
+        out = tmp_path / "dup.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                for path in sorted(staging.rglob("*")):
+                    if path.is_file():
+                        tar.add(path, arcname=path.relative_to(staging).as_posix())
+                # Duplicate `dlm/a.dlm` with different content.
+                info = tarfile.TarInfo(name="dlm/a.dlm")
+                info.size = 1
+                import io as _io
+
+                tar.addfile(info, _io.BytesIO(b"Z"))
+
+        # Extraction overwrites the checksummed file; verify must fail.
+        with pytest.raises(PackIntegrityError):
+            unpack(out, home=tmp_path / "home")
+
     def test_unsafe_tar_entry_refused(self, tmp_path: Path) -> None:
         """An entry whose path escapes the extraction root is rejected."""
         staging = tmp_path / "s"
