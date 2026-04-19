@@ -35,7 +35,9 @@ class BaseModelSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     key: str = Field(..., min_length=1, description="Registry slug (e.g. `qwen2.5-1.5b`).")
-    hf_id: str = Field(..., min_length=1, description="HuggingFace id, e.g. `Qwen/Qwen2.5-1.5B-Instruct`.")
+    hf_id: str = Field(
+        ..., min_length=1, description="HuggingFace id, e.g. `Qwen/Qwen2.5-1.5B-Instruct`."
+    )
     revision: str = Field(..., description="40-char commit SHA; never a branch.")
     architecture: str = Field(..., description="transformers `config.architectures[0]` value.")
     params: int = Field(..., gt=0, description="Parameter count; drives hardware doctor.")
@@ -62,16 +64,17 @@ class BaseModelSpec(BaseModel):
     @classmethod
     def _validate_revision(cls, value: str) -> str:
         if not _SHA_RE.fullmatch(value):
-            raise ValueError(
-                f"revision must be a 40-char lowercase hex SHA, got {value!r}"
-            )
+            raise ValueError(f"revision must be a 40-char lowercase hex SHA, got {value!r}")
         return value
 
     @field_validator("hf_id")
     @classmethod
     def _validate_hf_id(cls, value: str) -> str:
-        if "/" not in value:
+        if "/" not in value or value.startswith("/") or value.endswith("/"):
             raise ValueError(f"hf_id must be 'org/name', got {value!r}")
+        org, _, name = value.partition("/")
+        if not org or not name or "/" in name:
+            raise ValueError(f"hf_id must be 'org/name' (single `/`), got {value!r}")
         return value
 
     @field_validator("target_modules")
