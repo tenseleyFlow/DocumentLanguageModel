@@ -1,0 +1,5 @@
+{{- if .System }}<|system|>
+{{ .System }}<|end|>
+{{ end }}{{- range .Messages }}<|{{ .Role }}|>
+{{ .Content }}<|end|>
+{{ end }}<|assistant|>

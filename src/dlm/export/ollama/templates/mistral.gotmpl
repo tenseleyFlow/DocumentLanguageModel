@@ -1,0 +1,3 @@
+{{- if .System }}[INST] {{ .System }}
+
+{{ range .Messages }}{{- if eq .Role "user" }}{{ .Content }} [/INST] {{ else if eq .Role "assistant" }}{{ .Content }}</s> [INST] {{ end }}{{- end }}{{- else }}{{- range .Messages }}{{- if eq .Role "user" }}[INST] {{ .Content }} [/INST] {{ else if eq .Role "assistant" }}{{ .Content }}</s> {{ end }}{{- end }}{{- end }}
