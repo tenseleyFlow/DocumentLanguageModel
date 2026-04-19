@@ -20,9 +20,24 @@ table in `policy.py`.
 from __future__ import annotations
 
 from dlm.lock.errors import LockError, LockSchemaError, LockValidationError
+from dlm.lock.policy import Severity, classify_mismatches
+from dlm.lock.schema import CURRENT_LOCK_VERSION, LOCK_FILENAME, DlmLock
+from dlm.lock.validator import LockDecision, LockMode, validate_lock
+from dlm.lock.writer import load_lock, lock_path, write_lock
 
 __all__ = [
+    "CURRENT_LOCK_VERSION",
+    "LOCK_FILENAME",
+    "DlmLock",
+    "LockDecision",
     "LockError",
+    "LockMode",
     "LockSchemaError",
     "LockValidationError",
+    "Severity",
+    "classify_mismatches",
+    "load_lock",
+    "lock_path",
+    "validate_lock",
+    "write_lock",
 ]
