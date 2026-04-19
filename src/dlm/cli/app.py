@@ -112,5 +112,14 @@ app.command("migrate")(commands.migrate_cmd)
 
 
 def main() -> None:
-    """Installed entry point (`dlm` on PATH)."""
-    app()
+    """Installed entry point (`dlm` on PATH).
+
+    Routes uncaught exceptions through `dlm.cli.reporter` so users see
+    a clean one-liner instead of a raw traceback; `--verbose` surfaces
+    the traceback for debugging.
+    """
+    import sys
+
+    from dlm.cli.reporter import run_with_reporter
+
+    sys.exit(run_with_reporter(app))
