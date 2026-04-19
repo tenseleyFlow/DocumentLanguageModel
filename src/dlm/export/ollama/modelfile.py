@@ -49,6 +49,12 @@ class ModelfileContext:
     system_prompt: str | None = None
     source_dlm_path: Path | None = None
     dlm_version: str = "dev"
+    # `sequence_len` from the document's training config (Sprint 03
+    # schema). When set, we emit `PARAMETER num_ctx <min(seq_len,
+    # spec.context_length)>` so Ollama respects the window the adapter
+    # was trained for — otherwise it defaults to 2048 and a document
+    # trained at 8192 effectively loses 75% of its context. Audit-04 Q1.
+    training_sequence_len: int | None = None
 
 
 def render_modelfile(ctx: ModelfileContext) -> str:
@@ -65,10 +71,12 @@ def render_modelfile(ctx: ModelfileContext) -> str:
     from_line = f"FROM ./{ctx.base_gguf_name}"
     adapter_line = f"ADAPTER ./{ctx.adapter_gguf_name}" if ctx.adapter_gguf_name else None
     template_block = _build_template_block(template_row)
+    num_ctx = _resolve_num_ctx(ctx)
     param_lines = _build_param_lines(
         stops=stops,
         temperature=template_row.default_temperature,
         top_p=template_row.default_top_p,
+        num_ctx=num_ctx,
     )
     system_line = _build_system_line(ctx.system_prompt)
     license_line = _build_license_line(ctx.spec)
@@ -195,6 +203,7 @@ def _build_param_lines(
     stops: tuple[str, ...],
     temperature: float,
     top_p: float,
+    num_ctx: int | None,
 ) -> list[str]:
     """Emit the `PARAMETER stop ...` + defaults block."""
     lines: list[str] = []
@@ -202,7 +211,23 @@ def _build_param_lines(
         lines.append(f"PARAMETER stop {json.dumps(stop)}")
     lines.append(f"PARAMETER temperature {temperature}")
     lines.append(f"PARAMETER top_p {top_p}")
+    if num_ctx is not None:
+        lines.append(f"PARAMETER num_ctx {num_ctx}")
     return lines
+
+
+def _resolve_num_ctx(ctx: ModelfileContext) -> int | None:
+    """Cap `training_sequence_len` at the base spec's `context_length` (audit Q1).
+
+    Returns `None` when the document didn't pin a length — the default
+    behavior is Ollama's built-in default (2048), unchanged. Returns
+    the capped length otherwise so a user writing `sequence_len: 8192`
+    in frontmatter gets the 8k window they trained for — without
+    exceeding the base model's positional-embedding table.
+    """
+    if ctx.training_sequence_len is None:
+        return None
+    return min(ctx.training_sequence_len, ctx.spec.context_length)
 
 
 # --- system + license -----------------------------------------------------

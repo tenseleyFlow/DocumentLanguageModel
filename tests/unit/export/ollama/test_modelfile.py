@@ -36,6 +36,7 @@ def _ctx(
     merged: bool = False,
     system_prompt: str | None = None,
     adapter: Path | None = None,
+    training_sequence_len: int | None = None,
 ) -> ModelfileContext:
     plan = ExportPlan(quant="Q4_K_M", merged=merged)
     return ModelfileContext(
@@ -47,6 +48,7 @@ def _ctx(
         dlm_id="01TEST",
         adapter_version=7,
         system_prompt=system_prompt,
+        training_sequence_len=training_sequence_len,
     )
 
 
@@ -77,6 +79,23 @@ class TestShape:
         text = render_modelfile(_ctx(tmp_path))
         assert "PARAMETER temperature" in text
         assert "PARAMETER top_p" in text
+
+    def test_num_ctx_omitted_when_unset(self, tmp_path: Path) -> None:
+        """No `training_sequence_len` → no `PARAMETER num_ctx` (Ollama default)."""
+        text = render_modelfile(_ctx(tmp_path))
+        assert "PARAMETER num_ctx" not in text
+
+    def test_num_ctx_inherited_from_training_seq_len(self, tmp_path: Path) -> None:
+        """Audit-04 Q1: frontmatter sequence_len flows into the Modelfile."""
+        text = render_modelfile(_ctx(tmp_path, training_sequence_len=8192))
+        assert "PARAMETER num_ctx 8192" in text
+
+    def test_num_ctx_capped_at_spec_context_length(self, tmp_path: Path) -> None:
+        """A user writing `sequence_len: 99999` can't exceed the base's positional table."""
+        text = render_modelfile(_ctx(tmp_path, training_sequence_len=99_999))
+        # smollm2-135m tops out at 8192.
+        assert f"PARAMETER num_ctx {_SPEC.context_length}" in text
+        assert "PARAMETER num_ctx 99999" not in text
 
     def test_license_line_present(self, tmp_path: Path) -> None:
         text = render_modelfile(_ctx(tmp_path))

@@ -446,6 +446,7 @@ def export_cmd(
             skip_ollama=skip_ollama,
             skip_smoke=no_smoke,
             source_dlm_path=path.resolve(),
+            training_sequence_len=parsed.frontmatter.training.sequence_len,
         )
     except UnsafeMergeError as exc:
         console.print(f"[red]merge:[/red] {exc}")
