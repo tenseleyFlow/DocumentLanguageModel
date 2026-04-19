@@ -46,12 +46,20 @@ def train_cmd(
     fresh: Annotated[bool, typer.Option("--fresh", help="Discard prior adapter state.")] = False,
     seed: Annotated[int | None, typer.Option("--seed", help="Override training seed.")] = None,
     max_steps: Annotated[int | None, typer.Option("--max-steps", help="Cap step count.")] = None,
+    i_accept_license: Annotated[
+        bool,
+        typer.Option(
+            "--i-accept-license",
+            help="Accept the base model's license (required for gated bases like llama-3.2).",
+        ),
+    ] = False,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
     import sys
 
     from rich.console import Console
 
+    from dlm.base_models import GatedModelError
     from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
     from dlm.hardware import doctor
@@ -72,7 +80,22 @@ def train_cmd(
     mode: Literal["fresh", "resume"] = "resume" if resume else "fresh"
 
     parsed = parse_file(path)
-    spec = resolve_base_model(parsed.frontmatter.base_model)
+    try:
+        spec = resolve_base_model(
+            parsed.frontmatter.base_model,
+            accept_license=i_accept_license,
+        )
+    except GatedModelError as exc:
+        console.print(
+            f"[red]license:[/red] base model {parsed.frontmatter.base_model!r} is gated."
+        )
+        if exc.license_url:
+            console.print(f"  review the license at: {exc.license_url}")
+        console.print(
+            "  re-run with [bold]--i-accept-license[/bold] once you have accepted. "
+            "(Sprint 12b will persist acceptance in the frontmatter.)"
+        )
+        raise typer.Exit(code=1) from exc
     plan = doctor().plan
     if plan is None:
         console.print(
