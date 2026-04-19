@@ -57,8 +57,7 @@ def init_cmd(
 
     if template is not None:
         console.print(
-            "[yellow]note:[/yellow] --template is reserved for Sprint 27; "
-            "ignoring for now."
+            "[yellow]note:[/yellow] --template is reserved for Sprint 27; ignoring for now."
         )
 
     if path.exists() and not force:
@@ -503,10 +502,130 @@ def doctor_cmd(
 
 def show_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm file to inspect.")],
-    json_out: Annotated[bool, typer.Option("--json")] = False,
+    json_out: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
 ) -> None:
     """Show training history, exports, and adapter state."""
-    _stub("13", "dlm show")
+    import json as _json
+
+    from rich.console import Console
+
+    from dlm.doc.errors import DlmParseError
+    from dlm.doc.parser import parse_file
+    from dlm.store.errors import ManifestCorruptError
+    from dlm.store.inspect import inspect_store
+    from dlm.store.paths import for_dlm
+
+    console = Console(stderr=True)
+    out_console = Console()
+
+    try:
+        parsed = parse_file(path)
+    except (DlmParseError, OSError) as exc:
+        console.print(f"[red]show:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    store = for_dlm(parsed.frontmatter.dlm_id)
+    # Store may not exist yet (no `dlm train` run). Treat that as an
+    # informational state rather than an error — useful after `dlm init`.
+    if not store.manifest.exists():
+        if json_out:
+            out_console.print(
+                _json.dumps(
+                    {
+                        "dlm_id": parsed.frontmatter.dlm_id,
+                        "base_model": parsed.frontmatter.base_model,
+                        "store_initialized": False,
+                        "source_path": str(path.resolve()),
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            out_console.print(f"[bold]{path}[/bold]")
+            out_console.print(f"  dlm_id:       {parsed.frontmatter.dlm_id}")
+            out_console.print(f"  base_model:   {parsed.frontmatter.base_model}")
+            out_console.print("  store:        [dim]not yet initialized (run `dlm train`)[/dim]")
+        return
+
+    try:
+        inspection = inspect_store(store, source_path=path.resolve())
+    except ManifestCorruptError as exc:
+        console.print(f"[red]show:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    if json_out:
+        out_console.print(_json.dumps(_inspection_to_dict(inspection), indent=2, default=str))
+        return
+
+    _render_inspection_text(out_console, path, inspection)
+
+
+def _inspection_to_dict(inspection: object) -> dict[str, object]:
+    """Flatten a StoreInspection into a JSON-safe dict.
+
+    Schema is the v1 contract for `dlm show --json`; any reshape is a
+    version bump (recorded in tests/golden/cli-json/).
+    """
+    from dlm.store.inspect import StoreInspection
+
+    assert isinstance(inspection, StoreInspection)
+    return {
+        "dlm_id": inspection.dlm_id,
+        "path": str(inspection.path),
+        "base_model": inspection.base_model,
+        "base_model_revision": inspection.base_model_revision,
+        "adapter_version": inspection.adapter_version,
+        "training_runs": inspection.training_runs,
+        "last_trained_at": inspection.last_trained_at,
+        "has_adapter_current": inspection.has_adapter_current,
+        "replay_size_bytes": inspection.replay_size_bytes,
+        "total_size_bytes": inspection.total_size_bytes,
+        "source_path": str(inspection.source_path) if inspection.source_path else None,
+        "orphaned": inspection.orphaned,
+        "exports": [e.model_dump(mode="json") for e in inspection.exports],
+        "content_hashes": dict(inspection.content_hashes),
+        "pinned_versions": dict(inspection.pinned_versions),
+    }
+
+
+def _render_inspection_text(console: object, path: Path, inspection: object) -> None:
+    """Human-readable `dlm show` output."""
+    from rich.console import Console
+
+    from dlm.store.inspect import StoreInspection
+
+    assert isinstance(console, Console)
+    assert isinstance(inspection, StoreInspection)
+
+    console.print(f"[bold]{path}[/bold]")
+    console.print(f"  dlm_id:         {inspection.dlm_id}")
+    rev = inspection.base_model_revision
+    rev_str = f" (revision {rev[:7]})" if rev else ""
+    console.print(f"  base_model:     {inspection.base_model}{rev_str}")
+    console.print(
+        f"  store:          {inspection.path}  ({_human_size(inspection.total_size_bytes)})"
+    )
+    if inspection.has_adapter_current:
+        console.print(f"  adapter:        v{inspection.adapter_version:04d}")
+    else:
+        console.print("  adapter:        [dim]none (no `dlm train` yet)[/dim]")
+    last = inspection.last_trained_at
+    last_str = f" — last {last.isoformat(timespec='seconds')}" if last else ""
+    console.print(f"  training runs:  {inspection.training_runs}{last_str}")
+    console.print(f"  exports:        {len(inspection.exports)}")
+    for exp in inspection.exports:
+        tag = f" — {exp.ollama_name}" if exp.ollama_name else ""
+        console.print(f"                  {exp.quant}{tag}")
+    if inspection.orphaned:
+        console.print("  [yellow]orphaned:[/yellow]     source .dlm is missing or mismatched")
+
+
+def _human_size(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024:
+            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
+        n //= 1024
+    return f"{n} PB"
 
 
 def migrate_cmd(
