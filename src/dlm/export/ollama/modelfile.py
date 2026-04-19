@@ -11,16 +11,17 @@ Assembles a complete Modelfile from:
 Output shape is fixed (see Sprint 12 spec). Stops are always emitted
 — missing stops cause runaway generation (findings §9).
 
-Security: `SYSTEM "..."` content is shell-escaped via `shlex.quote`
+Security: `SYSTEM "..."` content is JSON-escaped via `json.dumps`
 to defend against `"` / newline injection in user-supplied prompts.
 The Modelfile's `SYSTEM` directive treats its string as a quoted
 literal, so a naïve string interpolation would be exploitable.
+JSON's string-literal grammar is a subset of Modelfile's, so the
+escapes (`\"`, `\n`, `\\`) round-trip cleanly.
 """
 
 from __future__ import annotations
 
 import json
-import shlex
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -208,22 +209,19 @@ def _build_param_lines(
 
 
 def _build_system_line(system_prompt: str | None) -> str | None:
-    """Shell-escaped `SYSTEM "..."` directive, or `None` when no prompt.
+    """JSON-escaped `SYSTEM "..."` directive, or `None` when no prompt.
 
-    Ollama treats SYSTEM as a quoted string; embedded `"` in the user's
-    prompt would break parsing (or inject directives). `shlex.quote`
-    produces a POSIX-safe literal; we strip the outer shell-quoting
-    and re-quote for Modelfile grammar by using JSON encoding, which
-    handles all escape cases uniformly.
+    Ollama treats SYSTEM as a quoted string; an embedded `"` in the
+    user's prompt would close the literal and inject directives.
+    `json.dumps` escapes `"`, `\\n`, and `\\\\` to the exact escapes
+    Modelfile's string-literal grammar accepts, so a hostile prompt
+    surfaces as content instead of metaparse.
     """
     if system_prompt is None:
         return None
     stripped = system_prompt.strip()
     if not stripped:
         return None
-    # JSON encoding escapes `"`, `\n`, `\\` correctly for a Modelfile
-    # string literal — same quoting rules as Python string literals.
-    _ = shlex.quote  # referenced for provenance; JSON is what we use
     return f"SYSTEM {json.dumps(stripped)}"
 
 
