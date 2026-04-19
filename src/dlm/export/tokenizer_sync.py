@@ -28,52 +28,21 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
+from dlm.export._gguf_io import (
+    _GGUF_MAGIC,
+    _TYPE_ARRAY,
+    _TYPE_STRING,
+    _read_string,
+    _read_u32,
+    _read_u64,
+    _skip_value,
+)
 from dlm.export.errors import PreflightError
 
 if TYPE_CHECKING:
     from transformers import PreTrainedTokenizerBase
-
-
-_GGUF_MAGIC: Final[bytes] = b"GGUF"
-
-# Upper bound on a GGUF metadata string — chosen wildly larger than any
-# credible real value (tokens are ≤ a few hundred bytes; chat templates
-# run tens of KB at most) but small enough to reject a crafted GGUF that
-# claims a multi-GB string and drives `f.read(length)` into OOM.
-_MAX_STRING_BYTES: Final[int] = 16 * 1024 * 1024
-
-# GGUF value types per llama.cpp's gguf spec (stable v2+v3).
-_TYPE_UINT8: Final[int] = 0
-_TYPE_INT8: Final[int] = 1
-_TYPE_UINT16: Final[int] = 2
-_TYPE_INT16: Final[int] = 3
-_TYPE_UINT32: Final[int] = 4
-_TYPE_INT32: Final[int] = 5
-_TYPE_FLOAT32: Final[int] = 6
-_TYPE_BOOL: Final[int] = 7
-_TYPE_STRING: Final[int] = 8
-_TYPE_ARRAY: Final[int] = 9
-_TYPE_UINT64: Final[int] = 10
-_TYPE_INT64: Final[int] = 11
-_TYPE_FLOAT64: Final[int] = 12
-
-# Fixed-size scalar types → byte widths, used to skip arrays of scalars
-# without iterating each element.
-_FIXED_WIDTH: Final[dict[int, int]] = {
-    _TYPE_UINT8: 1,
-    _TYPE_INT8: 1,
-    _TYPE_UINT16: 2,
-    _TYPE_INT16: 2,
-    _TYPE_UINT32: 4,
-    _TYPE_INT32: 4,
-    _TYPE_FLOAT32: 4,
-    _TYPE_BOOL: 1,
-    _TYPE_UINT64: 8,
-    _TYPE_INT64: 8,
-    _TYPE_FLOAT64: 8,
-}
 
 _TOKENS_KEY: Final[str] = "tokenizer.ggml.tokens"
 
@@ -184,61 +153,6 @@ def assert_gguf_vocab_matches(gguf_path: Path, tokenizer: PreTrainedTokenizerBas
 
 
 # --- internals ------------------------------------------------------------
-
-
-def _read_u32(f: Any) -> int:
-    raw = f.read(4)
-    if len(raw) != 4:
-        raise struct.error("short read")
-    value: int = struct.unpack("<I", raw)[0]
-    return value
-
-
-def _read_u64(f: Any) -> int:
-    raw = f.read(8)
-    if len(raw) != 8:
-        raise struct.error("short read")
-    value: int = struct.unpack("<Q", raw)[0]
-    return value
-
-
-def _read_string(f: Any) -> str:
-    length = _read_u64(f)
-    if length > _MAX_STRING_BYTES:
-        raise struct.error(f"GGUF string length {length} exceeds bound {_MAX_STRING_BYTES}")
-    raw = f.read(length)
-    if len(raw) != length:
-        raise struct.error("short read in string")
-    decoded: str = raw.decode("utf-8", errors="replace")
-    return decoded
-
-
-def _skip_value(f: Any, value_type: int) -> None:
-    if value_type in _FIXED_WIDTH:
-        f.seek(_FIXED_WIDTH[value_type], 1)
-        return
-    if value_type == _TYPE_STRING:
-        length = _read_u64(f)
-        if length > _MAX_STRING_BYTES:
-            raise struct.error(f"GGUF string length {length} exceeds bound {_MAX_STRING_BYTES}")
-        f.seek(length, 1)
-        return
-    if value_type == _TYPE_ARRAY:
-        elem_type = _read_u32(f)
-        count = _read_u64(f)
-        if elem_type in _FIXED_WIDTH:
-            f.seek(_FIXED_WIDTH[elem_type] * count, 1)
-            return
-        if elem_type == _TYPE_STRING:
-            for _ in range(count):
-                length = _read_u64(f)
-                if length > _MAX_STRING_BYTES:
-                    raise struct.error(
-                        f"GGUF string length {length} exceeds bound {_MAX_STRING_BYTES}"
-                    )
-                f.seek(length, 1)
-            return
-        # Nested arrays aren't used by llama.cpp's vocab metadata; treat
-        # as unsupported.
-        raise struct.error(f"nested/unknown array elem_type {elem_type}")
-    raise struct.error(f"unknown GGUF value_type {value_type}")
+# Byte-level primitives (`_read_u32`, `_read_u64`, `_read_string`,
+# `_skip_value`) live in `dlm.export._gguf_io` and are imported at the
+# top of this module. `gguf_tensors` (Sprint 11.5) uses the same set.
