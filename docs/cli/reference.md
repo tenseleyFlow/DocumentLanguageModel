@@ -22,19 +22,24 @@ Applied to every subcommand:
 
 ### `dlm init`
 
-Bootstrap a new `.dlm` file with a fresh ULID.
+Bootstrap a new `.dlm` file with a fresh ULID, create the per-store
+directory, and persist the license-acceptance record (audit-05 B2).
 
 ```
-dlm init <path> [--base <key>] [--i-accept-license]
+dlm init <path> [--base <key>] [--i-accept-license] [--force]
 ```
 
 | Option | Default | Notes |
 |---|---|---|
-| `--base <key>` | `smollm2-135m` | Registry key or `hf:org/name`. |
+| `--base <key>` | `qwen2.5-1.5b` | Registry key or `hf:org/name`. |
 | `--i-accept-license` | false | Required for gated bases (Llama-3.2). |
+| `--force` | false | Overwrite an existing `.dlm` at path. |
 
-Writes `<path>` with the minimum frontmatter + an empty body. Refuses
-if the file already exists.
+Writes `<path>` with minimum frontmatter, provisions
+`~/.dlm/store/<dlm_id>/` with an initial `manifest.json`, and (for
+gated bases) stores the `LicenseAcceptance` record so `dlm train` /
+`dlm export` don't re-prompt. Refuses if the `.dlm` file already
+exists and `--force` wasn't passed.
 
 ### `dlm train`
 
@@ -49,10 +54,10 @@ dlm train <path> [--resume|--fresh] [--seed N] [--max-steps N]
 | Option | Default | Notes |
 |---|---|---|
 | `--resume` | false | Continue from `training_state.pt`. Mutex with `--fresh`. |
-| `--fresh` | true | Discard prior optimizer state; train from scratch. Mutex with `--resume`. |
+| `--fresh` | false | Discard prior optimizer state; train from scratch. Mutex with `--resume`. Default when neither flag is set. |
 | `--seed N` | frontmatter.training.seed | Override training seed. |
 | `--max-steps N` | unlimited | Cap step count. |
-| `--i-accept-license` | false | Required for gated bases. |
+| `--i-accept-license` | false | Required for gated bases (usually captured once at `dlm init` and persisted). |
 | `--strict-lock` | false | Fail on any `dlm.lock` drift (even WARN). |
 | `--update-lock` | false | Bypass validation; always write a fresh `dlm.lock`. |
 | `--ignore-lock` | false | Bypass validation; don't write `dlm.lock`. |
@@ -84,9 +89,9 @@ Produce GGUF files + Modelfile + register with Ollama.
 
 ```
 dlm export <path> [--quant Q] [--merged [--dequantize]]
-                  [--name N] [--skip-ollama] [--no-smoke] [--no-imatrix]
+                  [--name N] [--no-template] [--skip-ollama]
+                  [--no-smoke] [--no-imatrix] [--verbose]
                   [--draft TAG | --no-draft]
-                  [--adapter-mix name:w,...]
 ```
 
 | Option | Default | Notes |
@@ -95,12 +100,13 @@ dlm export <path> [--quant Q] [--merged [--dequantize]]
 | `--merged` | false | Merge LoRA into base before quantizing. |
 | `--dequantize` | false | Required with `--merged` on a QLoRA adapter (pitfall #3). |
 | `--name N` | derived | Ollama model name. |
+| `--no-template` | false | Skip writing `TEMPLATE` into the Modelfile (power users only — Ollama will fuzzy-match, which Sprint 12 deliberately works around). |
 | `--skip-ollama` | false | Emit GGUFs but don't register. |
 | `--no-smoke` | false | Register but skip the smoke prompt. |
 | `--no-imatrix` | false | Opt out of imatrix-calibrated quantization. |
+| `--verbose` | false | Surface preflight + conversion diagnostics. |
 | `--draft TAG` | auto | Override the speculative-decoding draft model. |
 | `--no-draft` | false | Disable speculative decoding. Mutex with `--draft`. |
-| `--adapter-mix name:w,...` | none | Multi-adapter export (Sprint 20). |
 
 ### `dlm pack`
 
@@ -174,5 +180,8 @@ dlm migrate <path> [--dry-run] [--no-backup]
 | 1 | Runtime failure (license refused, disk full, OOM, template drift, lock validation). |
 | 2 | CLI misuse (mutex violation, missing argument). |
 
-Every error path routes through the Rich reporter in
-`dlm.cli.reporter` so failure messages are consistent across commands.
+Domain errors are formatted consistently via bare `console.print`
+calls in each subcommand (prefix convention: `<subject>: <message>`,
+e.g. `lock: base_model_revision changed`). Uncaught exceptions escape
+into `dlm.cli.reporter` which picks a matching prefix from the
+module the exception came from and renders a tier-3 generic message.
