@@ -52,6 +52,12 @@ dev = [
     "trl>=0.12",
     "hypothesis>=6.152.1",
 ]
+docs = [
+    # Sprint 16: MkDocs Material site. Separated from `dev` so contributors
+    # working on code don't pay the docs dep surface.
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+]
 
 [build-system]
 requires = ["hatchling"]
