@@ -472,17 +472,85 @@ def pack_cmd(
     out: Annotated[Path | None, typer.Option("--out")] = None,
     include_exports: Annotated[bool, typer.Option("--include-exports")] = False,
     include_base: Annotated[bool, typer.Option("--include-base")] = False,
+    include_logs: Annotated[bool, typer.Option("--include-logs")] = False,
+    licensee: Annotated[
+        str | None,
+        typer.Option(
+            "--i-am-the-licensee",
+            help="URL acknowledging separate acceptance of a non-redistributable base (required for --include-base on gated models).",
+        ),
+    ] = None,
 ) -> None:
     """Produce a portable .dlm.pack bundle."""
-    _stub("14", "dlm pack")
+    from rich.console import Console
+
+    from dlm.doc.errors import DlmParseError
+    from dlm.pack.errors import BaseLicenseRefusedError
+    from dlm.pack.packer import pack
+
+    console = Console(stderr=True)
+
+    try:
+        result = pack(
+            path,
+            out=out,
+            include_exports=include_exports,
+            include_base=include_base,
+            include_logs=include_logs,
+            licensee_acceptance_url=licensee,
+        )
+    except BaseLicenseRefusedError as exc:
+        console.print(f"[red]pack:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except DlmParseError as exc:
+        console.print(f"[red]parse:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    size_mb = result.bytes_written / (1024 * 1024)
+    console.print(
+        f"[green]packed:[/green] {result.path} "
+        f"({size_mb:.2f} MB, content_type={result.content_type})"
+    )
 
 
 def unpack_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm.pack to install.")],
     force: Annotated[bool, typer.Option("--force")] = False,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="Directory to place the restored .dlm (default: alongside the pack)."),
+    ] = None,
 ) -> None:
     """Install a .dlm.pack into the local store."""
-    _stub("14", "dlm unpack")
+    from rich.console import Console
+
+    from dlm.pack.errors import (
+        PackFormatVersionError,
+        PackIntegrityError,
+        PackLayoutError,
+    )
+    from dlm.pack.unpacker import unpack
+
+    console = Console(stderr=True)
+
+    try:
+        result = unpack(path, force=force, out_dir=out)
+    except PackFormatVersionError as exc:
+        console.print(f"[red]unpack:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except PackIntegrityError as exc:
+        console.print(f"[red]unpack:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except PackLayoutError as exc:
+        console.print(f"[red]unpack:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[green]unpacked:[/green] {result.dlm_path}")
+    console.print(f"  store:  {result.store_path}")
+    console.print(f"  dlm_id: {result.dlm_id}")
+    if result.applied_migrations:
+        steps = " → ".join(f"v{v}" for v in (*result.applied_migrations, result.header.pack_format_version + 1))
+        console.print(f"  migrated: {steps}")
 
 
 def doctor_cmd(
