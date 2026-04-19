@@ -81,13 +81,13 @@ def seed_everything(seed: int) -> DeterminismSummary:
         if torch.cuda.is_available():  # pragma: no cover — CI covers GPU hosts
             torch.cuda.manual_seed_all(seed)
             class_ = "strict"
-        elif _mps_available(torch):
+        elif _mps_available(torch):  # pragma: no cover — MPS only on Apple Silicon dev hosts
             notes.append(
                 "MPS determinism is best-effort; loss curves are close but not bit-identical. "
                 "Use --strict-determinism on a CUDA box for byte-exact reproducibility."
             )
             class_ = "best_effort"
-        else:
+        else:  # pragma: no cover — CPU-only hosts exercised on Linux CI, not local MPS
             notes.append(
                 "CPU-only host: determinism is best-effort — deterministic kernels "
                 "enabled, but training is slower than on GPU."
