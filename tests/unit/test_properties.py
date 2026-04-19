@@ -9,14 +9,16 @@ budget is tuned small.
 from __future__ import annotations
 
 import string
+from pathlib import Path
 
 import pytest
-from hypothesis import given
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from dlm.export.errors import UnsafeMergeError
+from dlm.export.errors import PreflightError, UnsafeMergeError
 from dlm.export.merge import check_merge_safety
 from dlm.export.plan import ExportPlan
+from dlm.export.tokenizer_sync import read_gguf_vocab_size
 from dlm.io.ulid import mint_ulid
 from dlm.pack.integrity import rollup_sha256
 
@@ -107,3 +109,39 @@ class TestMergeSafetyTruthTable:
                 check_merge_safety(plan, was_qlora=was_qlora)
         else:
             check_merge_safety(plan, was_qlora=was_qlora)  # no raise
+
+
+# --- GGUF parser fuzz ---------------------------------------------------------
+
+
+class TestGgufParserFuzz:
+    """Feed random bytes at `read_gguf_vocab_size`; it must surface a typed
+    `PreflightError`, never leak `struct.error` / `MemoryError` / a raw
+    decoded string. Audit-04 T6 / B7 defense-in-depth.
+
+    Reusing `tmp_path` across hypothesis iterations is deliberate — we
+    overwrite the file each run, and spinning up a fresh dir per-sample
+    would dominate the test runtime.
+    """
+
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], max_examples=50)
+    @given(
+        payload=st.binary(min_size=0, max_size=256).filter(
+            # Skip valid headers — fuzzing valid packets isn't the point.
+            lambda b: not b.startswith(b"GGUF")
+        )
+    )
+    def test_random_bytes_raise_preflight_error(self, payload: bytes, tmp_path: Path) -> None:
+        path = tmp_path / "fuzz.gguf"
+        path.write_bytes(payload)
+        with pytest.raises(PreflightError):
+            read_gguf_vocab_size(path)
+
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], max_examples=50)
+    @given(body=st.binary(min_size=0, max_size=256))
+    def test_random_body_after_magic_doesnt_crash(self, body: bytes, tmp_path: Path) -> None:
+        """Even with valid magic, garbage body → typed error, no crash."""
+        path = tmp_path / "fuzz.gguf"
+        path.write_bytes(b"GGUF" + body)
+        with pytest.raises(PreflightError):
+            read_gguf_vocab_size(path)
