@@ -94,9 +94,7 @@ def _skip_value(f: Any, value_type: int) -> None:
     if value_type == _TYPE_STRING:
         length = _read_u64(f)
         if length > _MAX_STRING_BYTES:
-            raise struct.error(
-                f"GGUF string length {length} exceeds bound {_MAX_STRING_BYTES}"
-            )
+            raise struct.error(f"GGUF string length {length} exceeds bound {_MAX_STRING_BYTES}")
         f.seek(length, 1)
         return
     if value_type == _TYPE_ARRAY:

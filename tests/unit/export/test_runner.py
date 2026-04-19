@@ -290,6 +290,80 @@ class TestVocabCheck:
         assert base.name == "base.Q4_K_M.gguf"
 
 
+class TestEmbeddingCheck:
+    """`run_export` invokes the embedding checker after the vocab checker (sprint 11.5)."""
+
+    def test_mismatch_raises_preflight(self, tmp_path: Path) -> None:
+        from dlm.export.errors import PreflightError
+
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+
+        def _raise(_a: Path, _g: Path) -> None:
+            raise PreflightError(probe="embedding_row_sha", detail="row 4 diverged")
+
+        with pytest.raises(PreflightError, match="embedding_row_sha"):
+            run_export(
+                store,
+                _SPEC,
+                plan,
+                cached_base_dir=cached_base,
+                subprocess_runner=recorder,
+                vendor_override=vendor,
+                skip_ollama=True,
+                vocab_checker=lambda _a, _g: None,
+                embedding_checker=_raise,
+            )
+
+    def test_checker_receives_paths_after_vocab(self, tmp_path: Path) -> None:
+        """Both checkers fire once per export, vocab before embedding."""
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+        order: list[str] = []
+
+        def _vocab(_a: Path, _g: Path) -> None:
+            order.append("vocab")
+
+        def _embedding(_a: Path, _g: Path) -> None:
+            order.append("embedding")
+
+        run_export(
+            store,
+            _SPEC,
+            plan,
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=True,
+            vocab_checker=_vocab,
+            embedding_checker=_embedding,
+        )
+        assert order == ["vocab", "embedding"]
+
+
+class TestDefaultEmbeddingCheck:
+    """Exercise `_default_check_embedding_rows`'s skip path (audit-04 Q2)."""
+
+    def test_no_modules_to_save_is_noop(self, tmp_path: Path) -> None:
+        """Default path skips silently when the adapter has no modules_to_save."""
+        from dlm.export.runner import _default_check_embedding_rows
+
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "adapter_config.json").write_text(
+            json.dumps({"base_model_name_or_path": "x", "peft_type": "LORA"})
+        )
+        (adapter / "tokenizer_config.json").write_text(
+            json.dumps({"vocab_size": 5, "chat_template": "x"})
+        )
+        base = tmp_path / "base.gguf"
+        base.write_bytes(b"would-not-parse")
+        # Skip path: no raise even though the GGUF is nonsense.
+        _default_check_embedding_rows(adapter, base)
+
+
 class TestMissingAdapter:
     def test_no_current_adapter_raises(self, tmp_path: Path) -> None:
         store = for_dlm("01TEST", home=tmp_path)

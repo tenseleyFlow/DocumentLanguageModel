@@ -330,6 +330,112 @@ class TestMultipleModules:
         assert "lm_head[4]" in excinfo.value.detail
 
 
+class TestRobustSkips:
+    """Malformed inputs on the skip-path must not raise (Sprint 11.5 hygiene)."""
+
+    def test_unreadable_adapter_config_skips(self, tmp_path: Path) -> None:
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "adapter_config.json").write_text("not json")
+        base = tmp_path / "base.gguf"
+        base.write_bytes(b"ignored")
+        # Unreadable adapter_config belongs to Sprint 11's preflight;
+        # this function bails out silently so we don't double-report.
+        assert_embedding_rows_match(adapter, base)
+
+    def test_non_list_modules_to_save_skips(self, tmp_path: Path) -> None:
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "adapter_config.json").write_text(
+            json.dumps(
+                {
+                    "base_model_name_or_path": "x",
+                    "peft_type": "LORA",
+                    "modules_to_save": "embed_tokens",  # should be list, user wrote string
+                }
+            )
+        )
+        (adapter / "tokenizer_config.json").write_text(
+            json.dumps({"vocab_size": 5, "chat_template": "x"})
+        )
+        base = tmp_path / "base.gguf"
+        base.write_bytes(b"ignored")
+        assert_embedding_rows_match(adapter, base)
+
+    def test_missing_tokenizer_config_skips(self, tmp_path: Path) -> None:
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "adapter_config.json").write_text(
+            json.dumps(
+                {
+                    "base_model_name_or_path": "x",
+                    "peft_type": "LORA",
+                    "modules_to_save": ["embed_tokens"],
+                }
+            )
+        )
+        # No tokenizer_config.json — the helper returns [], so we skip.
+        base = tmp_path / "base.gguf"
+        base.write_bytes(b"ignored")
+        assert_embedding_rows_match(adapter, base)
+
+    def test_unreadable_tokenizer_config_treats_as_no_added(self, tmp_path: Path) -> None:
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "adapter_config.json").write_text(
+            json.dumps(
+                {
+                    "base_model_name_or_path": "x",
+                    "peft_type": "LORA",
+                    "modules_to_save": ["embed_tokens"],
+                }
+            )
+        )
+        (adapter / "tokenizer_config.json").write_text("not json")
+        base = tmp_path / "base.gguf"
+        base.write_bytes(b"ignored")
+        assert_embedding_rows_match(adapter, base)
+
+    def test_malformed_added_tokens_decoder_skips(self, tmp_path: Path) -> None:
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "adapter_config.json").write_text(
+            json.dumps(
+                {
+                    "base_model_name_or_path": "x",
+                    "peft_type": "LORA",
+                    "modules_to_save": ["embed_tokens"],
+                }
+            )
+        )
+        (adapter / "tokenizer_config.json").write_text(
+            json.dumps(
+                {
+                    "vocab_size": 5,
+                    "chat_template": "x",
+                    # Mixed-shape entries + non-special + non-int key are
+                    # all skipped by `_added_special_token_ids`.
+                    "added_tokens_decoder": {
+                        "not-an-int": {"special": True},
+                        "1": "not-a-dict",
+                        "2": {"special": False, "content": "<|a|>"},
+                        "3": {"special": True},  # ← legitimate but no added means skip
+                    },
+                }
+            )
+        )
+        base = tmp_path / "base.gguf"
+        base.write_bytes(b"ignored")
+        # Only id 3 survives the filter; but since the base isn't a valid
+        # GGUF the check would fail. Since we can't easily build a
+        # base for this edge case here and the filter is what we want
+        # to cover, assert by monkeypatching the safetensors loader.
+        # Simpler: confirm the filter returns [3] directly.
+        from dlm.export.embedding_sync import _added_special_token_ids
+
+        assert _added_special_token_ids(adapter) == [3]
+
+
 class TestBoundsChecks:
     def test_added_token_id_out_of_range_raises(self, tmp_path: Path) -> None:
         # Adapter claims an added token id higher than the embedding's vocab dim.

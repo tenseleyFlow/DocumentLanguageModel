@@ -103,9 +103,23 @@ def _default_check_base_vocab(adapter_path: Path, base_gguf_path: Path) -> None:
         )
 
 
-# Injection seam: tests override with a no-op to skip real GGUF parsing
-# on synthetic fixture bytes. Production uses the default.
+def _default_check_embedding_rows(adapter_path: Path, base_gguf_path: Path) -> None:
+    """Cross-check adapter `modules_to_save` rows against base GGUF rows.
+
+    Sprint 11.5 (audit-04 Q2). No-op when the adapter doesn't own any
+    embedding layers. Raises `PreflightError` on byte-level mismatch
+    or unsupported base dtype. See `dlm.export.embedding_sync` for
+    the contract.
+    """
+    from dlm.export.embedding_sync import assert_embedding_rows_match
+
+    assert_embedding_rows_match(adapter_path, base_gguf_path)
+
+
+# Injection seams: tests override with no-ops to skip real GGUF parsing
+# on synthetic fixture bytes. Production uses the defaults.
 VocabChecker = Callable[[Path, Path], None]
+EmbeddingChecker = Callable[[Path, Path], None]
 
 
 def run_export(
@@ -123,6 +137,7 @@ def run_export(
     ollama_create_runner: Callable[..., str] | None = None,
     ollama_run_runner: Callable[..., str] | None = None,
     vocab_checker: VocabChecker | None = None,
+    embedding_checker: EmbeddingChecker | None = None,
     training_sequence_len: int | None = None,
     override_temperature: float | None = None,
     override_top_p: float | None = None,
@@ -193,6 +208,14 @@ def run_export(
     # `vocab_checker` because their fake GGUF bytes aren't parseable.
     vcheck = vocab_checker if vocab_checker is not None else _default_check_base_vocab
     vcheck(adapter_path, base_gguf_path)
+
+    # 4c. Adapter embedding rows ↔ base GGUF rows (Sprint 11.5, audit-04 Q2).
+    # Fires only when the adapter declares `modules_to_save=[embed_tokens,
+    # lm_head]` AND the tokenizer has added-special tokens. Skipped
+    # silently otherwise. Tests pass a no-op `embedding_checker` because
+    # their synthetic base GGUFs don't contain real tensors.
+    echeck = embedding_checker if embedding_checker is not None else _default_check_embedding_rows
+    echeck(adapter_path, base_gguf_path)
 
     # 5. Adapter OR merged path.
     artifacts: list[Path] = [base_gguf_path]

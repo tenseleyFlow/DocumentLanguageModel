@@ -168,10 +168,9 @@ def assert_embedding_rows_match(
                     ),
                 )
             adapter_sha = hashlib.sha256(adapter_rows[tid]).hexdigest()
-            try:
-                base_row = index.row_bytes(tmap.gguf_name, tid)
-            except PreflightError:
-                raise
+            # `index.row_bytes` raises `PreflightError` on dtype mismatch /
+            # out-of-range — those bubble up naturally; no catch-and-rethrow.
+            base_row = index.row_bytes(tmap.gguf_name, tid)
             base_sha = hashlib.sha256(base_row).hexdigest()
             if adapter_sha != base_sha:
                 mismatches.append(
