@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import pytest
+
 from dlm.base_models import BASE_MODELS
-from dlm.train.adapter import build_lora_config
+from dlm.train.adapter import build_lora_config, verify_resume_tokenizer_compat
+from dlm.train.errors import ResumeIntegrityError
 
 
 class TestBuildLoraConfig:
@@ -42,3 +48,49 @@ class TestBuildLoraConfig:
         )
         assert cfg.bias == "none"
         assert cfg.task_type == TaskType.CAUSAL_LM
+
+
+class TestVerifyResumeTokenizerCompat:
+    """Audit-04 M5: cross-check saved adapter vs current tokenizer_grew."""
+
+    def _write_adapter_config(self, path: Path, modules_to_save: list[str] | None) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "adapter_config.json").write_text(
+            json.dumps({"modules_to_save": modules_to_save})
+        )
+
+    def test_both_no_embeddings_passes(self, tmp_path: Path) -> None:
+        self._write_adapter_config(tmp_path, modules_to_save=None)
+        verify_resume_tokenizer_compat(tmp_path, tokenizer_grew=False)
+
+    def test_both_with_embeddings_passes(self, tmp_path: Path) -> None:
+        self._write_adapter_config(tmp_path, modules_to_save=["embed_tokens", "lm_head"])
+        verify_resume_tokenizer_compat(tmp_path, tokenizer_grew=True)
+
+    def test_grew_but_adapter_lacks_embeddings_raises(self, tmp_path: Path) -> None:
+        """Current tokenizer grew, saved adapter didn't train embeddings."""
+        self._write_adapter_config(tmp_path, modules_to_save=None)
+        with pytest.raises(ResumeIntegrityError, match="vocab grew"):
+            verify_resume_tokenizer_compat(tmp_path, tokenizer_grew=True)
+
+    def test_adapter_has_embeddings_but_tokenizer_didnt_grow_raises(self, tmp_path: Path) -> None:
+        """Adapter was trained with modules_to_save but current tokenizer doesn't need it."""
+        self._write_adapter_config(tmp_path, modules_to_save=["embed_tokens", "lm_head"])
+        with pytest.raises(ResumeIntegrityError, match="did not require"):
+            verify_resume_tokenizer_compat(tmp_path, tokenizer_grew=False)
+
+    def test_missing_config_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(ResumeIntegrityError, match="adapter_config.json"):
+            verify_resume_tokenizer_compat(tmp_path, tokenizer_grew=False)
+
+    def test_unreadable_config_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "adapter_config.json").write_text("not valid json {{{")
+        with pytest.raises(ResumeIntegrityError, match="unreadable"):
+            verify_resume_tokenizer_compat(tmp_path, tokenizer_grew=False)
+
+    def test_partial_embedding_list_counts_as_having_embeddings(self, tmp_path: Path) -> None:
+        """Only `embed_tokens` (no `lm_head`) still triggers the has-embeddings branch."""
+        self._write_adapter_config(tmp_path, modules_to_save=["embed_tokens"])
+        verify_resume_tokenizer_compat(tmp_path, tokenizer_grew=True)
+        with pytest.raises(ResumeIntegrityError):
+            verify_resume_tokenizer_compat(tmp_path, tokenizer_grew=False)
