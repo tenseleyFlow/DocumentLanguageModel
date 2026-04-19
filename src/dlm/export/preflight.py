@@ -163,16 +163,23 @@ def check_chat_template(adapter_dir: Path, *, required: bool = True) -> None:
 def check_was_adapter_qlora(adapter_dir: Path) -> bool:
     """Read the audit-05 M1 `training_run.json` flag.
 
-    Returns False when the file is missing or malformed — the caller
-    should still refuse merged exports on QLoRA adapters under the
-    legacy heuristic (bnb pin), but we centralize the authoritative
-    read here so all consumers share one code path.
+    Returns False when the file is missing (legacy adapter trained
+    before audit-05 landed the explicit flag). A malformed file is
+    NOT silently treated as "not QLoRA" — that would let a corrupt
+    adapter bypass the pitfall-3 merge gate; we raise instead.
     """
     training_run_path = adapter_dir / "training_run.json"
     if not training_run_path.exists():
         return False
     try:
         data = json.loads(training_run_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PreflightError(
+            probe="training_run_json",
+            detail=(
+                f"adapter {adapter_dir}/training_run.json is unreadable "
+                f"({exc}); cannot determine use_qlora, refusing merge-safety "
+                "bypass. Re-run `dlm train` or fix the file."
+            ),
+        ) from exc
     return bool(data.get("use_qlora", False))

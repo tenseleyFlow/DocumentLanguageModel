@@ -120,6 +120,8 @@ class TestQloraFlag:
         (tmp_path / "training_run.json").write_text(json.dumps({"use_qlora": False}))
         assert check_was_adapter_qlora(tmp_path) is False
 
-    def test_malformed_json_returns_false(self, tmp_path: Path) -> None:
+    def test_malformed_json_raises(self, tmp_path: Path) -> None:
+        """Corrupt `training_run.json` must not silently bypass the pitfall-3 merge gate."""
         (tmp_path / "training_run.json").write_text("not json")
-        assert check_was_adapter_qlora(tmp_path) is False
+        with pytest.raises(PreflightError, match="training_run_json"):
+            check_was_adapter_qlora(tmp_path)
