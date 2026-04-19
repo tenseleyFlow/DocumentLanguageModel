@@ -71,10 +71,39 @@ jobs:
           name: dist
           path: dist/
 
+  classify-tag:
+    # Audit-05 M8: route by `packaging.version.Version(tag).is_prerelease`
+    # rather than `contains('-rc')`. The substring check breaks on PEP 440
+    # canonical prereleases (e.g. `v1.0.0rc1` without the hyphen) — those
+    # would silently publish to prod PyPI.
+    name: classify tag as release vs prerelease
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    outputs:
+      is_prerelease: ${{ steps.classify.outputs.is_prerelease }}
+    steps:
+      - name: Derive is_prerelease via packaging.version
+        id: classify
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # Strip leading 'v' if present; packaging accepts either form.
+          VERSION="${TAG#v}"
+          IS_PRE=$(python3 -c "import sys; from packaging.version import Version, InvalidVersion
+          try:
+              v = Version('${VERSION}')
+              print('true' if v.is_prerelease else 'false')
+          except InvalidVersion:
+              # Unparseable tags → treat as prerelease (safer default: routes
+              # to test.pypi.org, where a bad tag can't stomp the real index).
+              print('true')
+          ")
+          echo "Tag ${TAG} → is_prerelease=${IS_PRE}"
+          echo "is_prerelease=${IS_PRE}" >> "$GITHUB_OUTPUT"
+
   publish-testpypi:
-    name: publish to test.pypi.org (RC tags only)
-    needs: build
-    if: contains(github.ref, '-rc')
+    name: publish to test.pypi.org (prerelease tags only)
+    needs: [build, classify-tag]
+    if: needs.classify-tag.outputs.is_prerelease == 'true'
     runs-on: ubuntu-latest
     environment:
       name: test-pypi
@@ -92,8 +121,8 @@ jobs:
 
   publish-pypi:
     name: publish to pypi.org (release tags)
-    needs: build
-    if: ${{ !contains(github.ref, '-rc') }}
+    needs: [build, classify-tag]
+    if: needs.classify-tag.outputs.is_prerelease == 'false'
     runs-on: ubuntu-latest
     environment:
       name: pypi
