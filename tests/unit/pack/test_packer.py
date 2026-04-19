@@ -180,23 +180,43 @@ class TestStoreLock:
     def test_acquires_lock_during_pack(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The store exclusive lock must be held for the duration of the copy."""
+        """The store exclusive lock must be held for the duration of the copy.
+
+        Audit-04 T1: prior test just checked `lock.exists()`, which is
+        satisfied by any stale lockfile. This variant asserts the *live*
+        exclusive semantics — a concurrent `exclusive(store.lock)`
+        attempt during the copy must block (raise LockHeldError under
+        a small timeout)."""
         doc = _scaffold_doc_and_store(tmp_path)
 
         from dlm.doc.parser import parse_file
+        from dlm.store.errors import LockHeldError
+        from dlm.store.lock import exclusive
         from dlm.store.paths import for_dlm
 
         parsed = parse_file(doc)
         store = for_dlm(parsed.frontmatter.dlm_id)
 
-        seen_lock_state: dict[str, bool] = {}
+        observed: dict[str, object] = {}
 
         original_copytree = __import__("shutil").copytree
 
         def watcher(*args: Any, **kwargs: Any) -> Any:
-            seen_lock_state["locked"] = store.lock.exists()
+            # Mid-copy: try to acquire the same lock. It must already be
+            # held by the packer, so `exclusive(..., timeout=0)` raises.
+            try:
+                with exclusive(store.lock, timeout=0.0):
+                    observed["second_acquire"] = "succeeded"
+            except LockHeldError as exc:
+                observed["second_acquire"] = "blocked"
+                observed["holder_pid"] = exc.holder_pid
             return original_copytree(*args, **kwargs)
 
         monkeypatch.setattr("shutil.copytree", watcher)
         pack(doc)
-        assert seen_lock_state.get("locked") is True
+
+        import os as _os
+
+        assert observed.get("second_acquire") == "blocked"
+        # The packer is the same process — holder_pid matches ours.
+        assert observed.get("holder_pid") == _os.getpid()
