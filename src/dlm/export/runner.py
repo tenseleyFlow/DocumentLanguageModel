@@ -75,6 +75,39 @@ def default_ollama_name(dlm_id: str, adapter_version: int) -> str:
     return f"dlm-{dlm_id.lower()}:v{adapter_version:04d}"
 
 
+def _default_check_base_vocab(adapter_path: Path, base_gguf_path: Path) -> None:
+    """Cross-check adapter-tokenizer vocab count against the emitted base GGUF.
+
+    Sprint 12b's `assert_gguf_vocab_matches` is tokenizer-backed; we use
+    the file-based path here so `run_export` doesn't take a `transformers`
+    import hit on every call. A mismatch means the base conversion
+    materialized a different tokenizer than the one the adapter was
+    trained against — exactly the silent-failure surface audit F02/F06
+    called out.
+    """
+    from dlm.export.preflight import check_tokenizer_vocab
+    from dlm.export.tokenizer_sync import read_gguf_vocab_size
+
+    adapter_vocab = check_tokenizer_vocab(adapter_path)
+    gguf_vocab = read_gguf_vocab_size(base_gguf_path)
+    if adapter_vocab != gguf_vocab:
+        from dlm.export.errors import PreflightError
+
+        raise PreflightError(
+            probe="gguf_vocab",
+            detail=(
+                f"adapter tokenizer vocab ({adapter_vocab}) does not match "
+                f"base GGUF vocab ({gguf_vocab}) at {base_gguf_path.name}. "
+                "Re-run base conversion against the adapter-dir tokenizer."
+            ),
+        )
+
+
+# Injection seam: tests override with a no-op to skip real GGUF parsing
+# on synthetic fixture bytes. Production uses the default.
+VocabChecker = Callable[[Path, Path], None]
+
+
 def run_export(
     store: StorePath,
     spec: BaseModelSpec,
@@ -89,6 +122,7 @@ def run_export(
     source_dlm_path: Path | None = None,
     ollama_create_runner: Callable[..., str] | None = None,
     ollama_run_runner: Callable[..., str] | None = None,
+    vocab_checker: VocabChecker | None = None,
 ) -> ExportResult:
     """Execute one GGUF export end-to-end.
 
@@ -149,6 +183,13 @@ def run_export(
             run=run,
             vendor_override=vendor_override,
         )
+
+    # 4b. Tokenizer ↔ GGUF vocab cross-check (audit F02/F06 + B1).
+    # The adapter tokenizer is the source of truth; a mismatch means the
+    # base conversion saw a different tokenizer. Tests pass a no-op
+    # `vocab_checker` because their fake GGUF bytes aren't parseable.
+    vcheck = vocab_checker if vocab_checker is not None else _default_check_base_vocab
+    vcheck(adapter_path, base_gguf_path)
 
     # 5. Adapter OR merged path.
     artifacts: list[Path] = [base_gguf_path]

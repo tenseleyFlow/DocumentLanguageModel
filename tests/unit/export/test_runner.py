@@ -113,6 +113,7 @@ class TestHappyPath:
             subprocess_runner=recorder,
             vendor_override=vendor,
             skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
         )
 
         assert isinstance(result, ExportResult)
@@ -134,6 +135,7 @@ class TestHappyPath:
             subprocess_runner=recorder,
             vendor_override=vendor,
             skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
         )
 
         em = load_export_manifest(result.export_dir)
@@ -161,6 +163,7 @@ class TestCaching:
             subprocess_runner=recorder1,
             vendor_override=vendor,
             skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
         )
         assert r1.cached is False
         assert len(recorder1.commands) == 3  # convert_hf + quantize + convert_lora
@@ -174,6 +177,7 @@ class TestCaching:
             subprocess_runner=recorder2,
             vendor_override=vendor,
             skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
         )
         assert r2.cached is True
         # Only the adapter conversion runs on the cached path.
@@ -198,6 +202,92 @@ class TestMergeGate:
             )
         # No subprocess should have launched on the safety-gate path.
         assert recorder.commands == []
+
+
+class TestDefaultVocabCheck:
+    """Default path loads the adapter tokenizer-vocab and compares against the base GGUF."""
+
+    def test_mismatch_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from dlm.export.errors import PreflightError
+        from dlm.export.runner import _default_check_base_vocab
+
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "tokenizer_config.json").write_text(
+            json.dumps({"vocab_size": 32000, "chat_template": "{{m}}"})
+        )
+
+        base = tmp_path / "base.gguf"
+        base.write_bytes(b"ignored")
+
+        # Force a specific GGUF vocab through the reader seam.
+        monkeypatch.setattr("dlm.export.tokenizer_sync.read_gguf_vocab_size", lambda _p: 32001)
+        with pytest.raises(PreflightError, match="gguf_vocab"):
+            _default_check_base_vocab(adapter, base)
+
+    def test_match_returns_none(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from dlm.export.runner import _default_check_base_vocab
+
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "tokenizer_config.json").write_text(
+            json.dumps({"vocab_size": 32000, "chat_template": "{{m}}"})
+        )
+        base = tmp_path / "base.gguf"
+        base.write_bytes(b"ignored")
+
+        monkeypatch.setattr("dlm.export.tokenizer_sync.read_gguf_vocab_size", lambda _p: 32000)
+        assert _default_check_base_vocab(adapter, base) is None
+
+
+class TestVocabCheck:
+    """`run_export` calls the vocab checker after base conversion (audit-04 B1)."""
+
+    def test_mismatch_raises_preflight(self, tmp_path: Path) -> None:
+        from dlm.export.errors import PreflightError
+
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+
+        def _raise(_a: Path, _g: Path) -> None:
+            raise PreflightError(probe="gguf_vocab", detail="adapter=32000 gguf=32001")
+
+        with pytest.raises(PreflightError, match="gguf_vocab"):
+            run_export(
+                store,
+                _SPEC,
+                plan,
+                cached_base_dir=cached_base,
+                subprocess_runner=recorder,
+                vendor_override=vendor,
+                skip_ollama=True,
+                vocab_checker=_raise,
+            )
+
+    def test_checker_receives_adapter_and_base_paths(self, tmp_path: Path) -> None:
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+        seen: list[tuple[Path, Path]] = []
+
+        def _record(adapter: Path, base: Path) -> None:
+            seen.append((adapter, base))
+
+        run_export(
+            store,
+            _SPEC,
+            plan,
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=True,
+            vocab_checker=_record,
+        )
+        assert len(seen) == 1
+        adapter, base = seen[0]
+        assert adapter == store.resolve_current_adapter()
+        assert base.name == "base.Q4_K_M.gguf"
 
 
 class TestMissingAdapter:
@@ -233,6 +323,7 @@ class TestManifestAppend:
             subprocess_runner=recorder,
             vendor_override=vendor,
             skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
         )
 
         manifest = load_manifest(store.manifest)
@@ -269,6 +360,7 @@ class TestManifestAppend:
                 subprocess_runner=recorder,
                 vendor_override=vendor,
                 skip_ollama=True,
+                vocab_checker=lambda _a, _g: None,
             )
 
         # Peer released → no export summary landed (we errored before save).
