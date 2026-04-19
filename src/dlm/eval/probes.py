@@ -134,6 +134,12 @@ def _auto_sample_probes(
     Hashes `(seed, question)` and keeps the top-k by hash — a stable
     weighted sample without needing `random.Random`. Excludes any
     prompt already in `exclude` (typically explicit probes).
+
+    Parses the *normalized* section body so sections containing
+    `### Q !probe` headers don't trip the strict instruction parser
+    — we strip the marker, then filter out `!probe:`-prefixed bodies
+    (those are the explicit probes, which the caller has already
+    captured).
     """
     if k <= 0:
         return []
@@ -143,10 +149,18 @@ def _auto_sample_probes(
         if section.type is not SectionType.INSTRUCTION:
             continue
         try:
-            pairs = parse_instruction_body(section.content, section_id=section.section_id)
+            pairs = parse_instruction_body(
+                _normalize_probe_markers(section.content),
+                section_id=section.section_id,
+            )
         except Exception:
             continue
         for pair in pairs:
+            # Skip explicit probes (their question body was prefixed
+            # with `!probe:` by the normalizer) — the caller handles
+            # them separately.
+            if pair.question.startswith(f"{_PROBE_MARKER}:"):
+                continue
             if pair.question in exclude:
                 continue
             candidates.append(

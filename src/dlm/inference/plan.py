@@ -97,8 +97,7 @@ def resolve_inference(adapter_dir: Path, caps: Any) -> InferencePlan:
                 dequantize_on_load=True,
                 attn_implementation=_pick_attn(caps),
                 reason=(
-                    "QLoRA adapter but bitsandbytes not installed; "
-                    "dequantizing to fp16 on load."
+                    "QLoRA adapter but bitsandbytes not installed; dequantizing to fp16 on load."
                 ),
             )
         # Plain LoRA on CUDA.

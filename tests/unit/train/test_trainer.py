@@ -213,7 +213,10 @@ class TestRunHappyPath:
         spec = BASE_MODELS["smollm2-135m"]
 
         result = run(
-            store, _parsed(), spec, _plan(),
+            store,
+            _parsed(),
+            spec,
+            _plan(),
             trainer_factory=_mock_trainer_factory,
         )
 

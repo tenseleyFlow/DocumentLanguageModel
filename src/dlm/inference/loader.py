@@ -119,8 +119,7 @@ def load_for_inference(  # pragma: no cover
     adapter_path = store.resolve_current_adapter()
     if adapter_path is None or not adapter_path.exists():
         raise AdapterNotFoundError(
-            f"no adapter under {store.adapter_current_pointer}; "
-            "has `dlm train` run successfully?"
+            f"no adapter under {store.adapter_current_pointer}; has `dlm train` run successfully?"
         )
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
