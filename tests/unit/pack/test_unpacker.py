@@ -254,10 +254,14 @@ class TestLayoutGate:
             unpack(out, home=tmp_path / "home")
 
     def test_duplicate_entry_name_refused(self, tmp_path: Path) -> None:
-        """Two tar members with the same name would let a later entry
-        silently overwrite an earlier one post-extraction. Audit-04 T5:
-        reject at layout scan via CHECKSUMS verification — the second
-        overwrite breaks the recorded hash."""
+        """Two tar members with the same name must be refused up-front.
+
+        Audit-05 M5: the prior version of this test planted *differing*
+        content, which tripped the CHECKSUMS verify by accident. An
+        attacker who repacks with identical-content duplicates could
+        slip past that. The first-pass scan now refuses duplicates
+        regardless of content — verified by the second test below.
+        """
         # Build a pack that would otherwise be valid, then repack with a
         # duplicated entry, re-extract, and check pipeline rejects.
         staging = tmp_path / "s"
@@ -307,8 +311,67 @@ class TestLayoutGate:
 
                 tar.addfile(info, _io.BytesIO(b"Z"))
 
-        # Extraction overwrites the checksummed file; verify must fail.
-        with pytest.raises(PackIntegrityError):
+        # Extraction overwrites the checksummed file; the first-pass
+        # layout scan refuses the duplicate before we even touch disk.
+        with pytest.raises(PackLayoutError, match="duplicate tar entry"):
+            unpack(out, home=tmp_path / "home")
+
+    def test_duplicate_entry_same_content_also_refused(self, tmp_path: Path) -> None:
+        """Audit-05 M5: even duplicates with identical content are refused.
+
+        The CHECKSUMS-based defense in the original audit-04 test would
+        silently accept this case because the final on-disk content
+        hashes match the recorded sums. Defense-in-depth lives in the
+        first-pass duplicate-name scan.
+        """
+        staging = tmp_path / "s"
+        staging.mkdir()
+        (staging / "dlm").mkdir()
+        (staging / "dlm" / "a.dlm").write_text("x")
+        (staging / "store").mkdir()
+        (staging / "store" / "manifest.json").write_text("{}")
+        (staging / HEADER_FILENAME).write_text(
+            json.dumps(
+                {
+                    "pack_format_version": 1,
+                    "created_at": "2026-04-19T12:00:00",
+                    "tool_version": "0.1.0",
+                    "content_type": "minimal",
+                    "platform_hint": "linux",
+                    "licensee_acceptance_url": None,
+                }
+            )
+        )
+        write_checksums(staging, exclude=(SHA256_FILENAME, MANIFEST_FILENAME))
+        (staging / MANIFEST_FILENAME).write_text(
+            json.dumps(
+                {
+                    "dlm_id": "01TEST",
+                    "base_model": "smollm2-135m",
+                    "base_model_revision": None,
+                    "base_model_sha256": None,
+                    "adapter_version": 0,
+                    "entries": {},
+                    "content_sha256": "0" * 64,
+                }
+            )
+        )
+
+        out = tmp_path / "dup-identical.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                for path in sorted(staging.rglob("*")):
+                    if path.is_file():
+                        tar.add(path, arcname=path.relative_to(staging).as_posix())
+                # Duplicate `dlm/a.dlm` with byte-identical content.
+                info = tarfile.TarInfo(name="dlm/a.dlm")
+                info.size = 1
+                import io as _io
+
+                tar.addfile(info, _io.BytesIO(b"x"))
+
+        with pytest.raises(PackLayoutError, match="duplicate tar entry"):
             unpack(out, home=tmp_path / "home")
 
     def test_unsafe_tar_entry_refused(self, tmp_path: Path) -> None:

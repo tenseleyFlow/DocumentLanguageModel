@@ -182,6 +182,12 @@ def _extract_tar_zstd(pack_path: Path, staging: Path) -> None:
     # First pass: defense-in-depth name scan + size bounds. `tarfile`
     # iterates once so we open a fresh reader below to actually extract.
     total_size = 0
+    # Audit-05 M5: refuse duplicate member names. `tar.extractall`
+    # silently overwrites later-with-earlier duplicates, so an attacker
+    # who repacks could inject a second `store/manifest.json` that slips
+    # past the CHECKSUMS verify (we compute over the final on-disk bytes,
+    # so two copies with identical content would pass the old check).
+    seen: set[str] = set()
     with (
         pack_path.open("rb") as fh,
         dctx.stream_reader(fh) as reader,
@@ -190,6 +196,11 @@ def _extract_tar_zstd(pack_path: Path, staging: Path) -> None:
         for member in tar:
             if _is_unsafe_member(member.name):
                 raise PackLayoutError(f"refusing to extract unsafe tar entry {member.name!r}")
+            if member.name in seen:
+                raise PackLayoutError(
+                    f"duplicate tar entry {member.name!r}; pack may have been tampered with"
+                )
+            seen.add(member.name)
             if member.size > _MAX_TAR_MEMBER_BYTES:
                 raise PackLayoutError(
                     f"tar entry {member.name!r} size {member.size} exceeds "
