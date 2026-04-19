@@ -45,6 +45,55 @@ class TestTier2DomainError:
         assert "export:" in err
 
 
+class TestPrefixMapping:
+    """Each known module prefix gets a distinct colored label."""
+
+    def test_doc_error_prefix(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from dlm.doc.errors import UnsupportedMigrationError
+
+        # NB: DlmParseError subclass — tier 1 beats prefix mapping, so this
+        # lands under "parse:", not "doc:". The branch is here to prove the
+        # inheritance path wins.
+        exc = UnsupportedMigrationError("no migrator")
+        report_exception(exc)
+        err = capsys.readouterr().err
+        assert "parse:" in err
+
+    def test_store_error_prefix(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from dlm.store.errors import ManifestCorruptError
+
+        exc = ManifestCorruptError(__import__("pathlib").Path("m.json"), "bad")
+        report_exception(exc)
+        err = capsys.readouterr().err
+        assert "store:" in err
+
+    def test_train_error_prefix(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from dlm.train.errors import DiskSpaceError
+
+        exc = DiskSpaceError(required_bytes=100_000_000_000, free_bytes=1_000)
+        report_exception(exc)
+        err = capsys.readouterr().err
+        assert "train:" in err
+
+    def test_inference_error_prefix(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from dlm.inference.errors import AdapterNotFoundError
+
+        exc = AdapterNotFoundError("no adapter")
+        report_exception(exc)
+        err = capsys.readouterr().err
+        assert "inference:" in err
+
+    def test_base_model_unknown_prefix(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from dlm.base_models.errors import UnknownBaseModelError
+
+        exc = UnknownBaseModelError("no-such-key", ("qwen2.5-1.5b", "smollm2-135m"))
+        report_exception(exc)
+        err = capsys.readouterr().err
+        assert "base_model:" in err
+
+
 class TestTier3Uncaught:
     def test_unknown_exception_gets_verbose_hint(self, capsys: pytest.CaptureFixture[str]) -> None:
         exc = RuntimeError("something went wrong")
@@ -97,3 +146,18 @@ class TestRunWrapper:
         assert code == 1
         err = capsys.readouterr().err
         assert "ValueError" in err
+
+    def test_system_exit_none_returns_zero(self) -> None:
+        def app() -> None:
+            raise SystemExit(None)
+
+        assert run_with_reporter(app) == 0
+
+    def test_system_exit_string_prints_and_fails(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def app() -> None:
+            raise SystemExit("goodbye")
+
+        assert run_with_reporter(app) == 1
+        assert "goodbye" in capsys.readouterr().err
