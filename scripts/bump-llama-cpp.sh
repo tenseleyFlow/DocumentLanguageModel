@@ -1,46 +1,29 @@
 #!/usr/bin/env bash
-# Bump the vendored llama.cpp submodule to a new tag and re-extract the
-# pre-tokenizer hash table.
-#
-# This script is a skeleton — Sprint 11 adds the actual submodule at
-# `vendor/llama.cpp`. Sprint 06 ships the script + the shape of
-# `vendor/llama_cpp_pretokenizer_hashes.json` so the compatibility
-# probes (base_models/probes.py) have somewhere to read from.
+# Bump the vendored llama.cpp submodule, build its tools, and refresh
+# the pre-tokenizer hash table.
 #
 # Usage:
-#   scripts/bump-llama-cpp.sh <tag>
-#       Fast-forward submodule to `<tag>`, re-extract hashes, stage.
+#   scripts/bump-llama-cpp.sh bump <tag>
+#       Fast-forward submodule to <tag>, re-extract hashes, write VERSION,
+#       stage changes.
+#   scripts/bump-llama-cpp.sh build
+#       Build `llama-quantize` (+ siblings) via cmake. Idempotent.
+#   scripts/bump-llama-cpp.sh refresh-labels
+#       Regenerate vendor/llama_cpp_pretokenizer_hashes.json from the
+#       current submodule contents. Does not touch the submodule itself.
 
 set -euo pipefail
-
-TAG="${1:-}"
-if [ -z "$TAG" ]; then
-  echo "usage: scripts/bump-llama-cpp.sh <tag>" >&2
-  exit 2
-fi
-
-if [ -n "$(git status --porcelain)" ]; then
-  echo "error: working tree must be clean before a submodule bump" >&2
-  exit 1
-fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 VENDOR_DIR="$REPO_ROOT/vendor/llama.cpp"
 HASHES_PATH="$REPO_ROOT/vendor/llama_cpp_pretokenizer_hashes.json"
+VERSION_PATH="$VENDOR_DIR/VERSION"
 
-if [ ! -d "$VENDOR_DIR" ]; then
-  echo "error: $VENDOR_DIR missing — Sprint 11 vendors llama.cpp as a submodule" >&2
-  exit 1
-fi
+cmd="${1:-}"
 
-echo "--> fetching tags in $VENDOR_DIR"
-git -C "$VENDOR_DIR" fetch --tags origin
-
-echo "--> checking out $TAG"
-git -C "$VENDOR_DIR" checkout "tags/$TAG"
-
-echo "--> re-extracting pre-tokenizer hash labels to $HASHES_PATH"
-uv run python - <<'PY'
+refresh_labels() {
+  echo "--> re-extracting pre-tokenizer hash labels to $HASHES_PATH"
+  uv run python - <<'PY'
 import json
 import re
 import sys
@@ -50,9 +33,11 @@ repo_root = Path.cwd()
 converter = repo_root / "vendor" / "llama.cpp" / "convert_hf_to_gguf.py"
 hashes_path = repo_root / "vendor" / "llama_cpp_pretokenizer_hashes.json"
 
+if not converter.is_file():
+    print(f"ERROR: {converter} not found", file=sys.stderr)
+    sys.exit(1)
+
 source = converter.read_text(encoding="utf-8", errors="replace")
-# llama.cpp declares pre-tokenizer labels inside `get_vocab_base_pre`
-# via `res = "<label>"` assignments.
 pattern = re.compile(r"""\bres\s*=\s*["']([^"']+)["']""")
 labels = sorted(set(pattern.findall(source)))
 if not labels:
@@ -63,14 +48,83 @@ if not labels:
 hashes_path.write_text(json.dumps(labels, indent=2) + "\n", encoding="utf-8")
 print(f"wrote {len(labels)} labels to {hashes_path}")
 PY
+}
 
-echo "--> staging changes"
-git -C "$REPO_ROOT" add vendor/llama.cpp vendor/llama_cpp_pretokenizer_hashes.json
+do_bump() {
+  local tag="${1:-}"
+  if [ -z "$tag" ]; then
+    echo "usage: scripts/bump-llama-cpp.sh bump <tag>" >&2
+    exit 2
+  fi
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "error: working tree must be clean before a submodule bump" >&2
+    exit 1
+  fi
+  if [ ! -d "$VENDOR_DIR" ]; then
+    echo "error: $VENDOR_DIR missing — initialize the submodule first:" >&2
+    echo "  git submodule add https://github.com/ggerganov/llama.cpp vendor/llama.cpp" >&2
+    exit 1
+  fi
 
-cat <<EOF
+  echo "--> fetching tags in $VENDOR_DIR"
+  git -C "$VENDOR_DIR" fetch --tags origin
+  echo "--> checking out $tag"
+  git -C "$VENDOR_DIR" checkout "tags/$tag"
+
+  echo "--> writing $VERSION_PATH"
+  echo "$tag" > "$VERSION_PATH"
+
+  refresh_labels
+
+  echo "--> staging changes"
+  git -C "$REPO_ROOT" add vendor/llama.cpp vendor/llama_cpp_pretokenizer_hashes.json
+
+  cat <<EOF
 Done. Review the staged diff and commit with:
-  git commit -m "chore: bump llama.cpp to $TAG + refresh pre-tokenizer hashes"
+  git commit -m "chore: bump llama.cpp to $tag + refresh pre-tokenizer hashes"
 
-Then re-run the registry probe suite:
+Then build the binaries:
+  scripts/bump-llama-cpp.sh build
+
+And re-run the registry probe suite:
   uv run python scripts/refresh-registry.py
 EOF
+}
+
+do_build() {
+  if [ ! -d "$VENDOR_DIR" ]; then
+    echo "error: $VENDOR_DIR missing — run 'bump <tag>' first" >&2
+    exit 1
+  fi
+  echo "--> configuring llama.cpp via cmake"
+  cmake -S "$VENDOR_DIR" -B "$VENDOR_DIR/build" -DCMAKE_BUILD_TYPE=Release
+  echo "--> building llama-quantize + siblings"
+  cmake --build "$VENDOR_DIR/build" --target llama-quantize --config Release
+  if [ -f "$VENDOR_DIR/build/bin/llama-quantize" ]; then
+    echo "OK: $VENDOR_DIR/build/bin/llama-quantize"
+  else
+    echo "error: build finished but llama-quantize not found under build/bin" >&2
+    exit 1
+  fi
+}
+
+case "$cmd" in
+  bump)
+    do_bump "${2:-}"
+    ;;
+  build)
+    do_build
+    ;;
+  refresh-labels)
+    refresh_labels
+    ;;
+  "")
+    echo "usage: scripts/bump-llama-cpp.sh <bump|build|refresh-labels> [args]" >&2
+    exit 2
+    ;;
+  *)
+    echo "unknown command: $cmd" >&2
+    echo "usage: scripts/bump-llama-cpp.sh <bump|build|refresh-labels> [args]" >&2
+    exit 2
+    ;;
+esac
