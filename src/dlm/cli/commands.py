@@ -154,9 +154,53 @@ def prompt_cmd(
     query: Annotated[str | None, typer.Argument(help="One-shot prompt (omit for stdin).")] = None,
     max_tokens: Annotated[int, typer.Option("--max-tokens")] = 256,
     temp: Annotated[float, typer.Option("--temp")] = 0.7,
+    top_p: Annotated[float | None, typer.Option("--top-p")] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", help="Log resolved InferencePlan.")] = False,
 ) -> None:
     """Run inference against the trained adapter."""
-    _stub("10", "dlm prompt")
+    import sys
+
+    from rich.console import Console
+
+    from dlm.base_models import resolve as resolve_base_model
+    from dlm.doc.parser import parse_file
+    from dlm.hardware import doctor
+    from dlm.inference import AdapterNotFoundError, generate, load_for_inference
+    from dlm.store.paths import for_dlm
+
+    console = Console(stderr=True)
+
+    parsed = parse_file(path)
+    spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
+    caps = doctor().capabilities
+
+    store = for_dlm(parsed.frontmatter.dlm_id)
+
+    try:
+        loaded = load_for_inference(store, spec, caps)
+    except AdapterNotFoundError as exc:
+        console.print(f"[red]prompt:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    if verbose:
+        console.print(f"[dim]plan:[/dim] {loaded.plan.to_dict()}")
+        console.print(f"[dim]adapter:[/dim] {loaded.adapter_path}")
+
+    if query is None:
+        query = sys.stdin.read().strip()
+    if not query:
+        console.print("[red]prompt:[/red] empty query (pass a string or pipe on stdin)")
+        raise typer.Exit(code=2)
+
+    response = generate(
+        loaded.model,
+        loaded.tokenizer,
+        query,
+        max_new_tokens=max_tokens,
+        temperature=temp,
+        top_p=top_p,
+    )
+    sys.stdout.write(response + "\n")
 
 
 def export_cmd(
