@@ -26,19 +26,25 @@ from typer.testing import CliRunner
 from dlm.cli.app import app
 
 
-def _scaffolded_store(tmp_path: Path) -> Path:
-    """Init a doc, ensure_layout the store, save a manifest — return the .dlm path."""
+def _scaffolded_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Init a doc, ensure_layout the store, save a manifest — return the .dlm path.
+
+    Audit-05 N11: `monkeypatch.setenv` instead of raw `os.environ[...]`
+    so the DLM_HOME override auto-reverts at test teardown and can't
+    leak into a later test in the same session.
+    """
     from dlm.doc.parser import parse_file
-    from dlm.store.manifest import Manifest, save_manifest
     from dlm.store.paths import for_dlm
 
+    home = tmp_path / "dlm-home"
+    monkeypatch.setenv("DLM_HOME", str(home))
     runner = CliRunner()
     doc = tmp_path / "doc.dlm"
     result = runner.invoke(
         app,
         [
             "--home",
-            str(tmp_path / "dlm-home"),
+            str(home),
             "init",
             str(doc),
             "--base",
@@ -47,17 +53,10 @@ def _scaffolded_store(tmp_path: Path) -> Path:
     )
     assert result.exit_code == 0, result.output
 
-    import os
-
-    os.environ["DLM_HOME"] = str(tmp_path / "dlm-home")
+    # Post-B2: `dlm init` already creates the store + manifest. We just
+    # drop a marker file so round-trip tests cover non-manifest content.
     parsed = parse_file(doc)
     store = for_dlm(parsed.frontmatter.dlm_id)
-    store.ensure_layout()
-    save_manifest(
-        store.manifest,
-        Manifest(dlm_id=parsed.frontmatter.dlm_id, base_model="smollm2-135m"),
-    )
-    # Drop a marker file in the store so round-trip covers non-manifest content.
     (store.root / "marker.txt").write_text("i survived the round trip\n")
     return doc
 
@@ -69,7 +68,7 @@ class TestRoundTrip:
         from dlm.pack.packer import pack
         from dlm.pack.unpacker import unpack
 
-        doc = _scaffolded_store(tmp_path)
+        doc = _scaffolded_store(tmp_path, monkeypatch)
         original_dlm = doc.read_bytes()
 
         # Capture pre-pack store state.
@@ -104,11 +103,13 @@ class TestRoundTrip:
         restored_marker = (unpack_result.store_path / "marker.txt").read_bytes()
         assert restored_marker == original_marker
 
-    def test_pack_manifest_content_sha256_is_deterministic(self, tmp_path: Path) -> None:
+    def test_pack_manifest_content_sha256_is_deterministic(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Two packs of identical input produce identical `content_sha256` rollups."""
         from dlm.pack.packer import pack
 
-        doc = _scaffolded_store(tmp_path)
+        doc = _scaffolded_store(tmp_path, monkeypatch)
         a = pack(doc, out=tmp_path / "a.pack")
         b = pack(doc, out=tmp_path / "b.pack")
 
@@ -136,7 +137,7 @@ class TestForceOverwrite:
         from dlm.pack.packer import pack
         from dlm.pack.unpacker import unpack
 
-        doc = _scaffolded_store(tmp_path)
+        doc = _scaffolded_store(tmp_path, monkeypatch)
         pack_result = pack(doc, out=tmp_path / "out.pack")
 
         fresh_home = tmp_path / "fresh-home"

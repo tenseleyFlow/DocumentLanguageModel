@@ -36,7 +36,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
 
       - name: Sync (all groups)
-        run: uv sync --all-extras --dev
+        run: uv sync --all-extras --dev --group docs
 
       - name: Ruff
         run: uv run ruff check .
@@ -49,6 +49,12 @@ jobs:
 
       - name: Pytest (non-slow)
         run: uv run pytest -m "not slow and not online and not gpu"
+
+      - name: Mkdocs build --strict
+        # Audit-05 N14: block release on docs regressions (dead links,
+        # missing files in nav, etc.) before the publish step so a broken
+        # docs site can't ship alongside a real PyPI tag.
+        run: uv run mkdocs build --strict --site-dir /tmp/mkdocs-check
 
   build:
     name: build wheel + sdist

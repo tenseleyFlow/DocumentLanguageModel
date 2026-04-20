@@ -62,19 +62,25 @@ batch size, grad accumulation), downloads the base model (cached on
 re-runs), and kicks off the SFTTrainer. On a Mac M-series with MPS,
 20 steps of SmolLM2-135M take about two minutes.
 
-Output (abbreviated):
+Output — the CLI prints the summary lines; per-step metrics go to
+a JSONL log for programmatic consumption (Sprint 09's StepLogger):
 
 ```
-preflight: 9.6 GB free under ~/.dlm/store/01KC…/
-banner:    seed=42 determinism=best-effort plan=fp16/sdpa/bs=1×8
-step 5:    loss=3.421  lr=5.00e-04
-step 10:   loss=2.887  lr=4.47e-04
-step 15:   loss=2.541  lr=3.45e-04
-step 20:   loss=2.298  lr=2.08e-04
 trained:   v0001 (20 steps, seed=42, determinism=best-effort)
 adapter:   ~/.dlm/store/01KC…/adapter/versions/v0001
 log:       ~/.dlm/store/01KC…/logs/train-000001-…jsonl
 ```
+
+Tail the JSONL log to see per-step loss in the shape:
+
+```
+{"type": "banner", "run_id": 1, "seed": 42, "determinism_class": "best-effort", ...}
+{"type": "step", "step": 5, "loss": 3.421, "lr": 0.0005, "grad_norm": 2.14, "timestamp": "..."}
+{"type": "step", "step": 10, "loss": 2.887, "lr": 0.000447, ...}
+...
+```
+
+A pretty-print `dlm metrics` command lands in Phase 6 (Sprint 26).
 
 ## 3. Inspect the store
 
