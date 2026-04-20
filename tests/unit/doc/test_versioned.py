@@ -82,7 +82,10 @@ class TestMigratedPath:
             # Simulated migration: drop an obsolete field the sub-current doc had.
             return {k: v for k, v in raw.items() if k != "legacy_field"}
 
+        import dlm.doc.schema as schema_module
+
         versioned_module.CURRENT_SCHEMA_VERSION = original + 1
+        schema_module.CURRENT_SCHEMA_VERSION = original + 1
         try:
             fm = validate_versioned(
                 {
@@ -95,6 +98,7 @@ class TestMigratedPath:
             assert fm.dlm_version == original + 1
         finally:
             versioned_module.CURRENT_SCHEMA_VERSION = original
+            schema_module.CURRENT_SCHEMA_VERSION = original
 
     def test_missing_migrator_raises(self, scratch_registry: None) -> None:
         """Sub-current doc + empty registry → UnsupportedMigrationError."""

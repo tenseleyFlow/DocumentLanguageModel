@@ -59,20 +59,34 @@ def check_refusals(
         and caps.backend == Backend.CUDA
         and caps.vram_gb is not None
     ):
-        # F28: coarse VRAM estimate. QLoRA base at 4-bit ≈ params * 0.5 bytes;
-        # each named adapter carries its own LoRA + optimizer state (~1 GB
-        # worst-case on the adapter sizes we ship). Plus a 25% activation
-        # overhead. When the sum exceeds the 85%-of-VRAM headroom, refuse.
+        # F28: estimate peak VRAM for the multi-adapter + QLoRA case.
+        # Base lives once in VRAM at 4-bit. Each adapter carries its own
+        # LoRA params + AdamW state + gradients, scaling with `base_params`
+        # and the adapter's `lora_r` (our LoRA params ≈ 2 * base * r / hidden;
+        # AdamW state ≈ 2×LoRA params in fp32). A 7B QLoRA r=16 adapter
+        # lands around 300-500 MB; a 135M r=8 adapter is ~10 MB. A flat
+        # 1 GB/adapter (pre-audit) was 30× too high for small bases and
+        # 2× too low for large ones. The formula below scales linearly
+        # with `avg_lora_r × base_params`; 0.1 GB floor keeps tiny
+        # multi-adapter setups from false-greenlighting.
+        avg_lora_r = _avg_lora_r(training)
         base_gb = base_params * 0.5 / 1e9  # 4-bit base
-        per_adapter_gb = 1.0
+        per_adapter_gb = max(0.1, base_params * avg_lora_r / (1e9 * 64))
         activations_gb = base_params * 2.0 / 1e9 * 0.25
-        est_peak = base_gb + per_adapter_gb * num_adapters + activations_gb
+        qlora_adapter_count = _qlora_adapter_count(training, num_adapters)
+        est_peak = (
+            base_gb + per_adapter_gb * qlora_adapter_count + activations_gb
+        )
         budget = caps.vram_gb * 0.85
         if est_peak > budget:
+            offenders = _qlora_adapter_names(training)
+            offender_note = (
+                f" (offending adapters: {sorted(offenders)})" if offenders else ""
+            )
             raise ResolutionError(
                 "Multi-adapter QLoRA would exceed VRAM "
                 f"(~{est_peak:.1f} GB estimated vs {budget:.1f} GB budget "
-                f"for {caps.vram_gb:.0f} GB device); "
+                f"for {caps.vram_gb:.0f} GB device){offender_note}; "
                 "try `adapter: lora` instead of `qlora`, or reduce the "
                 "number of adapters.",
             )
@@ -98,6 +112,29 @@ def _effective_adapter(training: TrainingConfig) -> str:
     if any(a.adapter == "qlora" for a in training.adapters.values()):
         return "qlora"
     return "lora"
+
+
+def _avg_lora_r(training: TrainingConfig) -> float:
+    """Average LoRA rank across declared adapters (fallback: flat lora_r)."""
+    if training.adapters is None or not training.adapters:
+        return float(training.lora_r)
+    return sum(a.lora_r for a in training.adapters.values()) / len(
+        training.adapters
+    )
+
+
+def _qlora_adapter_count(training: TrainingConfig, fallback: int) -> int:
+    """Return the count of QLoRA-typed adapters; `fallback` for flat docs."""
+    if training.adapters is None:
+        return fallback
+    return sum(1 for a in training.adapters.values() if a.adapter == "qlora")
+
+
+def _qlora_adapter_names(training: TrainingConfig) -> list[str]:
+    """Return the declared adapter names using QLoRA (empty on flat docs)."""
+    if training.adapters is None:
+        return []
+    return [n for n, a in training.adapters.items() if a.adapter == "qlora"]
 
 
 def _refuse_qlora(caps: Capabilities) -> None:

@@ -20,43 +20,63 @@ def _qlora_multi_doc(num: int) -> TrainingConfig:
     return TrainingConfig.model_validate({"adapters": adapters})
 
 
+def _qlora_multi_doc_with_rank(num: int, lora_r: int) -> TrainingConfig:
+    """Multi-adapter doc with `num` QLoRA adapters at the given lora_r."""
+    adapters = {
+        f"a{i}": AdapterConfig(adapter="qlora", lora_r=lora_r) for i in range(num)
+    }
+    return TrainingConfig.model_validate({"adapters": adapters})
+
+
 class TestF28MultiAdapterQLoraRefusal:
-    def test_two_adapters_on_small_vram_refused(self) -> None:
-        with force_cuda(vram_gb=4.0):
+    def test_large_base_high_rank_refused(self) -> None:
+        # 7B QLoRA, 3 adapters at r=64 on a 12GB device.
+        # base: 7*0.5=3.5 GB; per_adapter: 7*64/64=7 GB (×3=21 GB);
+        # activations: 7*2*0.25=3.5 GB → 28 GB > 12*0.85=10.2 GB budget.
+        with force_cuda(vram_gb=12.0):
             caps = replace(probe(), has_bitsandbytes=True)
-        # 1.5B-param base at 4-bit ≈ 0.75 GB + 2 * 1 GB + ~0.75 GB activ
-        # ≈ 3.5 GB > 4 * 0.85 = 3.4 GB budget.
         with pytest.raises(ResolutionError, match="Multi-adapter QLoRA"):
             check_refusals(
-                _qlora_multi_doc(2),
+                _qlora_multi_doc_with_rank(3, 64),
                 caps,
-                base_params=1_500_000_000,
-                num_adapters=2,
+                base_params=7_000_000_000,
+                num_adapters=3,
             )
 
     def test_error_message_points_to_adapter_lora_alternative(self) -> None:
-        with force_cuda(vram_gb=4.0):
+        with force_cuda(vram_gb=12.0):
             caps = replace(probe(), has_bitsandbytes=True)
         with pytest.raises(ResolutionError) as exc_info:
             check_refusals(
-                _qlora_multi_doc(3),
+                _qlora_multi_doc_with_rank(3, 64),
                 caps,
-                base_params=1_500_000_000,
+                base_params=7_000_000_000,
                 num_adapters=3,
             )
         message = str(exc_info.value)
         assert "adapter: lora" in message
         assert "reduce the number of adapters" in message
 
+    def test_error_message_names_offending_adapters(self) -> None:
+        """Audit-07 M7/N3: refusal lists which adapters triggered it."""
+        with force_cuda(vram_gb=12.0):
+            caps = replace(probe(), has_bitsandbytes=True)
+        with pytest.raises(ResolutionError) as exc_info:
+            check_refusals(
+                _qlora_multi_doc_with_rank(3, 64),
+                caps,
+                base_params=7_000_000_000,
+                num_adapters=3,
+            )
+        message = str(exc_info.value)
+        assert "offending adapters" in message
+        assert "'a0'" in message
+
     def test_single_adapter_qlora_not_affected_by_f28(self) -> None:
-        # num_adapters=1 on a small VRAM box: the multi-adapter F28 gate
-        # doesn't fire (single-adapter QLoRA is the normal path); other
-        # refusals still apply but F28 specifically does not.
+        # num_adapters=1: F28's `num_adapters > 1` gate skips entirely.
         with force_cuda(vram_gb=4.0):
             caps = replace(probe(), has_bitsandbytes=True)
         flat = TrainingConfig.model_validate({"adapter": "qlora"})
-        # No raise: the QLoRA checks pass (bnb present) and num_adapters
-        # defaults to 1, so F28's `num_adapters > 1` gate skips.
         check_refusals(flat, caps, base_params=1_500_000_000, num_adapters=1)
 
     def test_multi_adapter_lora_not_refused(self) -> None:
@@ -69,34 +89,74 @@ class TestF28MultiAdapterQLoraRefusal:
             lora_multi, caps, base_params=1_500_000_000, num_adapters=2
         )
 
+    def test_small_base_low_rank_multi_qlora_passes(self) -> None:
+        """The old formula falsely refused small-base multi-QLoRA.
+        The new formula is correctly permissive — 1.5B with r=8 fits in 4GB."""
+        with force_cuda(vram_gb=4.0):
+            caps = replace(probe(), has_bitsandbytes=True)
+        # 1.5B base, r=8, 2 adapters:
+        # base 0.75 + per_adapter ~0.19 × 2 + activations 0.75 ≈ 1.9 GB
+        # vs 4 × 0.85 = 3.4 GB budget → accepts.
+        check_refusals(
+            _qlora_multi_doc_with_rank(2, 8),
+            caps,
+            base_params=1_500_000_000,
+            num_adapters=2,
+        )
+
     def test_multi_adapter_qlora_on_large_vram_passes(self) -> None:
         with force_cuda(vram_gb=80.0):  # H100
             caps = replace(probe(), has_bitsandbytes=True)
-        # 1.5B base → 0.75 + 3*1 + 0.75 ≈ 4.5 GB, well under 80 * 0.85 = 68.
+        # Even 7B + 3 adapters at r=64 (28 GB) fits under 80 × 0.85 = 68.
         check_refusals(
-            _qlora_multi_doc(3),
+            _qlora_multi_doc_with_rank(3, 64),
             caps,
-            base_params=1_500_000_000,
+            base_params=7_000_000_000,
             num_adapters=3,
         )
 
 
 class TestEffectiveAdapter:
-    def test_mixed_multi_adapter_treated_as_qlora_for_refusals(self) -> None:
-        """If any declared adapter is QLoRA, F28 applies."""
-        with force_cuda(vram_gb=4.0):
+    def test_mixed_multi_adapter_refusal_only_counts_qlora_adapters(self) -> None:
+        """Audit-07 M7: mixed doc with one QLoRA + many LoRA doesn't
+        get charged the per-adapter VRAM for LoRAs. The formula counts
+        only QLoRA-typed adapters in the per-adapter budget line."""
+        with force_cuda(vram_gb=12.0):
             caps = replace(probe(), has_bitsandbytes=True)
-        # One LoRA + one QLoRA → the "any qlora" rule still triggers
-        # F28's per-adapter math against num_adapters=2.
+        # 7B base, 1 QLoRA + 2 LoRA at r=64. Only the 1 QLoRA counts:
+        # base 3.5 + per_adapter 7 × 1 + activations 3.5 = 14 GB vs
+        # 12 × 0.85 = 10.2 GB budget → refuses (with 1-adapter charge).
         mixed = TrainingConfig.model_validate(
             {
                 "adapters": {
-                    "lora_one": {"adapter": "lora"},
-                    "qlora_two": {"adapter": "qlora"},
+                    "qlora_one": {"adapter": "qlora", "lora_r": 64},
+                    "lora_a": {"adapter": "lora", "lora_r": 64},
+                    "lora_b": {"adapter": "lora", "lora_r": 64},
                 },
             }
         )
         with pytest.raises(ResolutionError, match="Multi-adapter QLoRA"):
             check_refusals(
-                mixed, caps, base_params=1_500_000_000, num_adapters=2
+                mixed, caps, base_params=7_000_000_000, num_adapters=3
             )
+
+    def test_mixed_adapter_error_names_only_qlora_offenders(self) -> None:
+        with force_cuda(vram_gb=12.0):
+            caps = replace(probe(), has_bitsandbytes=True)
+        mixed = TrainingConfig.model_validate(
+            {
+                "adapters": {
+                    "qlora_one": {"adapter": "qlora", "lora_r": 64},
+                    "lora_a": {"adapter": "lora", "lora_r": 64},
+                    "lora_b": {"adapter": "lora", "lora_r": 64},
+                },
+            }
+        )
+        with pytest.raises(ResolutionError) as exc_info:
+            check_refusals(
+                mixed, caps, base_params=7_000_000_000, num_adapters=3
+            )
+        message = str(exc_info.value)
+        assert "qlora_one" in message
+        assert "lora_a" not in message
+        assert "lora_b" not in message

@@ -48,16 +48,22 @@ def bumped_current(scratch_registry: None) -> Iterator[int]:
     """Pretend CURRENT_SCHEMA_VERSION is one higher than shipped."""
     original = versioned_module.CURRENT_SCHEMA_VERSION
     bumped = original + 1
-    # Also patch the migrate module's import-time constant.
+    # Also patch the migrate + schema module constants. Schema is where
+    # the pydantic field validator reads from (audit-07 M6 landed
+    # defense-in-depth there); without this patch the validator
+    # rejects the bumped version.
     import dlm.doc.migrate as migrate_module
+    import dlm.doc.schema as schema_module
 
     versioned_module.CURRENT_SCHEMA_VERSION = bumped
     migrate_module.CURRENT_SCHEMA_VERSION = bumped
+    schema_module.CURRENT_SCHEMA_VERSION = bumped
     try:
         yield bumped
     finally:
         versioned_module.CURRENT_SCHEMA_VERSION = original
         migrate_module.CURRENT_SCHEMA_VERSION = original
+        schema_module.CURRENT_SCHEMA_VERSION = original
 
 
 class TestIdempotent:
