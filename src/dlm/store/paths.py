@@ -18,6 +18,7 @@ in the CLI layer (Sprint 13).
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -40,6 +41,19 @@ from dlm.store.layout import (
 )
 
 STORE_SUBDIR: Final = "store"
+
+# Mirror the schema/parser grammar — adapter names must be
+# path-safe and log-friendly. Fullmatch-enforced here so path helpers
+# can't compose a `../escape`-style directory traversal.
+_ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+
+def _validate_adapter_name(name: str) -> None:
+    if not _ADAPTER_NAME_RE.fullmatch(name):
+        raise ValueError(
+            f"adapter name {name!r} is not valid "
+            f"(must match {_ADAPTER_NAME_RE.pattern})"
+        )
 
 
 def _current_os_name() -> str:
@@ -157,10 +171,75 @@ class StorePath:
     # --- computed helpers ---------------------------------------------------
 
     def adapter_version(self, version: int) -> Path:
-        """Return `adapter/versions/vNNNN` (does NOT create it)."""
+        """Return `adapter/versions/vNNNN` (does NOT create it).
+
+        Used by the flat single-adapter layout. Multi-adapter documents
+        call `adapter_version_for(name, version)` instead.
+        """
         if version < 1:
             raise ValueError(f"adapter versions are 1-indexed, got {version}")
         return self.adapter_versions / f"v{version:04d}"
+
+    # --- multi-adapter helpers ---------------------------------------------
+    #
+    # For documents with `training.adapters`, each named adapter gets its
+    # own nested directory tree: `adapter/<name>/{current.txt,versions/}`.
+    # The flat methods above remain for single-adapter (default) docs; a
+    # given store uses one shape or the other but never both.
+
+    def adapter_dir_for(self, name: str) -> Path:
+        """Return `adapter/<name>/` (does NOT create it)."""
+        _validate_adapter_name(name)
+        return self.adapter / name
+
+    def adapter_versions_for(self, name: str) -> Path:
+        """Return `adapter/<name>/versions/` (does NOT create it)."""
+        return self.adapter_dir_for(name) / ADAPTER_VERSIONS_DIR
+
+    def adapter_version_for(self, name: str, version: int) -> Path:
+        """Return `adapter/<name>/versions/vNNNN/` (does NOT create it)."""
+        if version < 1:
+            raise ValueError(f"adapter versions are 1-indexed, got {version}")
+        return self.adapter_versions_for(name) / f"v{version:04d}"
+
+    def adapter_current_pointer_for(self, name: str) -> Path:
+        """Return `adapter/<name>/current.txt` (does NOT create it)."""
+        return self.adapter_dir_for(name) / ADAPTER_CURRENT_POINTER
+
+    def ensure_adapter_layout(self, name: str) -> None:
+        """Create `adapter/<name>/versions/` on demand. Idempotent."""
+        self.adapter_versions_for(name).mkdir(parents=True, exist_ok=True)
+
+    def resolve_current_adapter_for(self, name: str) -> Path | None:
+        """Resolve `adapter/<name>/current.txt` to an absolute path, or None."""
+        pointer = self.adapter_current_pointer_for(name)
+        if not pointer.exists():
+            return None
+        rel = pointer.read_text(encoding="utf-8").strip()
+        if not rel:
+            return None
+        resolved = (self.root / rel).resolve()
+        try:
+            resolved.relative_to(self.root.resolve())
+        except ValueError as exc:
+            raise ValueError(
+                f"adapter pointer {pointer} escapes store root: {rel}",
+            ) from exc
+        return resolved
+
+    def set_current_adapter_for(self, name: str, version_dir: Path) -> None:
+        """Atomically point `adapter/<name>/current.txt` at a version directory."""
+        try:
+            relative = version_dir.resolve().relative_to(self.root.resolve())
+        except ValueError as exc:
+            raise ValueError(
+                f"adapter version {version_dir} is outside store root {self.root}",
+            ) from exc
+        from dlm.io.atomic import write_text as _atomic_write_text
+
+        _atomic_write_text(
+            self.adapter_current_pointer_for(name), f"{relative}\n"
+        )
 
     def export_quant_dir(self, quant: str) -> Path:
         """Return `exports/<quant>/` (does NOT create it)."""
