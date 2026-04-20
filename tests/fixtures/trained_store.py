@@ -102,6 +102,19 @@ def trained_store(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TrainedS
         store = for_dlm(parsed.frontmatter.dlm_id)
         store.ensure_layout()
 
+        # Seed the initial manifest — `dlm init` owns this in the CLI
+        # path, but the fixture skips `init` and calls `run_training`
+        # directly. Missing manifest → ManifestCorruptError on load.
+        from dlm.store.manifest import Manifest, save_manifest
+
+        save_manifest(
+            store.manifest,
+            Manifest(
+                dlm_id=parsed.frontmatter.dlm_id,
+                base_model=parsed.frontmatter.base_model,
+            ),
+        )
+
         run_training(
             store,
             parsed,
