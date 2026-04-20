@@ -28,6 +28,7 @@ left in place so the caller can inspect / clean up / retry.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -35,6 +36,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from dlm.store.paths import StorePath
+
+_LOG = logging.getLogger(__name__)
 
 # Regex-safe prefix shared with `StorePath.adapter_version`.
 _VERSION_PREFIX = "v"
@@ -73,9 +76,32 @@ def commit_version(
     - the current pointer is NOT updated
     - the exception propagates
     """
+    # Lazy import to keep this module torch-free for unit tests of the
+    # commit lifecycle that don't need a trainer.
+    from dlm.train.integrity import NaNWeightsError
+
     pending = allocate_next_version(store, adapter_name=adapter_name)
     try:
         writer(pending)
+    except NaNWeightsError:
+        # Preserve the bad weights for postmortem but make sure the
+        # next `allocate_next_version` skips the name (the `-rejected`
+        # suffix makes the dirname unparseable as `vNNNN`) and that
+        # `current.txt` never points at it.
+        rejected = pending.parent / f"{pending.name}-rejected"
+        try:
+            pending.rename(rejected)
+            _LOG.error(
+                "non-finite adapter weights; preserved for postmortem at %s",
+                rejected,
+            )
+        except OSError:
+            _LOG.exception(
+                "non-finite adapter weights + rejected-dir rename failed; "
+                "leaving %s in place",
+                pending,
+            )
+        raise
     except BaseException:
         # Leave `pending` on disk; the next allocate_next_version call
         # skips over it by bumping NNNN. Cleanup is a caller concern.
