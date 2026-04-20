@@ -26,6 +26,7 @@ def render_text(result: DoctorResult) -> str:
     lines.append(f"xFormers:       {_bool(caps.has_xformers)}")
     lines.append(f"Triton:         {_bool(caps.has_triton)}")
     lines.append(f"MLX inference:  {_bool(caps.has_mlx)}")
+    lines.append(f"accelerate:     {caps.accelerate_version or 'not installed'}")
     lines.append(f"CPU cores:      {caps.cpu_cores}")
     lines.append(f"RAM:            {caps.ram_gb:.1f} GB")
     lines.append(f"Determinism:    {caps.determinism_class}")

@@ -57,6 +57,7 @@ class Capabilities:
     has_triton: bool
     has_mlx: bool
     torch_version: str
+    accelerate_version: str | None
     cuda_version: str | None
     rocm_version: str | None
     platform: str
@@ -98,6 +99,7 @@ def probe() -> Capabilities:
         has_triton=_module_available("triton"),
         has_mlx=_has_mlx_inference(backend),
         torch_version=str(torch.__version__),
+        accelerate_version=_accelerate_version(),
         cuda_version=_cuda_version(backend, torch),
         rocm_version=_rocm_version(torch),
         platform=_platform_string(),
@@ -269,6 +271,23 @@ def _cuda_version(backend: Backend, torch: object) -> str | None:
 
 def _rocm_version(torch: object) -> str | None:
     return getattr(torch.version, "hip", None)  # type: ignore[attr-defined]
+
+
+def _accelerate_version() -> str | None:
+    """Read `accelerate.__version__` without importing the heavy side.
+
+    Sprint 23 reports accelerate in the doctor so users can tell
+    whether multi-GPU (`dlm train --gpus`) is available. Absent
+    install → None; doctor renders "not installed".
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+    except ImportError:  # pragma: no cover
+        return None
+    try:
+        return version("accelerate")
+    except PackageNotFoundError:
+        return None
 
 
 def _platform_string() -> str:
