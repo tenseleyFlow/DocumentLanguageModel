@@ -70,4 +70,6 @@ nav:
       - Multi-adapter composition: cookbook/multi-adapter.md
   - Architecture: architecture.md
   - Determinism: determinism.md
+  - Hardware:
+      - AMD ROCm: hardware/rocm.md
   - Troubleshooting: troubleshooting.md
