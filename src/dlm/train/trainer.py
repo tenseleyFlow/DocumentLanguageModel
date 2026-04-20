@@ -315,6 +315,7 @@ def run(
             versions=versions,
             current_sections=list(parsed.sections),
             summary_path=summary_path,
+            adapter_name=adapter_name,
         )
 
         # 12. Persist the lock (Sprint 15). `ignore_lock` mode suppresses
@@ -842,6 +843,7 @@ def _append_training_run(
     versions: PinnedVersions,
     current_sections: list[Any],
     summary_path: Path,
+    adapter_name: str | None = None,
 ) -> None:
     """Append a TrainingRunSummary + refresh `content_hashes` (audit-04 M2).
 
@@ -853,6 +855,11 @@ def _append_training_run(
     `summary_path` is stored as a string relative to the store root
     (audit-05 M3) so `dlm show` can load the summary without globbing
     the logs directory.
+
+    `adapter_name` (audit-07 M1): when set, the new summary is tagged
+    with the named adapter AND `Manifest.adapter_versions[name]` is
+    updated instead of the flat `adapter_version`. Flat-doc runs
+    continue to bump the top-level field only.
 
     Manifest reads/writes go through the Sprint 04 atomic I/O path so
     a concurrent reader never sees a torn file.
@@ -881,19 +888,28 @@ def _append_training_run(
         status="completed",
         pinned_versions={k: v for k, v in versions.items() if isinstance(v, str)},
         summary_path=summary_rel,
+        adapter_name=adapter_name,
     )
 
     manifest_path = store.manifest
     manifest = load_manifest(manifest_path)
     new_hashes = {s.section_id: s.section_id for s in current_sections}
-    updated = manifest.model_copy(
-        update={
-            "training_runs": [*manifest.training_runs, summary],
-            "adapter_version": adapter_version,
-            "updated_at": now,
-            "content_hashes": new_hashes,
+    update_fields: dict[str, Any] = {
+        "training_runs": [*manifest.training_runs, summary],
+        "updated_at": now,
+        "content_hashes": new_hashes,
+    }
+    if adapter_name is None:
+        # Flat doc: bump the top-level field as before.
+        update_fields["adapter_version"] = adapter_version
+    else:
+        # Multi-adapter doc: the top-level field has no coherent meaning
+        # (audit-07 M1). Record the per-adapter version instead.
+        update_fields["adapter_versions"] = {
+            **manifest.adapter_versions,
+            adapter_name: adapter_version,
         }
-    )
+    updated = manifest.model_copy(update=update_fields)
     save_manifest(manifest_path, updated)
 
 

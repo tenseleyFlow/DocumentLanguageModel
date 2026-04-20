@@ -199,3 +199,43 @@ class TestMultiAdapterOrchestration:
         )
         # Knowledge is declared first; its run_id should be lower.
         assert results[0].run_id < results[1].run_id
+
+    def test_manifest_adapter_versions_populated(self, tmp_path: Path) -> None:
+        """Audit-07 M1: multi-adapter runs bump per-adapter version dict,
+        not the flat `adapter_version`."""
+        dlm_id = "01HZ4X7TGZM3J1A2B3C4D5E6FB"
+        store = _seed_store(tmp_path, dlm_id)
+        run_all(
+            store,
+            _multi_adapter_parsed(dlm_id),
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            mode="fresh",
+            trainer_factory=_mock_trainer_factory,
+        )
+        from dlm.store.manifest import load_manifest
+
+        manifest = load_manifest(store.manifest)
+        assert manifest.adapter_versions == {"knowledge": 1, "tone": 1}
+        # Flat field stays at 0 (untouched) for multi-adapter stores.
+        assert manifest.adapter_version == 0
+
+    def test_training_run_summaries_carry_adapter_name(
+        self, tmp_path: Path
+    ) -> None:
+        """Audit-07 M1: each TrainingRunSummary is tagged with the name."""
+        dlm_id = "01HZ4X7TGZM3J1A2B3C4D5E6FB"
+        store = _seed_store(tmp_path, dlm_id)
+        run_all(
+            store,
+            _multi_adapter_parsed(dlm_id),
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            mode="fresh",
+            trainer_factory=_mock_trainer_factory,
+        )
+        from dlm.store.manifest import load_manifest
+
+        manifest = load_manifest(store.manifest)
+        names = [r.adapter_name for r in manifest.training_runs]
+        assert sorted(names, key=str) == ["knowledge", "tone"]

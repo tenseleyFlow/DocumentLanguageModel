@@ -62,6 +62,11 @@ class TrainingRunSummary(BaseModel):
     # reads this to surface "how did the last run go?" without globbing.
     # `None` for runs recorded before audit-05 M3.
     summary_path: str | None = None
+    # The named adapter this run trained (multi-adapter documents).
+    # `None` for flat single-adapter runs. Audit-07 M1: without this
+    # field, multi-adapter stores can't attribute a TrainingRunSummary
+    # to its adapter.
+    adapter_name: str | None = None
 
 
 class ExportSummary(BaseModel):
@@ -106,6 +111,10 @@ def _empty_dict() -> dict[str, str]:
     return {}
 
 
+def _empty_int_dict() -> dict[str, int]:
+    return {}
+
+
 def _empty_runs() -> list[TrainingRunSummary]:
     return []
 
@@ -136,6 +145,11 @@ class Manifest(BaseModel):
     adapter_version: int = Field(0, ge=0)
     adapter_sha256: str | None = None
     adapter_config_sha256: str | None = None
+    # Per-adapter version attribution for multi-adapter stores
+    # (audit-07 M1). For flat stores this stays empty; for multi-adapter
+    # stores it holds `{name: latest_version}` so `dlm show` can answer
+    # "which adapter is at which version?" without scanning the disk.
+    adapter_versions: dict[str, int] = Field(default_factory=_empty_int_dict)
 
     training_runs: list[TrainingRunSummary] = Field(default_factory=_empty_runs)
     exports: list[ExportSummary] = Field(default_factory=_empty_exports)
