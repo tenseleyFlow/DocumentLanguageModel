@@ -33,9 +33,16 @@ def make_formatting_func(tokenizer: PreTrainedTokenizerBase) -> FormattingFunc:
     """Return a row→str function bound to `tokenizer`'s chat template."""
 
     def formatting_func(row: Row) -> str:
-        if "messages" in row:
+        # HF `datasets.Dataset` unifies the schema across mixed-shape
+        # rows (e.g. PROSE + INSTRUCTION in one doc), filling missing
+        # columns with `None`. Dispatch on presence-and-non-None so a
+        # prose row with an injected `messages: None` doesn't route
+        # into `apply_chat_template` and crash Jinja with a None
+        # iterable.
+        messages = row.get("messages")
+        if messages is not None:
             rendered = tokenizer.apply_chat_template(
-                row["messages"],
+                messages,
                 tokenize=False,
                 add_generation_prompt=False,
             )
@@ -45,12 +52,12 @@ def make_formatting_func(tokenizer: PreTrainedTokenizerBase) -> FormattingFunc:
                     "ensure tokenize=False path is taken"
                 )
             return rendered
-        if "text" in row:
-            text = row["text"]
+        text = row.get("text")
+        if text is not None:
             if not isinstance(text, str):
                 raise DataFormatError(f"`text` field must be str, got {type(text).__name__}")
             return text
-        if "prompt" in row and "chosen" in row and "rejected" in row:
+        if row.get("prompt") is not None and row.get("chosen") is not None and row.get("rejected") is not None:
             raise DataFormatError(
                 "preference rows (prompt/chosen/rejected) must be routed to DPOTrainer, "
                 "not SFTTrainer's formatting_func"

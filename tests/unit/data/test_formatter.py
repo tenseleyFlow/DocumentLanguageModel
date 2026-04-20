@@ -57,3 +57,34 @@ class TestRejections:
         fn = make_formatting_func(MagicMock())
         with pytest.raises(DataFormatError, match="neither"):
             fn({"something_else": "x"})
+
+
+class TestSchemaUnificationNones:
+    """When `datasets.Dataset` combines mixed-shape rows, each row
+    gains all columns, with the ones that don't apply set to `None`.
+    The dispatcher must route on the non-None column, not merely on
+    key presence."""
+
+    def test_prose_row_with_messages_none_takes_text_path(self) -> None:
+        tok = MagicMock()
+        fn = make_formatting_func(tok)
+        out = fn({"text": "hello", "messages": None})
+        assert out == "hello"
+        tok.apply_chat_template.assert_not_called()
+
+    def test_instruction_row_with_text_none_takes_messages_path(self) -> None:
+        tok = MagicMock()
+        tok.apply_chat_template.return_value = "<rendered>"
+        fn = make_formatting_func(tok)
+        msgs = [
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": "a"},
+        ]
+        out = fn({"text": None, "messages": msgs})
+        assert out == "<rendered>"
+        tok.apply_chat_template.assert_called_once()
+
+    def test_all_nones_rejected(self) -> None:
+        fn = make_formatting_func(MagicMock())
+        with pytest.raises(DataFormatError, match="neither"):
+            fn({"text": None, "messages": None})
