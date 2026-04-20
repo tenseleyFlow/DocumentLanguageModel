@@ -178,3 +178,20 @@ def _resolve_or_raise(store: StorePath, name: str) -> Path:  # pragma: no cover
             f"{store.adapter_current_pointer_for(name)}; run `dlm train` first."
         )
     return path
+
+
+def save_merged_to_tmp(  # pragma: no cover - heavy path
+    merged_model: Any, tmp_dir: Path
+) -> Path:
+    """Save the composite `_export_merged` adapter to `tmp_dir`.
+
+    Returns the path for consumption as `adapter_path_override` in
+    `run_export`. Uses PEFT's `save_pretrained` with the merged
+    adapter selected so the resulting dir mirrors a normal adapter
+    checkpoint (adapter_config.json + adapter_model.safetensors).
+    """
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    merged_model.save_pretrained(
+        str(tmp_dir), selected_adapters=[_MERGED_ADAPTER_NAME]
+    )
+    return tmp_dir
