@@ -69,6 +69,15 @@ def check_refusals(
         # 2× too low for large ones. The formula below scales linearly
         # with `avg_lora_r × base_params`; 0.1 GB floor keeps tiny
         # multi-adapter setups from false-greenlighting.
+        #
+        # Multi-GPU note (audit-08 M4): DDP replicates the model across
+        # ranks (each GPU holds the full base + adapter state), so
+        # `world_size` does NOT divide the per-GPU VRAM math. The
+        # formula stays conservative when scaled by rank count — we
+        # never want to greenlight a config that fits on N GPUs
+        # individually but not on any single one. Sharded /
+        # FSDP / ZeRO-3 paths would need a different calculation
+        # (they're out of scope for Sprint 23).
         avg_lora_r = _avg_lora_r(training)
         base_gb = base_params * 0.5 / 1e9  # 4-bit base
         per_adapter_gb = max(0.1, base_params * avg_lora_r / (1e9 * 64))
