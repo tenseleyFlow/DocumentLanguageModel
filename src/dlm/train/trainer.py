@@ -197,6 +197,21 @@ def run(
     )
     replay = ReplayStore.at(store.replay_corpus, store.replay_index)
 
+    # Sprint 26: open the metrics recorder early so RunStart lands
+    # even if the training loop fails partway. Best-effort — failures
+    # here are logged and swallowed to keep training the priority.
+    from dlm.metrics import MetricsRecorder, RunEnd, RunStart
+
+    recorder = MetricsRecorder(store.root)
+    recorder.record_run_start(
+        RunStart(
+            run_id=run_id,
+            adapter_version=prior_manifest.adapter_version,
+            phase="sft",
+            seed=seed,
+        )
+    )
+
     with StepLogger(log_path) as log:
         log.write_banner(
             Banner(
@@ -258,21 +273,45 @@ def run(
         # a step event for each. Live-streaming via a TrainerCallback
         # is a future refinement; post-hoc dump is enough to satisfy
         # the observability contract.
+        from dlm.metrics import EvalEvent, StepEvent
+
         for entry in log_history:
             if not isinstance(entry, dict):
-                continue
-            if "loss" not in entry:
                 continue
             step_num = entry.get("step") or entry.get("global_step")
             if step_num is None:
                 continue
-            log.log_step(
-                step=int(step_num),
-                loss=float(entry["loss"]),
-                lr=float(entry.get("learning_rate", 0.0)),
-                grad_norm=_maybe_float(entry.get("grad_norm")),
-                val_loss=_maybe_float(entry.get("eval_loss")),
-            )
+            step_int = int(step_num)
+            # Step rows (training loss + lr + grad_norm).
+            if "loss" in entry:
+                log.log_step(
+                    step=step_int,
+                    loss=float(entry["loss"]),
+                    lr=float(entry.get("learning_rate", 0.0)),
+                    grad_norm=_maybe_float(entry.get("grad_norm")),
+                    val_loss=_maybe_float(entry.get("eval_loss")),
+                )
+                recorder.record_step(
+                    StepEvent(
+                        run_id=run_id,
+                        step=step_int,
+                        loss=float(entry["loss"]),
+                        lr=_maybe_float(entry.get("learning_rate")),
+                        grad_norm=_maybe_float(entry.get("grad_norm")),
+                    )
+                )
+            # Eval rows (separate DB table). HF log_history interleaves
+            # train `loss` entries and eval `eval_loss` entries; record
+            # whichever is present.
+            if "eval_loss" in entry:
+                recorder.record_eval(
+                    EvalEvent(
+                        run_id=run_id,
+                        step=step_int,
+                        val_loss=_maybe_float(entry.get("eval_loss")),
+                        perplexity=_maybe_float(entry.get("eval_perplexity")),
+                    )
+                )
 
         eval_summary = summarize_eval_state(log_history)
         final_val_loss = eval_summary["final_val_loss"]
@@ -394,6 +433,8 @@ def run(
             early_stopped=early_stopped,
             summary_path=str(summary_path),
         )
+
+    recorder.record_run_end(RunEnd(run_id=run_id, status="ok"))
 
     return TrainingRunResult(
         run_id=run_id,
