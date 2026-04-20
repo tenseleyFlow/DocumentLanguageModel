@@ -238,6 +238,31 @@ def run(
         from dlm.eval import summarize_eval_state
 
         log_history = list(getattr(sft.state, "log_history", []))
+
+        # Audit-08 P2: emit per-step records into the JSONL log from
+        # HF's log_history. Sprint 10 shipped `StepLogger.log_step`
+        # but never wired a call site — the test_one_cycle test
+        # asserts at least one step record lands. We iterate the
+        # training-log entries (those with a `loss` field) and emit
+        # a step event for each. Live-streaming via a TrainerCallback
+        # is a future refinement; post-hoc dump is enough to satisfy
+        # the observability contract.
+        for entry in log_history:
+            if not isinstance(entry, dict):
+                continue
+            if "loss" not in entry:
+                continue
+            step_num = entry.get("step") or entry.get("global_step")
+            if step_num is None:
+                continue
+            log.log_step(
+                step=int(step_num),
+                loss=float(entry["loss"]),
+                lr=float(entry.get("learning_rate", 0.0)),
+                grad_norm=_maybe_float(entry.get("grad_norm")),
+                val_loss=_maybe_float(entry.get("eval_loss")),
+            )
+
         eval_summary = summarize_eval_state(log_history)
         final_val_loss = eval_summary["final_val_loss"]
         final_val_perplexity = eval_summary["final_val_perplexity"]
