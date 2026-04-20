@@ -27,7 +27,7 @@ from dlm.hardware.memory import estimate_peak_vram_gb, estimate_step_seconds
 from dlm.hardware.refusals import check_multi_gpu_refusals, check_refusals
 
 AttnImpl = Literal["flash_attention_2", "sdpa", "eager"]
-Precision = Literal["bf16", "fp16"]
+Precision = Literal["bf16", "fp16", "fp32"]
 
 DEFAULT_EFFECTIVE_BATCH: Final[int] = 8
 MPS_BUDGET_FRACTION: Final[float] = 0.50  # half of unified memory
@@ -167,7 +167,21 @@ def _should_qlora(training: TrainingConfig, caps: Capabilities) -> bool:
 
 
 def _pick_precision(caps: Capabilities) -> Precision:
-    """Pick training precision purely from host capabilities."""
+    """Pick training precision purely from host capabilities.
+
+    MPS is pinned to fp32: PyTorch's MPS fp16 attention kernels produce
+    NaN LoRA weights on tiny-data SFT runs (reproduced 2026-04-20 on
+    smollm2-135m + 4 samples + lr=2e-4 + no warmup; see
+    `.docs/bugs/01-nan-adapter-on-mps.md`). CPU-side training under the
+    identical config is finite, pinning the failure to MPS kernels.
+    PyTorch reports MPS bf16 support as patchy across SoCs, so we prefer
+    the safe fp32 path over a conditional bf16/fp16 pick. Users who
+    want faster MPS training can still override via the frontmatter
+    (`training.precision: fp16`) once that knob ships — until then
+    finite weights beat fast NaN weights.
+    """
+    if caps.backend == Backend.MPS:
+        return "fp32"
     if caps.supports_bf16:
         return "bf16"
     return "fp16"

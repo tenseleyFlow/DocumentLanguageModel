@@ -27,11 +27,14 @@ class TestPrecisionPicker:
         plan = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048)
         assert plan.precision == "fp16"
 
-    def test_mps_gets_fp16(self) -> None:
+    def test_mps_gets_fp32(self) -> None:
+        # MPS fp16 attention kernels produce NaN LoRA weights on tiny-data
+        # runs (see .docs/bugs/01-nan-adapter-on-mps.md). Pinned to fp32
+        # until PyTorch's MPS kernels land a fix.
         with force_mps():
             caps = probe()
         plan = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048)
-        assert plan.precision == "fp16"
+        assert plan.precision == "fp32"
 
 
 class TestAttentionPicker:
