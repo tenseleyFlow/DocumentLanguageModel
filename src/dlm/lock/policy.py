@@ -231,7 +231,8 @@ def _rule_license_acceptance(prior: DlmLock, current: DlmLock) -> tuple[Severity
     if prior_a is not None and current_a is None:
         return (Severity.WARN, f"license_acceptance cleared (was {prior_a.license_spdx})")
     # Both present — only surface if content disagrees.
-    assert prior_a is not None and current_a is not None
+    assert prior_a is not None
+    assert current_a is not None
     if prior_a.license_spdx != current_a.license_spdx:
         return (
             Severity.WARN,

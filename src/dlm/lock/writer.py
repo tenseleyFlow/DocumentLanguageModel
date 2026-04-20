@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from dlm.io.atomic import write_text
-from dlm.lock.errors import LockSchemaError
+from dlm.lock.errors import LockSchemaError, LockWriteError
 from dlm.lock.schema import CURRENT_LOCK_VERSION, LOCK_FILENAME, DlmLock
 
 
@@ -22,10 +22,15 @@ def write_lock(store_root: Path, lock: DlmLock) -> Path:
     half-written lock on disk. Returns the path written.
     """
     if lock.lock_version != CURRENT_LOCK_VERSION:
-        raise LockSchemaError(
-            lock_path(store_root),
-            f"write_lock refused: lock_version={lock.lock_version!r}, "
-            f"writer pins CURRENT_LOCK_VERSION={CURRENT_LOCK_VERSION}",
+        # Audit-05 N13: programmer error on the write path → dedicated
+        # LockWriteError rather than LockSchemaError (which is reserved
+        # for read-side parse failures).
+        raise LockWriteError(
+            path=lock_path(store_root),
+            reason=(
+                f"lock_version={lock.lock_version!r} != writer's "
+                f"CURRENT_LOCK_VERSION={CURRENT_LOCK_VERSION}"
+            ),
         )
     target = lock_path(store_root)
     payload = lock.model_dump(mode="json")

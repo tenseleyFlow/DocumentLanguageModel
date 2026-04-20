@@ -46,7 +46,6 @@ def init_cmd(
     ] = False,
 ) -> None:
     """Bootstrap a new .dlm file with sensible defaults."""
-    import sys
 
     from rich.console import Console
 
@@ -386,7 +385,6 @@ def prompt_cmd(
     from rich.console import Console
 
     from dlm.base_models import resolve as resolve_base_model
-    from dlm.doc.errors import DlmParseError
     from dlm.doc.parser import parse_file
     from dlm.hardware import doctor
     from dlm.inference import AdapterNotFoundError, generate, load_for_inference
@@ -497,7 +495,6 @@ def export_cmd(
 
     from dlm.base_models import GatedModelError, download_spec
     from dlm.base_models import resolve as resolve_base_model
-    from dlm.doc.errors import DlmParseError
     from dlm.doc.parser import parse_file
     from dlm.export import (
         ExportError,
@@ -746,7 +743,6 @@ def show_cmd(
 
     from rich.console import Console
 
-    from dlm.doc.errors import DlmParseError
     from dlm.doc.errors import DlmParseError
     from dlm.doc.parser import parse_file
     from dlm.store.errors import ManifestCorruptError

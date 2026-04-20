@@ -47,6 +47,11 @@ class PackHeader(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    # Pack format version 1 is the floor; the migrations framework
+    # (`dlm.pack.migrations`) bridges v1 → vN for future bumps. The
+    # `ge=1` constraint here means no v0 pack can ever reach the
+    # migrator — that's deliberate (audit-05 N8): v0 predated the
+    # format we ship, so there's nothing to migrate from.
     pack_format_version: int = Field(..., ge=1)
     created_at: datetime
     tool_version: str = Field(..., min_length=1)

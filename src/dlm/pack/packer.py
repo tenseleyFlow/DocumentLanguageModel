@@ -204,8 +204,16 @@ def _platform_hint() -> str:
 
 
 def _content_type(*, include_base: bool, include_exports: bool, include_logs: bool) -> ContentType:
-    """Coarse label for `PackHeader.content_type`."""
-    _ = include_logs  # logs don't flip the coarse label
+    """Coarse label for `PackHeader.content_type`.
+
+    The four-value enum tracks the two heavy payloads (base model +
+    GGUF exports). Logs are bounded-size per-run artifacts and don't
+    move the label — a pack with only `include_logs=True` is still
+    `"minimal"` for consumers. `include_logs` is accepted + ignored
+    so the signature stays call-site-symmetric with the other flags
+    (audit-05 N9).
+    """
+    del include_logs
     if include_base and include_exports:
         return "full"
     if include_base:

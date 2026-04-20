@@ -20,7 +20,7 @@ table in `policy.py`.
 from __future__ import annotations
 
 from dlm.lock.builder import build_lock, hardware_tier_from_backend, hash_dlm_file
-from dlm.lock.errors import LockError, LockSchemaError, LockValidationError
+from dlm.lock.errors import LockError, LockSchemaError, LockValidationError, LockWriteError
 from dlm.lock.policy import Severity, classify_mismatches
 from dlm.lock.schema import CURRENT_LOCK_VERSION, LOCK_FILENAME, DlmLock
 from dlm.lock.validator import LockDecision, LockMode, validate_lock
@@ -35,6 +35,7 @@ __all__ = [
     "LockMode",
     "LockSchemaError",
     "LockValidationError",
+    "LockWriteError",
     "Severity",
     "build_lock",
     "classify_mismatches",

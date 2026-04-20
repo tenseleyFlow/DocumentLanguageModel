@@ -865,7 +865,19 @@ def _validate_or_abort_lock(
         capabilities=capabilities,
         license_acceptance=license_acceptance,
     )
-    prior = load_lock(store.root)
+    try:
+        prior = load_lock(store.root)
+    except Exception:
+        # Audit-05 N5: a corrupt `dlm.lock` on disk would normally kill
+        # the run at load time. Under `--update-lock` the operator has
+        # explicitly opted to overwrite the file; treat the parse
+        # failure as "prior is unusable → treat as missing" so the
+        # update mode can actually rescue a broken lock. Any other mode
+        # re-raises (including --ignore-lock, which explicitly says
+        # "don't touch the file").
+        if lock_mode != "update":
+            raise
+        prior = None
     decision = validate_lock(prior, candidate, mode=lock_mode)
 
     if decision.action == "abort":

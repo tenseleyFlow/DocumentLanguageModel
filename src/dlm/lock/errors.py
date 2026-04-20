@@ -23,6 +23,21 @@ class LockSchemaError(LockError):
         super().__init__(f"{path}: {reason}")
 
 
+class LockWriteError(LockError):
+    """Programmer error on the write path (audit-05 N13).
+
+    Distinct from `LockSchemaError` (which means "on-disk file can't
+    be parsed") so callers can tell a write-refusal apart from a
+    read-refusal. Raised by `write_lock` when the caller passes a
+    `DlmLock` with a lock_version the writer doesn't support.
+    """
+
+    def __init__(self, *, path: Path, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"{path}: write refused: {reason}")
+
+
 class LockValidationError(LockError):
     """Prior and current lock disagree at `error` severity.
 
