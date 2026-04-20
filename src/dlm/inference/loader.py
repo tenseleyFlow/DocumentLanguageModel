@@ -105,22 +105,50 @@ def _torch_dtype_for(precision: str) -> Any:
     return lookup.get(precision, torch.float16)
 
 
+def resolve_adapter_path(
+    store: StorePath, *, adapter_name: str | None
+) -> Path:
+    """Return the on-disk adapter version dir for inference.
+
+    Single entry point for both the flat (unnamed) and named-adapter
+    layouts. Raises `AdapterNotFoundError` with a path-appropriate
+    hint when `current.txt` is missing or empty — the most common
+    "haven't trained yet" failure mode.
+    """
+    if adapter_name is None:
+        adapter_path = store.resolve_current_adapter()
+        pointer = store.adapter_current_pointer
+    else:
+        adapter_path = store.resolve_current_adapter_for(adapter_name)
+        pointer = store.adapter_current_pointer_for(adapter_name)
+    if adapter_path is None or not adapter_path.exists():
+        hint = (
+            f"no adapter under {pointer}; "
+            f"has `dlm train` run successfully"
+            f"{f' for adapter {adapter_name!r}' if adapter_name else ''}?"
+        )
+        raise AdapterNotFoundError(hint)
+    return adapter_path
+
+
 def load_for_inference(  # pragma: no cover
     store: StorePath,
     spec: BaseModelSpec,
     caps: Any,
+    *,
+    adapter_name: str | None = None,
 ) -> LoadedInference:
     """Resolve plan + load base + adapter + tokenizer.
 
     Pragma'd from unit coverage because it calls `AutoModelForCausalLM.from_pretrained`
     and `PeftModel.from_pretrained`, which each need ~5 seconds and a
     real HF cache. Covered by Sprint 10's slow-marked integration test.
+
+    `adapter_name`, when provided, targets the named multi-adapter
+    layout (`adapter/<name>/current.txt`). When `None`, uses the flat
+    single-adapter layout.
     """
-    adapter_path = store.resolve_current_adapter()
-    if adapter_path is None or not adapter_path.exists():
-        raise AdapterNotFoundError(
-            f"no adapter under {store.adapter_current_pointer}; has `dlm train` run successfully?"
-        )
+    adapter_path = resolve_adapter_path(store, adapter_name=adapter_name)
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
