@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from dlm.doc.schema import (
+    CptConfig,
     DlmFrontmatter,
     ExportConfig,
     PreferenceConfig,
@@ -180,6 +181,55 @@ class TestTrainingConfigPreferenceSubfield:
             )
 
 
+class TestCptConfig:
+    def test_default_instance(self) -> None:
+        c = CptConfig()
+        assert c.schedule == "auto"
+        assert c.embed_warmup_steps == 0
+
+    def test_frozen_model_rejects_mutation(self) -> None:
+        c = CptConfig()
+        with pytest.raises(ValidationError):
+            c.embed_warmup_steps = 10  # type: ignore[misc]
+
+    @pytest.mark.parametrize("value", ["auto", "dapt", "sft"])
+    def test_schedule_accepts_known_values(self, value: str) -> None:
+        CptConfig(schedule=value)  # type: ignore[arg-type]
+
+    def test_schedule_rejects_unknown(self) -> None:
+        with pytest.raises(ValidationError):
+            CptConfig(schedule="warmup")  # type: ignore[arg-type]
+
+    def test_embed_warmup_steps_must_be_non_negative(self) -> None:
+        with pytest.raises(ValidationError):
+            CptConfig(embed_warmup_steps=-1)
+
+    def test_extra_fields_forbidden(self) -> None:
+        with pytest.raises(ValidationError):
+            CptConfig.model_validate({"schedule": "auto", "rubbish": 1})
+
+
+class TestTrainingConfigCptSubfield:
+    def test_default_training_has_auto_cpt(self) -> None:
+        t = TrainingConfig()
+        assert isinstance(t.cpt, CptConfig)
+        assert t.cpt.schedule == "auto"
+        assert t.cpt.embed_warmup_steps == 0
+
+    def test_accepts_nested_dict_for_cpt(self) -> None:
+        t = TrainingConfig.model_validate(
+            {"cpt": {"schedule": "dapt", "embed_warmup_steps": 200}}
+        )
+        assert t.cpt.schedule == "dapt"
+        assert t.cpt.embed_warmup_steps == 200
+
+    def test_rejects_unknown_field_inside_cpt(self) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig.model_validate(
+                {"cpt": {"schedule": "dapt", "rubbish": 1}}
+            )
+
+
 class TestExportConfig:
     def test_default_quant(self) -> None:
         assert ExportConfig().default_quant == "Q4_K_M"
@@ -200,7 +250,7 @@ class TestExportConfig:
 class TestDlmFrontmatter:
     def test_minimal_valid(self) -> None:
         fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="smollm2-135m")
-        assert fm.dlm_version == 2
+        assert fm.dlm_version == 3
         assert fm.training == TrainingConfig()
         assert fm.export == ExportConfig()
         assert fm.system_prompt is None
