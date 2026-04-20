@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from dlm.hardware.plan import TrainingPlan
     from dlm.lock import LockMode
     from dlm.store.paths import StorePath
-    from dlm.train.trainer import TrainingRunResult
+    from dlm.train.trainer import Mode, TrainingRunResult
 
 Phase = Literal["sft", "dpo", "all"]
 
@@ -83,6 +83,7 @@ def run_phases(
     plan: TrainingPlan,
     *,
     phase: Phase = "all",
+    mode: Mode = "fresh",
     seed: int | None = None,
     max_steps: int | None = None,
     lock_mode: LockMode = "default",
@@ -123,6 +124,7 @@ def run_phases(
             parsed,
             spec,
             plan,
+            mode=mode,
             seed=seed,
             max_steps=max_steps,
             lock_mode=lock_mode,

@@ -214,6 +214,17 @@ def train_cmd(
     fresh: Annotated[bool, typer.Option("--fresh", help="Discard prior adapter state.")] = False,
     seed: Annotated[int | None, typer.Option("--seed", help="Override training seed.")] = None,
     max_steps: Annotated[int | None, typer.Option("--max-steps", help="Cap step count.")] = None,
+    phase: Annotated[
+        str,
+        typer.Option(
+            "--phase",
+            help=(
+                "Which training phases to run: 'sft' (supervised only), "
+                "'dpo' (preference only — requires a prior SFT adapter), "
+                "or 'all' (SFT then DPO when enabled)."
+            ),
+        ),
+    ] = "all",
     i_accept_license: Annotated[
         bool,
         typer.Option(
@@ -261,9 +272,21 @@ def train_cmd(
         ResumeIntegrityError,
         TrainingError,
     )
-    from dlm.train import run as run_training
+    from dlm.train.preference import (
+        DpoPhaseError,
+        NoPreferenceContentError,
+        PriorAdapterRequiredError,
+    )
+    from dlm.train.preference.phase_orchestrator import Phase, run_phases
 
     console = Console(stderr=True)
+
+    if phase not in ("sft", "dpo", "all"):
+        console.print(
+            f"[red]error:[/red] --phase must be one of sft|dpo|all, got {phase!r}"
+        )
+        raise typer.Exit(code=2)
+    phase_literal: Phase = phase  # type: ignore[assignment]
 
     if resume and fresh:
         console.print("[red]error:[/red] --resume and --fresh are mutually exclusive")
@@ -319,11 +342,12 @@ def train_cmd(
     store.ensure_layout()
 
     try:
-        result = run_training(
+        phase_results = run_phases(
             store,
             parsed,
             spec,
             plan,
+            phase=phase_literal,
             mode=mode,
             seed=seed,
             max_steps=max_steps,
@@ -356,17 +380,36 @@ def train_cmd(
     except ResumeIntegrityError as exc:
         console.print(f"[red]resume:[/red] {exc}")
         raise typer.Exit(code=1) from exc
+    except (NoPreferenceContentError, PriorAdapterRequiredError) as exc:
+        console.print(f"[red]dpo:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except DpoPhaseError as exc:
+        console.print(f"[red]dpo:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
     except TrainingError as exc:
         console.print(f"[red]training:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
-    console.print(
-        f"[green]trained:[/green] v{result.adapter_version:04d} "
-        f"({result.steps} steps, seed={result.seed}, "
-        f"determinism={result.determinism.class_})"
-    )
-    console.print(f"adapter: {result.adapter_path}")
-    console.print(f"log:     {result.log_path}")
+    if not phase_results:
+        console.print(
+            "[yellow]no-op:[/yellow] nothing to train for the requested phase. "
+            "Check that the document has the section types the phase consumes "
+            "(prose/instruction for SFT, preference for DPO)."
+        )
+        raise typer.Exit(code=0)
+
+    for pr in phase_results:
+        result = pr.result
+        console.print(
+            f"[green]{pr.phase}:[/green] v{result.adapter_version:04d} "
+            f"({result.steps} steps, seed={result.seed}, "
+            f"determinism={result.determinism.class_})"
+        )
+        console.print(f"adapter: {result.adapter_path}")
+        console.print(f"log:     {result.log_path}")
+    # Final-train-loss stdout line mirrors the last phase so existing
+    # downstream scripts keep working.
+    result = phase_results[-1].result
     if result.final_train_loss is not None:
         sys.stdout.write(f"{result.final_train_loss}\n")
 
