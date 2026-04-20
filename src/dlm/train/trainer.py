@@ -267,6 +267,17 @@ def run(
         final_val_loss = eval_summary["final_val_loss"]
         final_val_perplexity = eval_summary["final_val_perplexity"]
 
+        # Per-mode val-loss split (audit-08 N9). Sprint 19 reserved
+        # TrainingSummary.val_loss_cpt/val_loss_sft but left them
+        # unwired. Run one post-train eval per non-empty mode subset
+        # and populate the fields with the resulting eval_loss. Safe:
+        # each call is guarded, failures degrade to None.
+        from dlm.eval.mode_split import compute_val_loss_by_mode
+
+        val_loss_cpt, val_loss_sft = compute_val_loss_by_mode(
+            sft, getattr(sft, "eval_dataset", None)
+        )
+
         # Early-stop detection (audit-05 M2). Prefer HF's real signal
         # (the callback sets `control.should_training_stop`); fall back
         # to the heuristic if the trainer object doesn't expose it
@@ -318,6 +329,8 @@ def run(
             final_train_loss=final_train_loss,
             final_val_loss=final_val_loss,
             final_val_perplexity=final_val_perplexity,
+            val_loss_cpt=val_loss_cpt,
+            val_loss_sft=val_loss_sft,
             early_stopped=early_stopped,
             duration_seconds=elapsed,
             determinism=determinism,
@@ -799,6 +812,8 @@ def _write_training_summary(
     early_stopped: bool,
     duration_seconds: float,
     determinism: DeterminismSummary,
+    val_loss_cpt: float | None = None,
+    val_loss_sft: float | None = None,
 ) -> Path:
     """Write `logs/train-*.summary.json` next to the JSONL log."""
     from dlm.eval import TrainingSummary, save_summary, summary_path_for
@@ -816,6 +831,8 @@ def _write_training_summary(
         final_train_loss=final_train_loss,
         final_val_loss=final_val_loss,
         final_val_perplexity=final_val_perplexity,
+        val_loss_cpt=val_loss_cpt,
+        val_loss_sft=val_loss_sft,
         early_stopped=early_stopped,
         duration_seconds=duration_seconds,
         determinism_class=determinism.class_,
