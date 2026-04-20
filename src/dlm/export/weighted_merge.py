@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from dlm.export.errors import ExportError
 
@@ -180,8 +180,41 @@ def _resolve_or_raise(store: StorePath, name: str) -> Path:  # pragma: no cover
     return path
 
 
+def resolve_first_source_path(store: StorePath, entries: list[MixEntry]) -> Path:
+    """Return the on-disk version dir for the first mix entry.
+
+    Used by the CLI to hand a `tokenizer_source` to `save_merged_to_tmp`
+    so the merged output dir includes tokenizer files for the downstream
+    preflight (audit-07 B2). All source adapters share the same base
+    model + tokenizer (enforced by the frontmatter `base_model` being
+    single-valued), so any source is interchangeable — we pick the first.
+    """
+    if not entries:
+        raise InvalidMixSpecError(
+            "resolve_first_source_path: empty mix"
+        )
+    return _resolve_or_raise(store, entries[0].name)
+
+
+_TOKENIZER_FILES: Final[tuple[str, ...]] = (
+    "tokenizer_config.json",
+    "tokenizer.json",
+    "special_tokens_map.json",
+    "added_tokens.json",
+    "vocab.json",
+    "merges.txt",
+    "tokenizer.model",
+)
+"""Files we copy from a source adapter dir into the merged dir so the
+downstream GGUF pipeline's preflight passes (audit-07 B2)."""
+
+
 def save_merged_to_tmp(  # pragma: no cover - heavy path
-    merged_model: Any, tmp_dir: Path
+    merged_model: Any,
+    tmp_dir: Path,
+    *,
+    tokenizer_source: Path | None = None,
+    training_run_source: Path | None = None,
 ) -> Path:
     """Save the composite `_export_merged` adapter to `tmp_dir`.
 
@@ -189,9 +222,32 @@ def save_merged_to_tmp(  # pragma: no cover - heavy path
     `run_export`. Uses PEFT's `save_pretrained` with the merged
     adapter selected so the resulting dir mirrors a normal adapter
     checkpoint (adapter_config.json + adapter_model.safetensors).
+
+    Additionally copies tokenizer files from `tokenizer_source` (one
+    of the source adapter dirs) so the export preflight's
+    `check_tokenizer_vocab` finds `tokenizer_config.json`. Without
+    this, the merged export dies in preflight (audit-07 B2).
+
+    `training_run_source` — when set, copies `training_run.json` into
+    the merged dir so `check_was_adapter_qlora` fires the merge-safety
+    gate correctly on QLoRA-derived composites.
     """
+    import shutil
+
     tmp_dir.mkdir(parents=True, exist_ok=True)
     merged_model.save_pretrained(
         str(tmp_dir), selected_adapters=[_MERGED_ADAPTER_NAME]
     )
+
+    if tokenizer_source is not None:
+        for fname in _TOKENIZER_FILES:
+            src = tokenizer_source / fname
+            if src.exists():
+                shutil.copy2(src, tmp_dir / fname)
+
+    if training_run_source is not None:
+        src = training_run_source / "training_run.json"
+        if src.exists():
+            shutil.copy2(src, tmp_dir / "training_run.json")
+
     return tmp_dir
