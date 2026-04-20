@@ -520,7 +520,12 @@ def _build_real_trainer(  # pragma: no cover
         eval_steps=eval_steps,
         metric_for_best_model=early_stop_cfg.metric,
         greater_is_better=early_stop_cfg.greater_is_better,
-        load_best_model_at_end=True,
+        # Modern transformers refuses load_best_model_at_end=True when
+        # save_strategy="no" (it has no checkpoints to reload). We own
+        # the checkpoint write lifecycle, so we keep save off and take
+        # the last-step weights at commit time. Early stopping still
+        # fires via the callback.
+        load_best_model_at_end=False,
     )
 
     from dlm.eval import build_callback
