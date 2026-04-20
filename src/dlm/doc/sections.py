@@ -44,11 +44,20 @@ class Section:
     `content` is the raw section body, fence-free. Fence lines are
     stripped; leading/trailing blank lines around the content are
     preserved as-is to keep round-trip idempotent after the first pass.
+
+    `adapter` is the optional `#name` routing suffix from a fence like
+    `::instruction#tone::`. `None` means "unrouted" — the section's rows
+    flow to whichever adapter the router picks as default (the first
+    declared, in multi-adapter docs). The field is intentionally not
+    part of `section_id`: moving a section between adapters is a routing
+    change, not a content change, and retention snapshots key off the
+    content hash.
     """
 
     type: SectionType
     content: str
     start_line: int = 0
+    adapter: str | None = None
 
     @property
     def section_id(self) -> str:
