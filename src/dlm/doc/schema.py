@@ -26,6 +26,26 @@ version and register a migrator in the same commit (enforced by a test).
 """
 
 
+class DpoConfig(BaseModel):
+    """DPO phase knobs (Sprint 17). Additive to `TrainingConfig`; default
+    disabled. `enabled` flips to `True` automatically when the document
+    contains `::preference::` sections unless the user has explicitly set
+    it to `False` — the phase orchestrator reads that signal."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    beta: float = Field(0.1, ge=0.0, le=1.0)
+    loss_type: Literal["sigmoid", "hinge", "ipo"] = "sigmoid"
+    learning_rate: float = Field(5e-6, gt=0.0)
+    num_epochs: int = Field(1, ge=1)
+    reference: Literal["base", "pre_dpo_adapter"] = "pre_dpo_adapter"
+
+
+def _default_dpo() -> DpoConfig:
+    return DpoConfig()
+
+
 class TrainingConfig(BaseModel):
     """Training-time knobs. `auto` values are resolved by the hardware doctor."""
 
@@ -45,6 +65,7 @@ class TrainingConfig(BaseModel):
     lr_scheduler: Literal["cosine", "linear", "constant"] = "cosine"
     warmup_ratio: float = Field(0.1, ge=0.0, le=0.5)
     seed: int = 42
+    dpo: DpoConfig = Field(default_factory=_default_dpo)
 
     @field_validator("micro_batch_size", "grad_accum")
     @classmethod

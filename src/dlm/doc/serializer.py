@@ -17,6 +17,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Final
 
+from pydantic import BaseModel
+
 from dlm.doc.parser import ParsedDlm
 from dlm.doc.schema import DlmFrontmatter, ExportConfig, TrainingConfig
 from dlm.doc.sections import Section, SectionType
@@ -74,14 +76,17 @@ def _serialize_frontmatter(fm: DlmFrontmatter) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _emit_nested_mapping(model: TrainingConfig | ExportConfig, *, indent: int) -> list[str]:
-    """Emit a nested training/export block.
+def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
+    """Emit a nested training/export/dpo block.
 
     Audit-05 M2: suppress fields that equal their schema default so
     re-serializing a minimal `.dlm` doesn't bloat it with every
     inlined default. Idempotency (Sprint 03 DoD) is preserved — the
     parser's defaults match the suppressed values, so round-trip
     stability holds at the model level.
+
+    Nested `BaseModel` values (e.g. `TrainingConfig.dpo` from Sprint 17)
+    recurse with deeper indent; all-default sub-blocks are skipped.
     """
     pad = " " * indent
     lines: list[str] = []
@@ -91,6 +96,13 @@ def _emit_nested_mapping(model: TrainingConfig | ExportConfig, *, indent: int) -
         value = getattr(model, field_name)
         default_value = getattr(defaults, field_name)
         if value == default_value:
+            continue
+        if isinstance(value, BaseModel):
+            nested = _emit_nested_mapping(value, indent=indent + 2)
+            if not nested:
+                continue
+            lines.append(f"{pad}{field_name}:")
+            lines.extend(nested)
             continue
         lines.append(f"{pad}{field_name}: {_scalar(value)}")
     return lines

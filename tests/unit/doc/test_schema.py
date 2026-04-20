@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from dlm.doc.schema import DlmFrontmatter, ExportConfig, TrainingConfig
+from dlm.doc.schema import DlmFrontmatter, DpoConfig, ExportConfig, TrainingConfig
 
 VALID_ULID = "01HZ4X7TGZM3J1A2B3C4D5E6F7"
 
@@ -99,6 +99,64 @@ class TestTrainingConfigConstraints:
         TrainingConfig(target_modules=["q_proj", "v_proj"])
         with pytest.raises(ValidationError):
             TrainingConfig(target_modules="all-linear")  # type: ignore[arg-type]
+
+
+class TestDpoConfig:
+    def test_default_instance_is_disabled(self) -> None:
+        d = DpoConfig()
+        assert d.enabled is False
+        assert d.beta == pytest.approx(0.1)
+        assert d.loss_type == "sigmoid"
+        assert d.learning_rate == pytest.approx(5e-6)
+        assert d.num_epochs == 1
+        assert d.reference == "pre_dpo_adapter"
+
+    def test_frozen_model_rejects_mutation(self) -> None:
+        d = DpoConfig()
+        with pytest.raises(ValidationError):
+            d.enabled = True  # type: ignore[misc]
+
+    @pytest.mark.parametrize("bad", [-0.01, 1.01])
+    def test_beta_out_of_range(self, bad: float) -> None:
+        with pytest.raises(ValidationError):
+            DpoConfig(beta=bad)
+
+    def test_learning_rate_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            DpoConfig(learning_rate=0.0)
+
+    @pytest.mark.parametrize("bad", [0, -1])
+    def test_num_epochs_must_be_ge_1(self, bad: int) -> None:
+        with pytest.raises(ValidationError):
+            DpoConfig(num_epochs=bad)
+
+    def test_loss_type_literal_rejects_unknown(self) -> None:
+        with pytest.raises(ValidationError):
+            DpoConfig(loss_type="kto")  # type: ignore[arg-type]
+
+    def test_reference_literal_rejects_unknown(self) -> None:
+        with pytest.raises(ValidationError):
+            DpoConfig(reference="sft_adapter")  # type: ignore[arg-type]
+
+    def test_extra_fields_forbidden(self) -> None:
+        with pytest.raises(ValidationError):
+            DpoConfig.model_validate({"enabled": True, "rubbish": 1})
+
+
+class TestTrainingConfigDpoSubfield:
+    def test_default_training_has_disabled_dpo(self) -> None:
+        t = TrainingConfig()
+        assert isinstance(t.dpo, DpoConfig)
+        assert t.dpo.enabled is False
+
+    def test_accepts_nested_dict_for_dpo(self) -> None:
+        t = TrainingConfig.model_validate({"dpo": {"enabled": True, "beta": 0.2}})
+        assert t.dpo.enabled is True
+        assert t.dpo.beta == pytest.approx(0.2)
+
+    def test_rejects_unknown_field_inside_dpo(self) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig.model_validate({"dpo": {"enabled": True, "rubbish": 1}})
 
 
 class TestExportConfig:

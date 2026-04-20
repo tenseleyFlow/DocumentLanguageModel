@@ -11,7 +11,8 @@ from __future__ import annotations
 import pytest
 
 from dlm.doc.parser import ParsedDlm
-from dlm.doc.schema import DlmFrontmatter, TrainingConfig
+from dlm.doc.parser import parse_text
+from dlm.doc.schema import DlmFrontmatter, DpoConfig, TrainingConfig
 from dlm.doc.sections import Section, SectionType
 from dlm.doc.serializer import (
     _format_list,
@@ -190,3 +191,55 @@ class TestFrontmatterExplicitTargetModulesList:
         parsed = ParsedDlm(frontmatter=fm, sections=())
         out = serialize(parsed)
         assert "system_prompt: |\n  first line\n  second line" in out
+
+
+class TestDpoNestedBlock:
+    """Sprint 17: `training.dpo` is itself a pydantic model; default-equal
+    instances are suppressed, non-default values render as a nested
+    sub-block with 4-space indent."""
+
+    def test_all_default_dpo_suppressed(self) -> None:
+        fm = DlmFrontmatter(
+            dlm_id=VALID_ULID,
+            base_model="smollm2-135m",
+            training=TrainingConfig(),  # dpo = DpoConfig() — all defaults
+        )
+        parsed = ParsedDlm(frontmatter=fm, sections=())
+        out = serialize(parsed)
+        assert "dpo:" not in out
+
+    def test_non_default_dpo_emits_sub_block(self) -> None:
+        fm = DlmFrontmatter(
+            dlm_id=VALID_ULID,
+            base_model="smollm2-135m",
+            training=TrainingConfig(dpo=DpoConfig(enabled=True, beta=0.2)),
+        )
+        parsed = ParsedDlm(frontmatter=fm, sections=())
+        out = serialize(parsed)
+        assert "training:\n" in out
+        assert "  dpo:\n" in out
+        assert "    enabled: true" in out
+        assert "    beta:" in out
+        # still-default fields inside dpo are suppressed
+        assert "loss_type" not in out
+        assert "reference" not in out
+
+    def test_round_trip_preserves_dpo_overrides(self) -> None:
+        source = (
+            "---\n"
+            f"dlm_id: {VALID_ULID}\n"
+            "base_model: smollm2-135m\n"
+            "training:\n"
+            "  dpo:\n"
+            "    enabled: true\n"
+            "    beta: 0.25\n"
+            "    loss_type: ipo\n"
+            "---\n"
+        )
+        parsed = parse_text(source)
+        assert parsed.frontmatter.training.dpo.enabled is True
+        assert parsed.frontmatter.training.dpo.beta == 0.25
+        assert parsed.frontmatter.training.dpo.loss_type == "ipo"
+        # Idempotency contract (Sprint 03 DoD): pipeline twice == pipeline once.
+        rendered = serialize(parsed)
+        assert serialize(parse_text(rendered)) == rendered
