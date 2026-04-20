@@ -19,7 +19,7 @@ _VALID_ULID = "01JQ7Z0000000000000000000A"
 _V1_DOC = f"""---
 dlm_id: {_VALID_ULID}
 base_model: smollm2-135m
-dlm_version: 1
+dlm_version: {versioned_module.CURRENT_SCHEMA_VERSION}
 ---
 
 prose body
@@ -75,15 +75,17 @@ class TestIdempotent:
 
 class TestMigratedWrite:
     def test_write_path_updates_version_and_body(self, tmp_path: Path, bumped_current: int) -> None:
-        @register(from_version=1)
-        def _v1(raw: dict[str, object]) -> dict[str, object]:
-            # Drop an obsolete field that would fail extra="forbid" on v2.
+        current = bumped_current - 1  # the version the doc lives at
+
+        @register(from_version=current)
+        def _pre_current(raw: dict[str, object]) -> dict[str, object]:
+            # Drop an obsolete field that would fail extra="forbid" on the next version.
             return {k: v for k, v in raw.items() if k != "legacy"}
 
         src = f"""---
 dlm_id: {_VALID_ULID}
 base_model: smollm2-135m
-dlm_version: 1
+dlm_version: {current}
 legacy: gone
 ---
 
@@ -99,7 +101,7 @@ y
         doc.write_text(src, encoding="utf-8")
 
         result = migrate_file(doc)
-        assert result.applied == [1]
+        assert result.applied == [current]
         assert result.wrote is True
         assert result.backup_path == tmp_path / "mydoc.dlm.bak"
         assert result.backup_path.read_text(encoding="utf-8") == src
@@ -115,8 +117,10 @@ y
         assert rewritten.endswith("\n")
 
     def test_no_backup_skips_bak_write(self, tmp_path: Path, bumped_current: int) -> None:
-        @register(from_version=1)
-        def _v1(raw: dict[str, object]) -> dict[str, object]:
+        current = bumped_current - 1
+
+        @register(from_version=current)
+        def _pre_current(raw: dict[str, object]) -> dict[str, object]:
             return dict(raw)
 
         doc = tmp_path / "mydoc.dlm"
@@ -128,8 +132,10 @@ y
         assert not (tmp_path / "mydoc.dlm.bak").exists()
 
     def test_dry_run_reports_without_writing(self, tmp_path: Path, bumped_current: int) -> None:
-        @register(from_version=1)
-        def _v1(raw: dict[str, object]) -> dict[str, object]:
+        current = bumped_current - 1
+
+        @register(from_version=current)
+        def _pre_current(raw: dict[str, object]) -> dict[str, object]:
             return dict(raw)
 
         doc = tmp_path / "mydoc.dlm"
@@ -137,7 +143,7 @@ y
         before = doc.read_text(encoding="utf-8")
 
         result = migrate_file(doc, dry_run=True)
-        assert result.applied == [1]
+        assert result.applied == [current]
         assert result.wrote is False
         assert result.backup_path is None
         assert doc.read_text(encoding="utf-8") == before
@@ -184,8 +190,10 @@ class TestCli:
         assert "no migrations needed" in _joined_output(result)
 
     def test_dry_run_prints_plan_without_writing(self, tmp_path: Path, bumped_current: int) -> None:
-        @register(from_version=1)
-        def _v1(raw: dict[str, object]) -> dict[str, object]:
+        current = bumped_current - 1
+
+        @register(from_version=current)
+        def _pre_current(raw: dict[str, object]) -> dict[str, object]:
             return dict(raw)
 
         runner = CliRunner()

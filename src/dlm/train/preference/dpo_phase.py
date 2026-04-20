@@ -135,7 +135,7 @@ def run(
         log.log_event(
             "dpo_phase_start",
             reference_adapter_version=reference_adapter_version,
-            dpo_reference_mode=parsed.frontmatter.training.dpo.reference,
+            dpo_reference_mode=parsed.frontmatter.training.preference.reference,
         )
         log.log_event(
             "delta",
@@ -349,16 +349,16 @@ def _build_real_dpo_trainer(  # pragma: no cover
         base_model, str(adapter_dir), is_trainable=True
     )
 
-    # Reference: frozen per dpo.reference mode. We reload a clean base
-    # for the reference rather than sharing `base_model` so policy
-    # gradient flow doesn't touch the reference weights.
-    dpo_cfg = parsed.frontmatter.training.dpo
-    ref_adapter_path = adapter_dir if dpo_cfg.reference == "pre_dpo_adapter" else None
+    # Reference: frozen per preference.reference mode. We reload a
+    # clean base for the reference rather than sharing `base_model` so
+    # policy gradient flow doesn't touch the reference weights.
+    pref_cfg = parsed.frontmatter.training.preference
+    ref_adapter_path = adapter_dir if pref_cfg.reference == "pre_adapter" else None
     ref_model = load_reference_model(
         spec,
         plan,
         adapter_path=ref_adapter_path,
-        mode=dpo_cfg.reference,
+        mode=pref_cfg.reference,
     )
 
     tok_bringup = prepare_tokenizer(spec.hf_id, spec.revision)
@@ -385,7 +385,7 @@ def _build_real_dpo_trainer(  # pragma: no cover
         ref_model=ref_model,
         tokenizer=tok_bringup.tokenizer,
         train_dataset=train_ds,
-        dpo_cfg=dpo_cfg,
+        pref_cfg=pref_cfg,
         plan=plan,
         output_dir=output_dir,
         max_length=parsed.frontmatter.training.sequence_len,

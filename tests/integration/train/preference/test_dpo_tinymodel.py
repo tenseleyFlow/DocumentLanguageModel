@@ -31,7 +31,7 @@ def test_dpo_phase_writes_second_adapter_version(trained_store) -> None:  # type
     from dlm.train.preference.phase_orchestrator import run_phases
 
     store = trained_store.store
-    dlm_path = trained_store.dlm_path
+    dlm_path = trained_store.doc
 
     terse_preferences = _five_terse_preference_triples()
     _append_preference_section(dlm_path, terse_preferences)
@@ -80,7 +80,9 @@ def _five_terse_preference_triples() -> str:
 
 def _append_preference_section(dlm_path, body: str) -> None:  # type: ignore[no-untyped-def]
     existing = dlm_path.read_text(encoding="utf-8")
+    # Section fences are `::type::`; a new fence or EOF closes the
+    # previous section — no `::end::` marker exists in the grammar.
     dlm_path.write_text(
-        existing.rstrip() + "\n\n::preference::\n" + body + "\n::end::\n",
+        existing.rstrip() + "\n\n::preference::\n" + body,
         encoding="utf-8",
     )

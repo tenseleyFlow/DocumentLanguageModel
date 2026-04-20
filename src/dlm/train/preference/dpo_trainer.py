@@ -28,12 +28,12 @@ if TYPE_CHECKING:
     from transformers import PreTrainedTokenizerBase
 
     from dlm.base_models import BaseModelSpec
-    from dlm.doc.schema import DpoConfig
+    from dlm.doc.schema import PreferenceConfig
     from dlm.hardware.plan import TrainingPlan
 
 
 def build_dpo_config_kwargs(
-    dpo_cfg: DpoConfig,
+    pref_cfg: PreferenceConfig,
     plan: TrainingPlan,
     *,
     output_dir: Path,
@@ -43,20 +43,22 @@ def build_dpo_config_kwargs(
 ) -> dict[str, Any]:
     """Pure mapping from our config to the TRL `DPOConfig(**kwargs)`
     signature. Intentionally narrow — we only surface the knobs our
-    `DpoConfig` exposes plus plan-derived batch sizing. Callers that
-    need more (e.g. custom logging cadence) can post-process the dict.
+    `PreferenceConfig` exposes plus plan-derived batch sizing. Callers
+    that need more (e.g. custom logging cadence) can post-process the
+    dict.
 
     `max_length` caps the combined prompt+completion length; TRL ≥1.0
     dropped the separate `max_prompt_length` kwarg and uses a single
     cap. For our typical base registry (2k–8k tokens) the document's
     `training.sequence_len` flows through directly.
     """
+    hp = pref_cfg.hyperparams
     kwargs: dict[str, Any] = {
         "output_dir": str(output_dir),
-        "learning_rate": dpo_cfg.learning_rate,
-        "num_train_epochs": dpo_cfg.num_epochs,
-        "beta": dpo_cfg.beta,
-        "loss_type": dpo_cfg.loss_type,
+        "learning_rate": hp.learning_rate,
+        "num_train_epochs": hp.num_epochs,
+        "beta": hp.beta,
+        "loss_type": pref_cfg.loss_type,
         "per_device_train_batch_size": plan.micro_batch_size,
         "gradient_accumulation_steps": plan.grad_accum,
         "max_length": max_length,
@@ -151,7 +153,7 @@ def build_dpo_trainer(  # pragma: no cover
     ref_model: Any,
     tokenizer: PreTrainedTokenizerBase,
     train_dataset: Dataset,
-    dpo_cfg: DpoConfig,
+    pref_cfg: PreferenceConfig,
     plan: TrainingPlan,
     output_dir: Path,
     max_length: int,
@@ -164,7 +166,7 @@ def build_dpo_trainer(  # pragma: no cover
     from trl import DPOConfig, DPOTrainer  # type: ignore[attr-defined]
 
     kwargs = build_dpo_config_kwargs(
-        dpo_cfg,
+        pref_cfg,
         plan,
         output_dir=output_dir,
         max_length=max_length,

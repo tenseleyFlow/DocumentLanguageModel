@@ -18,32 +18,55 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # Crockford base32 alphabet used by ULID: 0-9, A-Z minus I L O U.
 _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 1
+CURRENT_SCHEMA_VERSION: Final[int] = 2
 """Schema version this parser implements.
 
-Sprint 12b extends this via the migration framework; new fields bump the
-version and register a migrator in the same commit (enforced by a test).
+New fields bump the version and register a migrator in the same
+commit — enforced by `test_all_versions_have_migrator_up_to_latest`.
+v2 renamed `training.dpo` → `training.preference` to accommodate both
+DPO and ORPO under one `method`-switched config.
 """
 
 
-class DpoConfig(BaseModel):
-    """DPO phase knobs. Additive to `TrainingConfig`; default disabled.
-    `enabled` flips to `True` automatically when the document contains
-    `::preference::` sections unless the user has explicitly set it to
-    `False` — the phase orchestrator reads that signal."""
+class PreferenceHyperparams(BaseModel):
+    """Hyperparameters shared across preference methods.
+
+    Some fields are method-specific (`beta` for DPO, `alpha` for
+    ORPO); the trainer reads whichever applies. Keeping both on one
+    flat block simplifies migration and lets users switch methods
+    without reshaping their document.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    beta: float = Field(0.1, ge=0.0, le=1.0)
+    alpha: float = Field(0.1, ge=0.0, le=1.0)
+    learning_rate: float = Field(5e-6, gt=0.0)
+    num_epochs: int = Field(1, ge=1)
+
+
+class PreferenceConfig(BaseModel):
+    """Preference-phase knobs (DPO or ORPO). Additive to `TrainingConfig`;
+    default disabled. `enabled` flips to `True` automatically when the
+    document contains `::preference::` sections unless the user has
+    explicitly set it to `False` — the phase orchestrator reads that
+    signal."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     enabled: bool = False
-    beta: float = Field(0.1, ge=0.0, le=1.0)
+    method: Literal["dpo", "orpo"] = "dpo"
+    hyperparams: PreferenceHyperparams = Field(
+        default_factory=lambda: PreferenceHyperparams()
+    )
+    # DPO-only fields — ignored for ORPO but kept on the config so a
+    # user switching methods doesn't have to delete them.
     loss_type: Literal["sigmoid", "hinge", "ipo"] = "sigmoid"
-    learning_rate: float = Field(5e-6, gt=0.0)
-    num_epochs: int = Field(1, ge=1)
-    reference: Literal["base", "pre_dpo_adapter"] = "pre_dpo_adapter"
+    reference: Literal["base", "pre_adapter"] = "pre_adapter"
 
 
-def _default_dpo() -> DpoConfig:
-    return DpoConfig()
+def _default_preference() -> PreferenceConfig:
+    return PreferenceConfig()
 
 
 class TrainingConfig(BaseModel):
@@ -65,7 +88,7 @@ class TrainingConfig(BaseModel):
     lr_scheduler: Literal["cosine", "linear", "constant"] = "cosine"
     warmup_ratio: float = Field(0.1, ge=0.0, le=0.5)
     seed: int = 42
-    dpo: DpoConfig = Field(default_factory=_default_dpo)
+    preference: PreferenceConfig = Field(default_factory=_default_preference)
 
     @field_validator("micro_batch_size", "grad_accum")
     @classmethod

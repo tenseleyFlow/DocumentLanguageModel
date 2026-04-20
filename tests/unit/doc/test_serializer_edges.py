@@ -12,7 +12,12 @@ import pytest
 
 from dlm.doc.parser import ParsedDlm
 from dlm.doc.parser import parse_text
-from dlm.doc.schema import DlmFrontmatter, DpoConfig, TrainingConfig
+from dlm.doc.schema import (
+    DlmFrontmatter,
+    PreferenceConfig,
+    PreferenceHyperparams,
+    TrainingConfig,
+)
 from dlm.doc.sections import Section, SectionType
 from dlm.doc.serializer import (
     _format_list,
@@ -193,53 +198,63 @@ class TestFrontmatterExplicitTargetModulesList:
         assert "system_prompt: |\n  first line\n  second line" in out
 
 
-class TestDpoNestedBlock:
-    """Sprint 17: `training.dpo` is itself a pydantic model; default-equal
-    instances are suppressed, non-default values render as a nested
-    sub-block with 4-space indent."""
+class TestPreferenceNestedBlock:
+    """`training.preference` is a pydantic model containing its own
+    nested `hyperparams` model. Default-equal instances are suppressed;
+    non-defaults render as nested sub-blocks with 4-space indents."""
 
-    def test_all_default_dpo_suppressed(self) -> None:
+    def test_all_default_preference_suppressed(self) -> None:
         fm = DlmFrontmatter(
             dlm_id=VALID_ULID,
             base_model="smollm2-135m",
-            training=TrainingConfig(),  # dpo = DpoConfig() — all defaults
+            training=TrainingConfig(),
         )
         parsed = ParsedDlm(frontmatter=fm, sections=())
         out = serialize(parsed)
+        assert "preference:" not in out
         assert "dpo:" not in out
 
-    def test_non_default_dpo_emits_sub_block(self) -> None:
+    def test_non_default_preference_emits_sub_block(self) -> None:
         fm = DlmFrontmatter(
             dlm_id=VALID_ULID,
             base_model="smollm2-135m",
-            training=TrainingConfig(dpo=DpoConfig(enabled=True, beta=0.2)),
+            training=TrainingConfig(
+                preference=PreferenceConfig(
+                    enabled=True,
+                    hyperparams=PreferenceHyperparams(beta=0.2),
+                ),
+            ),
         )
         parsed = ParsedDlm(frontmatter=fm, sections=())
         out = serialize(parsed)
         assert "training:\n" in out
-        assert "  dpo:\n" in out
+        assert "  preference:\n" in out
         assert "    enabled: true" in out
-        assert "    beta:" in out
-        # still-default fields inside dpo are suppressed
-        assert "loss_type" not in out
-        assert "reference" not in out
+        assert "    hyperparams:\n" in out
+        assert "      beta:" in out
+        # still-default fields (method, loss_type, reference) are suppressed.
+        # Match on `key:` form to avoid false hits inside `preference`.
+        assert "method:" not in out
+        assert "loss_type:" not in out
+        assert "    reference:" not in out
 
-    def test_round_trip_preserves_dpo_overrides(self) -> None:
+    def test_round_trip_preserves_preference_overrides(self) -> None:
         source = (
             "---\n"
             f"dlm_id: {VALID_ULID}\n"
             "base_model: smollm2-135m\n"
             "training:\n"
-            "  dpo:\n"
+            "  preference:\n"
             "    enabled: true\n"
-            "    beta: 0.25\n"
             "    loss_type: ipo\n"
+            "    hyperparams:\n"
+            "      beta: 0.25\n"
             "---\n"
         )
         parsed = parse_text(source)
-        assert parsed.frontmatter.training.dpo.enabled is True
-        assert parsed.frontmatter.training.dpo.beta == 0.25
-        assert parsed.frontmatter.training.dpo.loss_type == "ipo"
-        # Idempotency contract (Sprint 03 DoD): pipeline twice == pipeline once.
+        assert parsed.frontmatter.training.preference.enabled is True
+        assert parsed.frontmatter.training.preference.hyperparams.beta == 0.25
+        assert parsed.frontmatter.training.preference.loss_type == "ipo"
+        # Idempotency contract: pipeline twice == pipeline once.
         rendered = serialize(parsed)
         assert serialize(parse_text(rendered)) == rendered

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dlm.doc.schema import DpoConfig
+from dlm.doc.schema import PreferenceConfig
 from dlm.doc.sections import Section, SectionType
 from dlm.train.preference.errors import (
     NoPreferenceContentError,
@@ -55,7 +55,7 @@ def _pref() -> Section:
 
 @dataclass
 class _FakeTraining:
-    dpo: DpoConfig
+    preference: PreferenceConfig
 
 
 @dataclass
@@ -82,19 +82,20 @@ def _parsed(
     """Build a fake ParsedDlm.
 
     `dpo_enabled=None` leaves the `enabled` field unset so
-    `resolve_dpo_enabled` sees this as "user didn't specify" and
-    auto-enables when preference content is present.
+    `resolve_preference_enabled` sees this as "user didn't specify"
+    and auto-enables when preference content is present.
 
     `dpo_enabled=True/False` sets it explicitly — simulating a user
-    who wrote `training.dpo.enabled: true/false` in their frontmatter.
+    who wrote `training.preference.enabled: true/false` in their
+    frontmatter.
     """
     if dpo_enabled is None:
-        dpo = DpoConfig()
+        pref = PreferenceConfig()
     else:
-        dpo = DpoConfig(enabled=dpo_enabled)
+        pref = PreferenceConfig(enabled=dpo_enabled)
     return _FakeParsed(
         sections=tuple(sections),
-        frontmatter=_FakeFrontmatter(training=_FakeTraining(dpo=dpo)),
+        frontmatter=_FakeFrontmatter(training=_FakeTraining(preference=pref)),
     )
 
 

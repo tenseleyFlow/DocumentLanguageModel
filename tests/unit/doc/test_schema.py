@@ -5,7 +5,13 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from dlm.doc.schema import DlmFrontmatter, DpoConfig, ExportConfig, TrainingConfig
+from dlm.doc.schema import (
+    DlmFrontmatter,
+    ExportConfig,
+    PreferenceConfig,
+    PreferenceHyperparams,
+    TrainingConfig,
+)
 
 VALID_ULID = "01HZ4X7TGZM3J1A2B3C4D5E6F7"
 
@@ -101,62 +107,77 @@ class TestTrainingConfigConstraints:
             TrainingConfig(target_modules="all-linear")  # type: ignore[arg-type]
 
 
-class TestDpoConfig:
+class TestPreferenceConfig:
     def test_default_instance_is_disabled(self) -> None:
-        d = DpoConfig()
-        assert d.enabled is False
-        assert d.beta == pytest.approx(0.1)
-        assert d.loss_type == "sigmoid"
-        assert d.learning_rate == pytest.approx(5e-6)
-        assert d.num_epochs == 1
-        assert d.reference == "pre_dpo_adapter"
+        p = PreferenceConfig()
+        assert p.enabled is False
+        assert p.method == "dpo"
+        assert p.hyperparams.beta == pytest.approx(0.1)
+        assert p.hyperparams.alpha == pytest.approx(0.1)
+        assert p.hyperparams.learning_rate == pytest.approx(5e-6)
+        assert p.hyperparams.num_epochs == 1
+        assert p.loss_type == "sigmoid"
+        assert p.reference == "pre_adapter"
 
     def test_frozen_model_rejects_mutation(self) -> None:
-        d = DpoConfig()
+        p = PreferenceConfig()
         with pytest.raises(ValidationError):
-            d.enabled = True  # type: ignore[misc]
+            p.enabled = True  # type: ignore[misc]
 
     @pytest.mark.parametrize("bad", [-0.01, 1.01])
-    def test_beta_out_of_range(self, bad: float) -> None:
+    def test_hyperparams_beta_out_of_range(self, bad: float) -> None:
         with pytest.raises(ValidationError):
-            DpoConfig(beta=bad)
+            PreferenceHyperparams(beta=bad)
 
-    def test_learning_rate_must_be_positive(self) -> None:
+    @pytest.mark.parametrize("bad", [-0.01, 1.01])
+    def test_hyperparams_alpha_out_of_range(self, bad: float) -> None:
         with pytest.raises(ValidationError):
-            DpoConfig(learning_rate=0.0)
+            PreferenceHyperparams(alpha=bad)
+
+    def test_hyperparams_learning_rate_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            PreferenceHyperparams(learning_rate=0.0)
 
     @pytest.mark.parametrize("bad", [0, -1])
-    def test_num_epochs_must_be_ge_1(self, bad: int) -> None:
+    def test_hyperparams_num_epochs_must_be_ge_1(self, bad: int) -> None:
         with pytest.raises(ValidationError):
-            DpoConfig(num_epochs=bad)
+            PreferenceHyperparams(num_epochs=bad)
+
+    def test_method_literal_rejects_unknown(self) -> None:
+        with pytest.raises(ValidationError):
+            PreferenceConfig(method="kto")  # type: ignore[arg-type]
 
     def test_loss_type_literal_rejects_unknown(self) -> None:
         with pytest.raises(ValidationError):
-            DpoConfig(loss_type="kto")  # type: ignore[arg-type]
+            PreferenceConfig(loss_type="kto")  # type: ignore[arg-type]
 
     def test_reference_literal_rejects_unknown(self) -> None:
         with pytest.raises(ValidationError):
-            DpoConfig(reference="sft_adapter")  # type: ignore[arg-type]
+            PreferenceConfig(reference="sft_adapter")  # type: ignore[arg-type]
 
     def test_extra_fields_forbidden(self) -> None:
         with pytest.raises(ValidationError):
-            DpoConfig.model_validate({"enabled": True, "rubbish": 1})
+            PreferenceConfig.model_validate({"enabled": True, "rubbish": 1})
 
 
-class TestTrainingConfigDpoSubfield:
-    def test_default_training_has_disabled_dpo(self) -> None:
+class TestTrainingConfigPreferenceSubfield:
+    def test_default_training_has_disabled_preference(self) -> None:
         t = TrainingConfig()
-        assert isinstance(t.dpo, DpoConfig)
-        assert t.dpo.enabled is False
+        assert isinstance(t.preference, PreferenceConfig)
+        assert t.preference.enabled is False
 
-    def test_accepts_nested_dict_for_dpo(self) -> None:
-        t = TrainingConfig.model_validate({"dpo": {"enabled": True, "beta": 0.2}})
-        assert t.dpo.enabled is True
-        assert t.dpo.beta == pytest.approx(0.2)
+    def test_accepts_nested_dict_for_preference(self) -> None:
+        t = TrainingConfig.model_validate(
+            {"preference": {"enabled": True, "hyperparams": {"beta": 0.2}}}
+        )
+        assert t.preference.enabled is True
+        assert t.preference.hyperparams.beta == pytest.approx(0.2)
 
-    def test_rejects_unknown_field_inside_dpo(self) -> None:
+    def test_rejects_unknown_field_inside_preference(self) -> None:
         with pytest.raises(ValidationError):
-            TrainingConfig.model_validate({"dpo": {"enabled": True, "rubbish": 1}})
+            TrainingConfig.model_validate(
+                {"preference": {"enabled": True, "rubbish": 1}}
+            )
 
 
 class TestExportConfig:
@@ -179,7 +200,7 @@ class TestExportConfig:
 class TestDlmFrontmatter:
     def test_minimal_valid(self) -> None:
         fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="smollm2-135m")
-        assert fm.dlm_version == 1
+        assert fm.dlm_version == 2
         assert fm.training == TrainingConfig()
         assert fm.export == ExportConfig()
         assert fm.system_prompt is None

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dlm.doc.schema import DpoConfig
+from dlm.doc.schema import PreferenceConfig, PreferenceHyperparams
 from dlm.hardware.plan import TrainingPlan
 from dlm.train.preference.dpo_trainer import build_dpo_config_kwargs
 
@@ -39,12 +39,12 @@ def _plan(
 
 class TestCoreFields:
     def test_routes_config_knobs_to_trl(self, tmp_path: Path) -> None:
-        cfg = DpoConfig(
+        cfg = PreferenceConfig(
             enabled=True,
-            beta=0.2,
             loss_type="ipo",
-            learning_rate=3e-6,
-            num_epochs=2,
+            hyperparams=PreferenceHyperparams(
+                beta=0.2, learning_rate=3e-6, num_epochs=2
+            ),
         )
         kwargs = build_dpo_config_kwargs(
             cfg, _plan(), output_dir=tmp_path, max_length=1024, seed=7
@@ -59,7 +59,7 @@ class TestCoreFields:
 
     def test_batch_sizes_passed_through_from_plan(self, tmp_path: Path) -> None:
         kwargs = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(micro_batch_size=8, grad_accum=3),
             output_dir=tmp_path,
             max_length=2048,
@@ -70,7 +70,7 @@ class TestCoreFields:
 
     def test_max_length_passed_through(self, tmp_path: Path) -> None:
         kwargs = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(),
             output_dir=tmp_path,
             max_length=1024,
@@ -84,7 +84,7 @@ class TestCoreFields:
 class TestPrecisionFlags:
     def test_bf16_sets_bf16_true_fp16_false(self, tmp_path: Path) -> None:
         kwargs = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(precision="bf16"),
             output_dir=tmp_path,
             max_length=1024,
@@ -95,7 +95,7 @@ class TestPrecisionFlags:
 
     def test_fp16_sets_fp16_true_bf16_false(self, tmp_path: Path) -> None:
         kwargs = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(precision="fp16"),
             output_dir=tmp_path,
             max_length=1024,
@@ -109,7 +109,7 @@ class TestTelemetryAndCheckpointing:
     def test_report_to_is_empty_list(self, tmp_path: Path) -> None:
         """Keep wandb/tensorboard off."""
         kwargs = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(),
             output_dir=tmp_path,
             max_length=1024,
@@ -121,7 +121,7 @@ class TestTelemetryAndCheckpointing:
         """Orchestrator handles two-phase adapter commit; TRL should
         not write intermediate checkpoints."""
         kwargs = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(),
             output_dir=tmp_path,
             max_length=1024,
@@ -131,14 +131,14 @@ class TestTelemetryAndCheckpointing:
 
     def test_gradient_checkpointing_follows_plan(self, tmp_path: Path) -> None:
         kwargs_off = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(gradient_checkpointing=False),
             output_dir=tmp_path,
             max_length=1024,
             seed=0,
         )
         kwargs_on = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(gradient_checkpointing=True),
             output_dir=tmp_path,
             max_length=1024,
@@ -151,7 +151,7 @@ class TestTelemetryAndCheckpointing:
 class TestMaxStepsOptional:
     def test_max_steps_absent_when_none(self, tmp_path: Path) -> None:
         kwargs = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(),
             output_dir=tmp_path,
             max_length=1024,
@@ -162,7 +162,7 @@ class TestMaxStepsOptional:
 
     def test_max_steps_included_when_set(self, tmp_path: Path) -> None:
         kwargs = build_dpo_config_kwargs(
-            DpoConfig(enabled=True),
+            PreferenceConfig(enabled=True),
             _plan(),
             output_dir=tmp_path,
             max_length=1024,

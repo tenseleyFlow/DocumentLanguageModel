@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 from dlm.base_models import BASE_MODELS
 from dlm.doc.parser import ParsedDlm
-from dlm.doc.schema import DlmFrontmatter, DpoConfig, TrainingConfig
+from dlm.doc.schema import DlmFrontmatter, PreferenceConfig, TrainingConfig
 from dlm.doc.sections import Section, SectionType
 from dlm.store.manifest import Manifest, save_manifest
 from dlm.store.paths import for_dlm
@@ -30,7 +30,9 @@ def _parsed_with_preferences() -> ParsedDlm:
         frontmatter=DlmFrontmatter(
             dlm_id="01KABCD" + "0" * 19,
             base_model="smollm2-135m",
-            training=TrainingConfig(seed=42, dpo=DpoConfig(enabled=True)),
+            training=TrainingConfig(
+                seed=42, preference=PreferenceConfig(enabled=True)
+            ),
         ),
         sections=(
             Section(type=SectionType.PREFERENCE, content=pref_body),

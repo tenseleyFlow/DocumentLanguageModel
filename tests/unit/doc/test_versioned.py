@@ -73,21 +73,22 @@ class TestMalformedVersionField:
 
 class TestMigratedPath:
     def test_migration_applied_before_pydantic(self, scratch_registry: None) -> None:
-        """A registered v1 migrator rewrites the dict before validation."""
-
-        @register(from_version=1)
-        def _v1_to_v2(raw: dict[str, object]) -> dict[str, object]:
-            # Simulated migration: drop an obsolete field the v1 doc had.
-            return {k: v for k, v in raw.items() if k != "legacy_field"}
+        """A registered migrator rewrites the dict before validation."""
 
         original = versioned_module.CURRENT_SCHEMA_VERSION
+
+        @register(from_version=original)
+        def _pre_current(raw: dict[str, object]) -> dict[str, object]:
+            # Simulated migration: drop an obsolete field the sub-current doc had.
+            return {k: v for k, v in raw.items() if k != "legacy_field"}
+
         versioned_module.CURRENT_SCHEMA_VERSION = original + 1
         try:
             fm = validate_versioned(
                 {
                     "dlm_id": _VALID_ULID,
                     "base_model": "smollm2-135m",
-                    "dlm_version": 1,
+                    "dlm_version": original,
                     "legacy_field": "would-fail-extra-forbid",
                 }
             )
