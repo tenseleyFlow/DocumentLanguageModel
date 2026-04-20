@@ -43,14 +43,22 @@ def summarize_eval_state(log_history: list[dict[str, Any]]) -> dict[str, float |
     """Extract `final_val_loss` + `final_val_perplexity` from trainer history.
 
     `log_history` is `trainer.state.log_history` — a list of dicts, one
-    per logged metric snapshot. The last entry containing `eval_loss`
-    is the authoritative final eval result.
+    per logged metric snapshot. The last entry containing a finite
+    `eval_loss` is the authoritative final eval result. Non-finite
+    (NaN/inf) values are dropped silently — `dlm.train.integrity.
+    assert_eval_finite` raises separately if the trainer produced a
+    NaN eval so the run is marked FAILED at the orchestration layer.
     """
+    import math
+
     final_loss: float | None = None
     for entry in reversed(log_history):
         value = entry.get("eval_loss")
         if isinstance(value, (int, float)):
-            final_loss = float(value)
+            f = float(value)
+            if not math.isfinite(f):
+                continue
+            final_loss = f
             break
     final_ppl = perplexity(final_loss) if final_loss is not None else None
     return {"final_val_loss": final_loss, "final_val_perplexity": final_ppl}
