@@ -90,3 +90,67 @@ Continued-pretraining converges in one or two epochs on documents in
 the 50–200 KB range. Longer documents blow past the per-step token
 budget and don't converge faster. If the KB grows, split into multiple
 `.dlm` files (one per domain) and train separate adapters.
+
+## The CPT refinements (`training.cpt`)
+
+Prose-dominant documents benefit from schedule and vocabulary knobs
+tuned for continued pretraining (DAPT) rather than instruction
+tuning. Three are exposed under `training.cpt`:
+
+```yaml
+training:
+  cpt:
+    schedule: auto           # auto | dapt | sft
+    embed_warmup_steps: 0
+```
+
+**`schedule`** — `auto` is the default: the trainer picks the DAPT
+curve (20% warmup, cosine decay to 10% of peak LR instead of 0) once
+CPT prose rows exceed 70% of training rows. Pin `schedule: dapt` if
+you want it regardless of row mix (e.g., a mostly-prose doc with a
+handful of Q&A triples), or `schedule: sft` to opt out.
+
+**`embed_warmup_steps`** — when positive, unfreezes `embed_tokens` +
+`lm_head` for the first N optimizer steps so the embeddings absorb
+new-domain vocabulary, then refreezes them. Activating this adds the
+embedding modules to `modules_to_save`, so **the adapter file grows by
+`vocab_size × hidden_dim`**. Reach for it only when the vocab-gap
+report (below) flags the tokenizer as a poor fit.
+
+**Vocab-gap report** — at the start of every train run `dlm` logs a
+one-screen summary:
+
+```
+vocabulary gap report
+  tokens per word : 1.42 (8214 tokens / 5783 words)
+  <unk> hits      : 0
+  top tokens:
+    the           412
+    of            267
+    ...
+```
+
+A `tokens per word` close to 1.0 means the base tokenizer is a good
+fit for your corpus; 2.0+ means it's splitting aggressively and a
+different base model (code-tuned for code content, multilingual for
+non-English) is probably a better starting point. `<unk> hits > 0` is
+a warning flag: the tokenizer has rare-character holes for your
+domain.
+
+The report is descriptive — we don't auto-swap the tokenizer. If the
+gap is wide, the robust move is to pick a different `base_model`, not
+to extend the vocabulary under the existing one.
+
+## Shipping checklist
+
+```sh
+# Cold start: `schedule: auto` will pick DAPT for a prose-heavy doc.
+$ uv run dlm train kb.dlm
+
+# If the vocab-gap report flagged issues, edit the frontmatter and
+# consider switching base models, or (rarely) enable embed warm-up:
+# training.cpt.embed_warmup_steps: 200
+
+$ uv run dlm prompt kb.dlm "how do I deal with ingest lag?"
+$ uv run dlm export kb.dlm
+```
