@@ -40,9 +40,7 @@ class TestPyTorchBackendLoadDelegation:
             backend = PyTorchBackend(caps)
             backend.load(base, store, adapter_name="knowledge")
 
-            m_load.assert_called_once_with(
-                store, base, caps, adapter_name="knowledge"
-            )
+            m_load.assert_called_once_with(store, base, caps, adapter_name="knowledge")
 
     def test_generate_after_load_delegates(self) -> None:
         with (

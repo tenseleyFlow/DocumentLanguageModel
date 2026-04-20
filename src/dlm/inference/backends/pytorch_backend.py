@@ -36,9 +36,7 @@ class PyTorchBackend(InferenceBackend):
     ) -> None:
         from dlm.inference.loader import load_for_inference
 
-        self._loaded = load_for_inference(
-            store, base, self._caps, adapter_name=adapter_name
-        )
+        self._loaded = load_for_inference(store, base, self._caps, adapter_name=adapter_name)
 
     def generate(self, prompt: str, **gen_kwargs: Any) -> str:
         if self._loaded is None:
