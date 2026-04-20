@@ -149,6 +149,7 @@ def run_export(
     override_top_p: float | None = None,
     draft_override: str | None = None,
     draft_disabled: bool = False,
+    adapter_name: str | None = None,
 ) -> ExportResult:
     """Execute one GGUF export end-to-end.
 
@@ -175,14 +176,21 @@ def run_export(
     """
     run = subprocess_runner if subprocess_runner is not None else run_checked
 
-    adapter_path = store.resolve_current_adapter()
+    if adapter_name is None:
+        adapter_path = store.resolve_current_adapter()
+        pointer = store.adapter_current_pointer
+    else:
+        adapter_path = store.resolve_current_adapter_for(adapter_name)
+        pointer = store.adapter_current_pointer_for(adapter_name)
     if adapter_path is None or not adapter_path.exists():
         from dlm.export.errors import ExportError
 
-        raise ExportError(
-            f"no current adapter under {store.adapter_current_pointer}; "
-            "run `dlm train` before exporting."
+        hint = (
+            f"no current adapter under {pointer}; "
+            f"run `dlm train` before exporting"
+            f"{f' for adapter {adapter_name!r}' if adapter_name else ''}."
         )
+        raise ExportError(hint)
 
     # 1. Preflight.
     preflight.check_adapter_config(adapter_path, spec)
@@ -312,6 +320,7 @@ def run_export(
         ollama_name=em.ollama_name,
         ollama_version_str=ollama_ver_str,
         smoke_first_line=smoke_first_line,
+        adapter_name=adapter_name,
     )
 
     return ExportResult(
@@ -592,6 +601,8 @@ def _append_export_summary(
     ollama_name: str | None,
     ollama_version_str: str | None,
     smoke_first_line: str | None,
+    adapter_name: str | None = None,
+    adapter_mix: list[tuple[str, float]] | None = None,
 ) -> None:
     """Update `manifest.exports` with a new `ExportSummary` row."""
     from dlm.store.manifest import ExportSummary, load_manifest, save_manifest
@@ -609,6 +620,8 @@ def _append_export_summary(
         base_gguf_sha256=base_sha,
         adapter_gguf_sha256=adapter_sha,
         smoke_output_first_line=smoke_first_line,
+        adapter_name=adapter_name,
+        adapter_mix=adapter_mix,
     )
 
     # The manifest read-modify-write must be serialized: two concurrent
