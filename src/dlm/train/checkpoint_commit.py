@@ -40,16 +40,21 @@ if TYPE_CHECKING:
 _VERSION_PREFIX = "v"
 
 
-def allocate_next_version(store: StorePath) -> Path:
-    """Return the next empty `adapter/versions/vNNNN/` path.
+def allocate_next_version(
+    store: StorePath, *, adapter_name: str | None = None
+) -> Path:
+    """Return the next empty `adapter/[<name>/]versions/vNNNN/` path.
 
-    Creates the directory (and any missing parents). `StorePath.adapter_version`
-    does *not* create; we do it here so callers can start writing
-    immediately.
+    Creates the directory (and any missing parents). When `adapter_name`
+    is provided, allocates under the named layout; otherwise uses the
+    flat single-adapter layout.
     """
-    existing = _existing_versions(store)
+    existing = _existing_versions(store, adapter_name=adapter_name)
     next_n = (max(existing) if existing else 0) + 1
-    version_dir = store.adapter_version(next_n)
+    if adapter_name is None:
+        version_dir = store.adapter_version(next_n)
+    else:
+        version_dir = store.adapter_version_for(adapter_name, next_n)
     version_dir.mkdir(parents=True, exist_ok=False)
     return version_dir
 
@@ -57,6 +62,8 @@ def allocate_next_version(store: StorePath) -> Path:
 def commit_version(
     store: StorePath,
     writer: Callable[[Path], None],
+    *,
+    adapter_name: str | None = None,
 ) -> Path:
     """Allocate → populate → fsync → flip pointer.
 
@@ -66,7 +73,7 @@ def commit_version(
     - the current pointer is NOT updated
     - the exception propagates
     """
-    pending = allocate_next_version(store)
+    pending = allocate_next_version(store, adapter_name=adapter_name)
     try:
         writer(pending)
     except BaseException:
@@ -75,7 +82,10 @@ def commit_version(
         raise
 
     fsync_dir(pending)
-    store.set_current_adapter(pending)
+    if adapter_name is None:
+        store.set_current_adapter(pending)
+    else:
+        store.set_current_adapter_for(adapter_name, pending)
     return pending
 
 
@@ -97,7 +107,9 @@ def fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def list_pending_versions(store: StorePath) -> list[Path]:
+def list_pending_versions(
+    store: StorePath, *, adapter_name: str | None = None
+) -> list[Path]:
     """Return version dirs that exist on disk but aren't the current pointer.
 
     Used by the trainer's startup routine to detect crash-before-flip
@@ -106,14 +118,25 @@ def list_pending_versions(store: StorePath) -> list[Path]:
     manually flipping the pointer. We surface them rather than
     auto-deleting.
     """
-    existing = _existing_versions(store)
-    current = store.resolve_current_adapter()
+    existing = _existing_versions(store, adapter_name=adapter_name)
+    if adapter_name is None:
+        current = store.resolve_current_adapter()
+        version_for = store.adapter_version
+    else:
+        current = store.resolve_current_adapter_for(adapter_name)
+        version_for = lambda n: store.adapter_version_for(adapter_name, n)  # noqa: E731
     current_n = _parse_version_number(current) if current is not None else None
-    return [store.adapter_version(n) for n in sorted(existing) if n != current_n]
+    return [version_for(n) for n in sorted(existing) if n != current_n]
 
 
-def _existing_versions(store: StorePath) -> list[int]:
-    base = store.adapter_versions
+def _existing_versions(
+    store: StorePath, *, adapter_name: str | None = None
+) -> list[int]:
+    base = (
+        store.adapter_versions
+        if adapter_name is None
+        else store.adapter_versions_for(adapter_name)
+    )
     if not base.is_dir():
         return []
     out: list[int] = []
