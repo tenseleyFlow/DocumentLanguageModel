@@ -104,6 +104,23 @@ def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
             lines.append(f"{pad}{field_name}:")
             lines.extend(nested)
             continue
+        if isinstance(value, dict) and value and all(
+            isinstance(v, BaseModel) for v in value.values()
+        ):
+            # `dict[str, BaseModel]` (e.g. training.adapters) — emit
+            # each entry as a nested mapping. The key is the dict
+            # key; the value is the BaseModel's non-default fields.
+            lines.append(f"{pad}{field_name}:")
+            for k, v in value.items():
+                lines.append(f"{pad}  {k}:")
+                nested = _emit_nested_mapping(v, indent=indent + 4)
+                if nested:
+                    lines.extend(nested)
+                else:
+                    # All-default AdapterConfig: emit explicit `{}` so
+                    # YAML has a valid mapping value rather than bare key.
+                    lines[-1] = f"{pad}  {k}: {{}}"
+            continue
         lines.append(f"{pad}{field_name}: {_scalar(value)}")
     return lines
 

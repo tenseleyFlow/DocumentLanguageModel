@@ -15,7 +15,6 @@ skips gracefully when the submodule isn't built.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pytest
 
@@ -122,8 +121,8 @@ def test_weighted_merge_saves_tokenizer_files(
     files so run_export's preflight (check_tokenizer_vocab) succeeds."""
     from transformers import AutoModelForCausalLM
 
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.base_models import download_spec
+    from dlm.base_models import resolve as resolve_base_model
     from dlm.export.weighted_merge import (
         MixEntry,
         build_weighted_merged,
@@ -181,8 +180,8 @@ def test_weighted_merge_passes_preflight_tokenizer_vocab(
     that would need llama.cpp vendored)."""
     from transformers import AutoModelForCausalLM
 
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.base_models import download_spec
+    from dlm.base_models import resolve as resolve_base_model
     from dlm.export.preflight import check_tokenizer_vocab
     from dlm.export.weighted_merge import (
         MixEntry,
