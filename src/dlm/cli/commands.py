@@ -554,6 +554,16 @@ def export_cmd(
             help="Emit GGUFs + manifest only; do not touch the Ollama binary.",
         ),
     ] = False,
+    adapter: Annotated[
+        str | None,
+        typer.Option(
+            "--adapter",
+            help=(
+                "Named adapter to export. Required on multi-adapter "
+                "documents; rejected on single-adapter documents."
+            ),
+        ),
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option("--verbose", help="Log each subprocess command as it launches."),
@@ -593,6 +603,21 @@ def export_cmd(
         raise typer.Exit(code=2)
 
     parsed = parse_file(path)
+    adapters_declared = parsed.frontmatter.training.adapters
+    if adapter is not None:
+        if adapters_declared is None:
+            console.print(
+                "[red]export:[/red] --adapter is only valid on multi-adapter "
+                "documents (this doc does not declare `training.adapters`)."
+            )
+            raise typer.Exit(code=2)
+        if adapter not in adapters_declared:
+            declared = sorted(adapters_declared)
+            console.print(
+                f"[red]export:[/red] --adapter {adapter!r} is not declared "
+                f"(declared: {declared})."
+            )
+            raise typer.Exit(code=2)
     store = for_dlm(parsed.frontmatter.dlm_id)
     already_accepted = _previously_accepted(store.manifest)
     try:
@@ -647,6 +672,7 @@ def export_cmd(
             override_top_p=parsed.frontmatter.export.default_top_p,
             draft_override=draft,
             draft_disabled=no_draft,
+            adapter_name=adapter,
         )
     except UnsafeMergeError as exc:
         console.print(f"[red]merge:[/red] {exc}")
