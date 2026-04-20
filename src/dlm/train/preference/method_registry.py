@@ -65,11 +65,11 @@ def _lazy_orpo_runner() -> MethodRunner:  # pragma: no cover
     return orpo_run
 
 
-def _dpo_proxy(*args: object, **kwargs: object) -> "TrainingRunResult":  # pragma: no cover
+def _dpo_proxy(*args: object, **kwargs: object) -> TrainingRunResult:  # pragma: no cover
     return _lazy_dpo_runner()(*args, **kwargs)
 
 
-def _orpo_proxy(*args: object, **kwargs: object) -> "TrainingRunResult":  # pragma: no cover
+def _orpo_proxy(*args: object, **kwargs: object) -> TrainingRunResult:  # pragma: no cover
     return _lazy_orpo_runner()(*args, **kwargs)
 
 

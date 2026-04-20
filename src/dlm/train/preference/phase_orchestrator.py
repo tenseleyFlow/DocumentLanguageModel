@@ -19,8 +19,9 @@ lives in `dpo_phase.run`, which accepts the same test-seam shape as
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Literal
 
 from dlm.doc.sections import Section, SectionType
 from dlm.train.preference.auto_enable import resolve_preference_enabled

@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from dlm.replay import ReplayStore, diff_against_manifest
 from dlm.store.manifest import load_manifest
@@ -31,6 +32,8 @@ from dlm.train.checkpoint_commit import commit_version
 from dlm.train.determinism import seed_everything
 from dlm.train.disk_preflight import preflight_disk
 from dlm.train.logger import Banner, StepLogger, log_path_for
+from dlm.train.preference.dpo_dataset import build_dpo_dataset
+from dlm.train.preference.dpo_trainer import build_dpo_trainer, load_reference_model
 from dlm.train.state_sidecar import PinnedVersions, capture_runtime_versions, save_state
 from dlm.train.trainer import (
     TrainingRunResult,
@@ -43,8 +46,6 @@ from dlm.train.trainer import (
     _validate_or_abort_lock,
     _write_training_summary,
 )
-from dlm.train.preference.dpo_dataset import build_dpo_dataset
-from dlm.train.preference.dpo_trainer import build_dpo_trainer, load_reference_model
 
 if TYPE_CHECKING:
     from pathlib import Path
