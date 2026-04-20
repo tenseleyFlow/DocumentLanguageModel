@@ -70,9 +70,7 @@ class TestEmptyOrMissing:
 class TestModeClassification:
     def test_only_cpt_rows(self) -> None:
         trainer = _trainer_with_fixed_losses(cpt_loss=0.7, sft_loss=None)
-        val = _FakeDataset(
-            [{"text": "prose a"}, {"text": "prose b"}, {"text": "prose c"}]
-        )
+        val = _FakeDataset([{"text": "prose a"}, {"text": "prose b"}, {"text": "prose c"}])
         cpt, sft = compute_val_loss_by_mode(trainer, val)
         assert cpt == 0.7
         assert sft is None

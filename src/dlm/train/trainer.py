@@ -545,8 +545,8 @@ def _build_real_trainer(  # pragma: no cover
     # Multi-adapter docs override the flat LoRA knobs with the
     # per-adapter `AdapterConfig`. Single-adapter docs and the
     # trainer_factory test path keep reading the flat fields.
-    eff_lora_r, eff_lora_alpha, eff_lora_dropout, eff_lr = (
-        _resolve_adapter_hparams(parsed, adapter_name)
+    eff_lora_r, eff_lora_alpha, eff_lora_dropout, eff_lr = _resolve_adapter_hparams(
+        parsed, adapter_name
     )
 
     peft_model = build_or_resume_adapter(
@@ -648,9 +648,7 @@ def _build_real_trainer(  # pragma: no cover
     if cpt_cfg.embed_warmup_steps > 0:
         from dlm.train.cpt.embed_warmup import EmbedWarmupCallback
 
-        callbacks.append(
-            EmbedWarmupCallback(peft_model, n_steps=cpt_cfg.embed_warmup_steps)
-        )
+        callbacks.append(EmbedWarmupCallback(peft_model, n_steps=cpt_cfg.embed_warmup_steps))
         _LOG.warning(
             "embed warm-up enabled for %d steps — adapter size will inflate "
             "by vocab_size × hidden_dim",

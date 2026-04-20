@@ -17,9 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def compute_val_loss_by_mode(
-    trainer: Any, val_ds: Any
-) -> tuple[float | None, float | None]:
+def compute_val_loss_by_mode(trainer: Any, val_ds: Any) -> tuple[float | None, float | None]:
     """Return `(val_loss_cpt, val_loss_sft)` from a post-train eval pass.
 
     Splits `val_ds` into CPT-only and SFT-only subsets using the
@@ -60,9 +58,7 @@ def compute_val_loss_by_mode(
     return (cpt_loss, sft_loss)
 
 
-def _safe_eval_loss(
-    trainer: Any, val_ds: Any, indices: list[int]
-) -> float | None:
+def _safe_eval_loss(trainer: Any, val_ds: Any, indices: list[int]) -> float | None:
     """Run `trainer.evaluate(eval_dataset=subset)`; return eval_loss or None."""
     if not indices:
         return None

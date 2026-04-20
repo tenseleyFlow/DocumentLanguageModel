@@ -25,7 +25,6 @@ from dlm.store.inspect import inspect_store
 from dlm.store.manifest import Manifest, save_manifest
 from dlm.store.paths import StorePath
 
-
 _DLM_ID = "01HZ4X7TGZM3J1A2B3C4D5E6FX"
 
 
@@ -57,9 +56,7 @@ def _seed_named_v1(store: StorePath, name: str) -> Path:
 class TestFlatThenNamed:
     """Flat state lands first, named adapters overlay on top."""
 
-    def test_named_layout_coexists_with_flat_versions_dir(
-        self, tmp_path: Path
-    ) -> None:
+    def test_named_layout_coexists_with_flat_versions_dir(self, tmp_path: Path) -> None:
         store = _seed_store(tmp_path)
         flat_v1 = _seed_flat_v1(store)
         # Switch to multi-adapter — ensure_adapter_layout doesn't touch
@@ -73,9 +70,7 @@ class TestFlatThenNamed:
         assert str(named_v1).startswith(str(store.adapter / "knowledge"))
         assert "knowledge" not in str(flat_v1)
 
-    def test_flat_pointer_untouched_when_named_pointer_set(
-        self, tmp_path: Path
-    ) -> None:
+    def test_flat_pointer_untouched_when_named_pointer_set(self, tmp_path: Path) -> None:
         store = _seed_store(tmp_path)
         flat_v1 = _seed_flat_v1(store)
         _seed_named_v1(store, "knowledge")
@@ -83,9 +78,7 @@ class TestFlatThenNamed:
         # Flat pointer still resolves to its original target.
         assert store.resolve_current_adapter() == flat_v1.resolve()
 
-    def test_named_pointer_untouched_when_flat_pointer_set(
-        self, tmp_path: Path
-    ) -> None:
+    def test_named_pointer_untouched_when_flat_pointer_set(self, tmp_path: Path) -> None:
         store = _seed_store(tmp_path)
         named_v1 = _seed_named_v1(store, "knowledge")
         _seed_flat_v1(store)
@@ -94,9 +87,7 @@ class TestFlatThenNamed:
 
 
 class TestInspectReportsBothStates:
-    def test_flat_pointer_plus_named_dir_both_reported(
-        self, tmp_path: Path
-    ) -> None:
+    def test_flat_pointer_plus_named_dir_both_reported(self, tmp_path: Path) -> None:
         store = _seed_store(tmp_path)
         _seed_flat_v1(store)
         _seed_named_v1(store, "knowledge")
@@ -107,9 +98,7 @@ class TestInspectReportsBothStates:
         names = [n.name for n in inspection.named_adapters]
         assert names == ["knowledge"]
 
-    def test_pure_named_store_has_adapter_current_false(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pure_named_store_has_adapter_current_false(self, tmp_path: Path) -> None:
         """A store that only has named adapters (no flat flip) reports
         has_adapter_current=False — the flat `current.txt` isn't set."""
         store = _seed_store(tmp_path)
