@@ -76,3 +76,7 @@ class DlmLock(BaseModel):
     determinism_class: DeterminismClass
     license_acceptance: LicenseAcceptance | None = None
     last_run_id: int = Field(..., ge=1)
+    # Sprint 23: number of data-parallel ranks this run used. 1 for
+    # single-GPU / single-process. Multi-GPU runs record the world
+    # size so a resume with a different world_size can be flagged.
+    world_size: int = Field(1, ge=1)

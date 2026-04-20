@@ -76,8 +76,13 @@ def build_lock(
     determinism_flags: dict[str, object] | None = None,
     license_acceptance: LicenseAcceptance | None = None,
     base_model_sha256: str | None = None,
+    world_size: int = 1,
 ) -> DlmLock:
-    """Assemble a `DlmLock` with defaults for omitted fields."""
+    """Assemble a `DlmLock` with defaults for omitted fields.
+
+    `world_size` (Sprint 23) records the number of data-parallel
+    ranks for this run. Default 1 for single-GPU / single-process.
+    """
     return DlmLock(
         created_at=datetime.now(UTC),
         dlm_id=dlm_id,
@@ -93,4 +98,5 @@ def build_lock(
         determinism_class=determinism_class,
         license_acceptance=license_acceptance,
         last_run_id=run_id,
+        world_size=world_size,
     )

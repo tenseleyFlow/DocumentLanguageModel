@@ -249,6 +249,23 @@ def _rule_license_acceptance(prior: DlmLock, current: DlmLock) -> tuple[Severity
 # --- driver -----------------------------------------------------------------
 
 
+def _rule_world_size(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
+    """World-size drift (Sprint 23).
+
+    Multi-GPU resumes aren't bit-exact vs single-GPU (NCCL/DDP have
+    inherent nondeterminism). When the world_size changes between
+    runs we warn — the lock is still valid, but callers should know
+    adapter checksums won't match prior runs.
+    """
+    if prior.world_size == current.world_size:
+        return None
+    return (
+        Severity.WARN,
+        f"world_size changed ({prior.world_size} → {current.world_size}); "
+        "multi-GPU runs drift from single-GPU adapter checksums",
+    )
+
+
 DEFAULT_RULES: Final[tuple[Rule, ...]] = (
     _rule_dlm_sha,
     _rule_base_revision,
@@ -262,6 +279,7 @@ DEFAULT_RULES: Final[tuple[Rule, ...]] = (
     _rule_cuda_version,
     _rule_rocm_version,
     _rule_license_acceptance,
+    _rule_world_size,
 )
 
 
