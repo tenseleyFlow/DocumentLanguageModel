@@ -58,6 +58,13 @@ mlx = [
     "mlx>=0.18; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-lm>=0.19; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
+# Sprint 26 observability sinks. TensorBoard + W&B are optional — core
+# metrics (SQLite) work without them. `uv sync --extra observability`
+# unlocks `dlm train --tensorboard` and `dlm train --wandb <project>`.
+observability = [
+    "tensorboard>=2.15",
+    "wandb>=0.17",
+]
 
 [project.scripts]
 dlm = "dlm.cli.app:main"
