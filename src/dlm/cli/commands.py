@@ -709,6 +709,7 @@ def export_cmd(
         from dlm.export.weighted_merge import (
             MixEntry,
             build_weighted_merged,
+            resolve_first_source_path,
             save_merged_to_tmp,
         )
 
@@ -721,7 +722,16 @@ def export_cmd(
         merge_dir = store.cache_dir_for(
             "_export_merged_" + "_".join(n for n, _ in mix_entries)
         )
-        adapter_path_override = save_merged_to_tmp(merged, merge_dir)
+        # Copy tokenizer + training_run.json from a source adapter so
+        # the downstream preflight (tokenizer_vocab) + merge-safety
+        # (was_qlora) gates both work on the composite (audit-07 B2).
+        first_source = resolve_first_source_path(store, entries_typed)
+        adapter_path_override = save_merged_to_tmp(
+            merged,
+            merge_dir,
+            tokenizer_source=first_source,
+            training_run_source=first_source,
+        )
 
     try:
         result = run_export(
