@@ -62,6 +62,10 @@ dlm train <path> [--resume|--fresh] [--seed N] [--max-steps N]
 | `--update-lock` | false | Bypass validation; always write a fresh `dlm.lock`. |
 | `--ignore-lock` | false | Bypass validation; don't write `dlm.lock`. |
 | `--gpus SPEC` | single-process | Multi-GPU training via Accelerate. `all` uses every visible CUDA device; `N` uses the first N; `0,1` selects exact device ids. Dispatches to `accelerate launch` when >1 device is selected. Refused on MPS/CPU/ROCm; heterogeneous CUDA SMs refused. |
+| `--watch` | false | Save-to-train mode (Sprint 25). After the initial train, block on filesystem events and re-run bounded-step retrains on each settled save. |
+| `--watch-max-steps N` | 100 | Per-cycle step cap for `--watch`. Keeps cycles responsive. |
+| `--watch-debounce-ms N` | 400 | Quiet interval before a burst of saves triggers a retrain. |
+| `--repl` | false | With `--watch`: also run `dlm repl` in the same process. **Scaffolded only** — threading integration is a followup; today the flag refuses with exit 2. |
 
 The three lock flags are mutually exclusive. See [Determinism](../determinism.md)
 for the mismatch severity table.
