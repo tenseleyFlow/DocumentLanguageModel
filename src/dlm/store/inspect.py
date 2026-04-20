@@ -24,6 +24,15 @@ _LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class NamedAdapterState:
+    """Per-named-adapter snapshot for multi-adapter stores (audit-07 M2)."""
+
+    name: str
+    has_current: bool
+    latest_version: int  # highest vNNNN directory on disk; 0 if none
+
+
+@dataclass(frozen=True)
 class StoreInspection:
     """Summary of a store at a point in time.
 
@@ -49,6 +58,11 @@ class StoreInspection:
     # second load; keep in sync with Sprint 13's output format.
     content_hashes: dict[str, str] = field(default_factory=dict)
     pinned_versions: dict[str, str] = field(default_factory=dict)
+    # Named multi-adapter state (audit-07 M2). Empty for flat stores;
+    # populated from `adapter/<name>/versions/...` subdirectories on
+    # multi-adapter stores. Used by `dlm show` to surface per-adapter
+    # version pointers that the flat `adapter_version` field can't.
+    named_adapters: list[NamedAdapterState] = field(default_factory=list)
 
 
 def inspect_store(store: StorePath, *, source_path: Path | None = None) -> StoreInspection:
@@ -66,6 +80,8 @@ def inspect_store(store: StorePath, *, source_path: Path | None = None) -> Store
 
     last_trained_at = _last_trained_at(manifest)
 
+    named_adapters = _discover_named_adapters(store)
+
     return StoreInspection(
         dlm_id=manifest.dlm_id,
         path=store.root,
@@ -82,6 +98,7 @@ def inspect_store(store: StorePath, *, source_path: Path | None = None) -> Store
         orphaned=orphaned,
         content_hashes=dict(manifest.content_hashes),
         pinned_versions=dict(manifest.pinned_versions),
+        named_adapters=named_adapters,
     )
 
 
@@ -137,4 +154,64 @@ def _last_trained_at(manifest: Manifest) -> datetime | None:
     return max(run.ended_at for run in finished)  # type: ignore[type-var]
 
 
-__all__ = ["StoreInspection", "inspect_store", "ManifestCorruptError"]
+_VERSION_DIR_PREFIX = "v"
+_FLAT_RESERVED = frozenset({"versions", "current.txt"})
+
+
+def _discover_named_adapters(store: StorePath) -> list[NamedAdapterState]:
+    """Scan `adapter/` for subdirs that look like named-adapter layouts.
+
+    Excludes the flat-layout entries (`versions/`, `current.txt`). A
+    named-adapter dir is any other directory under `adapter/` that
+    contains a `versions/` subdirectory — the Sprint 20a layout
+    signature.
+    """
+    if not store.adapter.exists():
+        return []
+    out: list[NamedAdapterState] = []
+    for entry in sorted(store.adapter.iterdir(), key=lambda p: p.name):
+        if not entry.is_dir():
+            continue
+        if entry.name in _FLAT_RESERVED:
+            continue
+        versions_dir = entry / "versions"
+        if not versions_dir.is_dir():
+            continue
+        latest = _max_version(versions_dir)
+        try:
+            current = store.resolve_current_adapter_for(entry.name) is not None
+        except (ValueError, OSError):
+            current = False
+        out.append(
+            NamedAdapterState(
+                name=entry.name,
+                has_current=current,
+                latest_version=latest,
+            )
+        )
+    return out
+
+
+def _max_version(versions_dir: Path) -> int:
+    """Return the highest `vNNNN` directory number, or 0 if none."""
+    highest = 0
+    for child in versions_dir.iterdir():
+        if not child.is_dir():
+            continue
+        name = child.name
+        if not name.startswith(_VERSION_DIR_PREFIX):
+            continue
+        try:
+            n = int(name[len(_VERSION_DIR_PREFIX):])
+        except ValueError:
+            continue
+        highest = max(highest, n)
+    return highest
+
+
+__all__ = [
+    "ManifestCorruptError",
+    "NamedAdapterState",
+    "StoreInspection",
+    "inspect_store",
+]

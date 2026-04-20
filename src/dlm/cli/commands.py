@@ -997,6 +997,14 @@ def _inspection_to_dict(inspection: object) -> dict[str, object]:
         "exports": [e.model_dump(mode="json") for e in inspection.exports],
         "content_hashes": dict(inspection.content_hashes),
         "pinned_versions": dict(inspection.pinned_versions),
+        "named_adapters": [
+            {
+                "name": a.name,
+                "has_current": a.has_current,
+                "latest_version": a.latest_version,
+            }
+            for a in inspection.named_adapters
+        ],
     }
 
 
@@ -1017,7 +1025,20 @@ def _render_inspection_text(console: object, path: Path, inspection: object) -> 
     console.print(
         f"  store:          {inspection.path}  ({_human_size(inspection.total_size_bytes)})"
     )
-    if inspection.has_adapter_current:
+    if inspection.named_adapters:
+        # Multi-adapter store: render the per-adapter pointers rather
+        # than the flat field (which stays 0 on multi-adapter docs).
+        console.print("  adapters:")
+        for adapter in inspection.named_adapters:
+            if adapter.has_current:
+                console.print(
+                    f"    {adapter.name:16}v{adapter.latest_version:04d}"
+                )
+            else:
+                console.print(
+                    f"    {adapter.name:16}[dim]no current pointer[/dim]"
+                )
+    elif inspection.has_adapter_current:
         console.print(f"  adapter:        v{inspection.adapter_version:04d}")
     else:
         console.print("  adapter:        [dim]none (no `dlm train` yet)[/dim]")
