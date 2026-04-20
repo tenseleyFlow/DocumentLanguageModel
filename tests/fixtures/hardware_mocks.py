@@ -63,8 +63,9 @@ def force_rocm(
     etc. The bf16 + FlashAttention probes allowlist against this
     string rather than the CUDA-style SM tuple.
     """
-    import torch
     from types import SimpleNamespace
+
+    import torch
 
     free_bytes = int(vram_gb * (1024**3))
     total_bytes = free_bytes
