@@ -220,8 +220,10 @@ def train_cmd(
             "--phase",
             help=(
                 "Which training phases to run: 'sft' (supervised only), "
-                "'dpo' (preference only — requires a prior SFT adapter), "
-                "or 'all' (SFT then DPO when enabled)."
+                "'preference' (DPO/ORPO only — requires a prior SFT "
+                "adapter), or 'all' (SFT then preference when enabled). "
+                "The preference method (dpo / orpo) comes from "
+                "training.preference.method in the frontmatter."
             ),
         ),
     ] = "all",
@@ -281,9 +283,10 @@ def train_cmd(
 
     console = Console(stderr=True)
 
-    if phase not in ("sft", "dpo", "all"):
+    if phase not in ("sft", "preference", "all"):
         console.print(
-            f"[red]error:[/red] --phase must be one of sft|dpo|all, got {phase!r}"
+            f"[red]error:[/red] --phase must be one of sft|preference|all, "
+            f"got {phase!r}"
         )
         raise typer.Exit(code=2)
     phase_literal: Phase = phase  # type: ignore[assignment]

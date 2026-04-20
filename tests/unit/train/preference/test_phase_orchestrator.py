@@ -181,7 +181,7 @@ class TestDispatcherAllPhase:
             sft_runner=sft,
             dpo_runner=dpo,
         )
-        assert [r.phase for r in results] == ["sft", "dpo"]
+        assert [r.phase for r in results] == ["sft", "preference"]
         sft.assert_called_once()
         dpo.assert_called_once()
         # DPO is told which adapter version to use as reference.
@@ -247,11 +247,11 @@ class TestDispatcherDpoOnly:
             parsed=_parsed([_pref()]),
             spec=MagicMock(),
             plan=MagicMock(),
-            phase="dpo",
+            phase="preference",
             sft_runner=sft,
             dpo_runner=dpo,
         )
-        assert [r.phase for r in results] == ["dpo"]
+        assert [r.phase for r in results] == ["preference"]
         sft.assert_not_called()
         _, dpo_kwargs = dpo.call_args
         assert dpo_kwargs["reference_adapter_version"] == 4
@@ -275,7 +275,7 @@ class TestDispatcherDpoOnly:
                 parsed=_parsed([_prose()]),
                 spec=MagicMock(),
                 plan=MagicMock(),
-                phase="dpo",
+                phase="preference",
                 sft_runner=MagicMock(),
                 dpo_runner=MagicMock(),
             )
@@ -299,7 +299,7 @@ class TestDispatcherDpoOnly:
                 parsed=_parsed([_pref()]),
                 spec=MagicMock(),
                 plan=MagicMock(),
-                phase="dpo",
+                phase="preference",
                 sft_runner=MagicMock(),
                 dpo_runner=MagicMock(),
             )
@@ -328,7 +328,7 @@ class TestAutoEnableIntegration:
             sft_runner=sft,
             dpo_runner=dpo,
         )
-        assert [r.phase for r in results] == ["sft", "dpo"]
+        assert [r.phase for r in results] == ["sft", "preference"]
 
     def test_explicit_false_blocks_auto_enable(self) -> None:
         sft = MagicMock(return_value=_FakeRunResult(adapter_version=1))

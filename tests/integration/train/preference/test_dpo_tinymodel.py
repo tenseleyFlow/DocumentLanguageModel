@@ -5,7 +5,7 @@ SFT-trained adapter already committed at v0001. We:
 
 1. Append five `::preference::` triples that systematically favor
    terse answers over verbose ones.
-2. Run the orchestrator with `phase="dpo"`.
+2. Run the orchestrator with `phase="preference"`.
 3. Assert: v0002 exists, a second `TrainingRunSummary` is appended to
    the manifest, and the adapter pointer now points at v0002.
 4. Generate from v0001 and v0002 on a held-out probe and assert v0002
@@ -49,10 +49,10 @@ def test_dpo_phase_writes_second_adapter_version(trained_store) -> None:  # type
         parsed,
         spec,
         plan,
-        phase="dpo",
+        phase="preference",
         capabilities=doctor().capabilities,
     )
-    assert [r.phase for r in results] == ["dpo"]
+    assert [r.phase for r in results] == ["preference"]
     dpo_result = results[0].result
     assert dpo_result.adapter_version == 2
     assert store.adapter_version(2).is_dir()

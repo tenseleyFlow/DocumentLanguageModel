@@ -38,10 +38,10 @@ if TYPE_CHECKING:
     from dlm.store.paths import StorePath
     from dlm.train.trainer import Mode, TrainingRunResult
 
-Phase = Literal["sft", "dpo", "all"]
+Phase = Literal["sft", "preference", "all"]
 
 SftRunner = Callable[..., "TrainingRunResult"]
-DpoRunner = Callable[..., "TrainingRunResult"]
+PreferenceRunner = Callable[..., "TrainingRunResult"]
 
 log = logging.getLogger(__name__)
 
@@ -49,9 +49,11 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class PhaseResult:
     """Per-phase training outcome — the orchestrator returns one per
-    phase that actually ran."""
+    phase that actually ran. `phase` is the high-level name ("sft" or
+    "preference"); the specific preference method ("dpo" / "orpo") is
+    recorded in the training-run summary, not here."""
 
-    phase: Literal["sft", "dpo"]
+    phase: Literal["sft", "preference"]
     result: TrainingRunResult
 
 
@@ -89,7 +91,7 @@ def run_phases(
     lock_mode: LockMode = "default",
     capabilities: Capabilities | None = None,
     sft_runner: SftRunner | None = None,
-    dpo_runner: DpoRunner | None = None,
+    dpo_runner: PreferenceRunner | None = None,
 ) -> list[PhaseResult]:
     """Run the requested phase(s) in SFT → DPO order.
 
@@ -118,7 +120,7 @@ def run_phases(
     results: list[PhaseResult] = []
 
     sft_fn = sft_runner or _real_sft_runner()
-    dpo_fn = dpo_runner or _real_dpo_runner()
+    pref_fn = dpo_runner or _method_runner(pref_cfg.method)
 
     if phase in ("sft", "all") and has_sft_content(sections):
         sft_result = sft_fn(
@@ -134,28 +136,30 @@ def run_phases(
         )
         results.append(PhaseResult(phase="sft", result=sft_result))
 
-    should_run_dpo = phase == "dpo" or (phase == "all" and pref_cfg.enabled)
-    if should_run_dpo:
+    should_run_pref = phase == "preference" or (
+        phase == "all" and pref_cfg.enabled
+    )
+    if should_run_pref:
         if not has_preference_content(sections):
-            if phase == "dpo":
+            if phase == "preference":
                 raise NoPreferenceContentError(
-                    "--phase dpo was requested but the document has no "
+                    "--phase preference was requested but the document has no "
                     "::preference:: sections"
                 )
             log.warning(
-                "dpo.enabled=True but the document has no ::preference:: "
-                "sections; skipping DPO phase"
+                "preference.enabled=True but the document has no "
+                "::preference:: sections; skipping preference phase"
             )
             return results
 
-        # Determine which adapter version to use as reference.
-        # When SFT just ran this invocation, it's the result we just
-        # captured. When `--phase dpo` alone, we read from disk.
+        # Determine which adapter version to load as the pre-preference
+        # checkpoint. When SFT just ran this invocation, it's the
+        # result we captured; otherwise, read from the manifest.
         sft_adapter_version = _resolve_reference_adapter_version(
             store, prior_sft_result=_latest_sft(results)
         )
 
-        dpo_result = dpo_fn(
+        pref_result = pref_fn(
             store,
             parsed,
             spec,
@@ -166,9 +170,17 @@ def run_phases(
             lock_mode=lock_mode,
             capabilities=capabilities,
         )
-        results.append(PhaseResult(phase="dpo", result=dpo_result))
+        results.append(PhaseResult(phase="preference", result=pref_result))
 
     return results
+
+
+def _method_runner(method: str) -> PreferenceRunner:
+    """Resolve the preference phase runner by `method` name via the
+    registry. Raises `UnknownMethodError` if unregistered."""
+    from dlm.train.preference.method_registry import resolve as resolve_method
+
+    return resolve_method(method)
 
 
 def _latest_sft(results: list[PhaseResult]) -> TrainingRunResult | None:
@@ -210,9 +222,3 @@ def _real_sft_runner() -> SftRunner:  # pragma: no cover
     from dlm.train.trainer import run as sft_run
 
     return sft_run
-
-
-def _real_dpo_runner() -> DpoRunner:  # pragma: no cover
-    from dlm.train.preference.dpo_phase import run as dpo_run
-
-    return dpo_run
