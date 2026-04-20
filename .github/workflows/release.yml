@@ -83,26 +83,32 @@ jobs:
           set -euxo pipefail
           TAG="${GITHUB_REF_NAME}"
           NAME="dlm-${TAG}"
+          # Write the tarball to RUNNER_TEMP (outside the source tree) to
+          # avoid tar's "file changed as we read it" when `.` includes the
+          # growing output file. Move it back to the workspace afterwards
+          # so upload-artifact can find it by relative path.
+          OUT="${RUNNER_TEMP}/${NAME}.tar.gz"
           # Build the tarball with a top-level prefix matching NAME so
           # `tar xzf` extracts into a clean subdir (Homebrew convention).
           # Exclude CI noise + git metadata; KEEP `vendor/llama.cpp/` so
           # the formula can use the vendored Python convert scripts.
-          tar czf "${NAME}.tar.gz" \
-              --transform="s,^,${NAME}/," \
-              --exclude=".git" \
-              --exclude=".github" \
-              --exclude=".pytest_cache" \
-              --exclude=".mypy_cache" \
-              --exclude=".ruff_cache" \
+          tar czf "${OUT}" \
+              --transform="s,^\./,${NAME}/," \
+              --exclude="./.git" \
+              --exclude="./.github" \
+              --exclude="./.pytest_cache" \
+              --exclude="./.mypy_cache" \
+              --exclude="./.ruff_cache" \
               --exclude="__pycache__" \
               --exclude="*.pyc" \
-              --exclude="vendor/llama.cpp/.git" \
-              --exclude="vendor/llama.cpp/build" \
-              --exclude="vendor/llama.cpp/.cache" \
-              --exclude="tests" \
-              --exclude=".docs" \
-              --exclude="site" \
+              --exclude="./vendor/llama.cpp/.git" \
+              --exclude="./vendor/llama.cpp/build" \
+              --exclude="./vendor/llama.cpp/.cache" \
+              --exclude="./tests" \
+              --exclude="./.docs" \
+              --exclude="./site" \
               .
+          mv "${OUT}" "${NAME}.tar.gz"
           SHA=$(sha256sum "${NAME}.tar.gz" | awk '{print $1}')
           echo "Tarball: ${NAME}.tar.gz (sha256=${SHA})"
           echo "tarball_name=${NAME}.tar.gz" >> "$GITHUB_OUTPUT"
