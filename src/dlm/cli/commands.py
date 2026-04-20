@@ -424,6 +424,16 @@ def prompt_cmd(
     temp: Annotated[float, typer.Option("--temp")] = 0.7,
     top_p: Annotated[float | None, typer.Option("--top-p")] = None,
     verbose: Annotated[bool, typer.Option("--verbose", help="Log resolved InferencePlan.")] = False,
+    adapter: Annotated[
+        str | None,
+        typer.Option(
+            "--adapter",
+            help=(
+                "Named adapter to prompt against. Required on multi-adapter "
+                "documents; rejected on single-adapter documents."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run inference against the trained adapter."""
     import sys
@@ -441,6 +451,21 @@ def prompt_cmd(
     from dlm.base_models import GatedModelError
 
     parsed = parse_file(path)
+    adapters_declared = parsed.frontmatter.training.adapters
+    if adapter is not None:
+        if adapters_declared is None:
+            console.print(
+                "[red]prompt:[/red] --adapter is only valid on multi-adapter "
+                "documents (this doc does not declare `training.adapters`)."
+            )
+            raise typer.Exit(code=2)
+        if adapter not in adapters_declared:
+            declared = sorted(adapters_declared)
+            console.print(
+                f"[red]prompt:[/red] --adapter {adapter!r} is not declared "
+                f"(declared: {declared})."
+            )
+            raise typer.Exit(code=2)
     store = for_dlm(parsed.frontmatter.dlm_id)
     already_accepted = _previously_accepted(store.manifest)
     try:
@@ -454,7 +479,7 @@ def prompt_cmd(
     caps = doctor().capabilities
 
     try:
-        loaded = load_for_inference(store, spec, caps)
+        loaded = load_for_inference(store, spec, caps, adapter_name=adapter)
     except AdapterNotFoundError as exc:
         console.print(f"[red]prompt:[/red] {exc}")
         raise typer.Exit(code=1) from exc
