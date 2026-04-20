@@ -111,6 +111,17 @@ app.command("doctor")(commands.doctor_cmd)
 app.command("show")(commands.show_cmd)
 app.command("migrate")(commands.migrate_cmd)
 
+# Sprint 26: `dlm metrics <path>` + `dlm metrics watch <path>` as a
+# subcommand group. Typer nests naturally via an Annotated sub-app.
+_metrics_app = typer.Typer(
+    help="Query the per-store metrics database (Sprint 26).",
+    no_args_is_help=True,
+    invoke_without_command=True,
+)
+_metrics_app.callback(invoke_without_command=True)(commands.metrics_cmd)
+_metrics_app.command("watch")(commands.metrics_watch_cmd)
+app.add_typer(_metrics_app, name="metrics")
+
 
 def main() -> None:
     """Installed entry point (`dlm` on PATH).
