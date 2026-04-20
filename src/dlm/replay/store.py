@@ -117,6 +117,51 @@ class ReplayStore:
             rows.extend(_snapshot_to_rows(snap))
         return rows
 
+    def sample_preference_rows(
+        self,
+        *,
+        k: int,
+        now: datetime,
+        rng: random.Random,
+        scheme: Scheme = "recency",
+    ) -> list[Row]:
+        """Sample `k` *preference* snapshots; emit DPO-shaped rows.
+
+        Mirrors `sample_rows` but pre-filters the index to
+        preference-only entries before the weighted-reservoir draw.
+        Falls back to an empty list when the corpus has no preference
+        snapshots — callers at DPO-time decide whether zero replay is
+        acceptable or not.
+
+        `IndexEntry` doesn't carry `section_type` today, so we decode
+        snapshots to partition. For the corpus sizes DLM realistically
+        stores (<1k sections after eviction) the full decode is
+        negligible compared to the training step itself.
+        """
+        from dlm.replay.sampler import sample
+
+        entries = self.load()
+        if not entries:
+            return []
+
+        snapshots = list(iter_snapshots(self.corpus_path, entries))
+        preference_entries: list[IndexEntry] = []
+        by_section_id: dict[str, SectionSnapshot] = {}
+        for entry, snap in zip(entries, snapshots, strict=True):
+            if snap.section_type != "preference":
+                continue
+            preference_entries.append(entry)
+            by_section_id[entry.section_id] = snap
+        if not preference_entries:
+            return []
+
+        picked = sample(preference_entries, k=k, now=now, rng=rng, scheme=scheme)
+        rows: list[Row] = []
+        for entry in picked:
+            snap = by_section_id[entry.section_id]
+            rows.extend(_snapshot_to_rows(snap))
+        return rows
+
 
 def _snapshot_to_rows(snap: SectionSnapshot) -> list[Row]:
     """Expand one snapshot to its row-shape list.

@@ -88,3 +88,60 @@ class TestSampleRows:
         rows = s.sample_rows(k=1, now=datetime(2026, 4, 1), rng=random.Random(0))
         assert rows[0]["_dlm_section_id"] != raw_sid
         assert raw_sid in rows[0]["_dlm_section_id"]
+
+
+_PREF_BODY_A = (
+    "### Prompt\nqA\n### Chosen\ncA\n### Rejected\nrA"
+)
+_PREF_BODY_B = (
+    "### Prompt\nqB\n### Chosen\ncB\n### Rejected\nrB"
+)
+
+
+class TestSamplePreferenceRows:
+    def test_empty_corpus_returns_empty(self, tmp_path: Path) -> None:
+        s = _store(tmp_path)
+        rows = s.sample_preference_rows(
+            k=5, now=datetime(2026, 4, 1), rng=random.Random(0)
+        )
+        assert rows == []
+
+    def test_corpus_with_no_preferences_returns_empty(self, tmp_path: Path) -> None:
+        s = _store(tmp_path)
+        s.append(_snap("a" * 16, "prose", "hello", added=datetime(2026, 1, 1)))
+        s.append(_snap("b" * 16, "instruction", "### Q\nq\n### A\na", added=datetime(2026, 1, 1)))
+        rows = s.sample_preference_rows(
+            k=2, now=datetime(2026, 4, 1), rng=random.Random(0)
+        )
+        assert rows == []
+
+    def test_filters_to_preferences_only(self, tmp_path: Path) -> None:
+        s = _store(tmp_path)
+        s.append(_snap("a" * 16, "prose", "prose body", added=datetime(2026, 1, 1)))
+        s.append(_snap("b" * 16, "preference", _PREF_BODY_A, added=datetime(2026, 1, 1)))
+        s.append(_snap("c" * 16, "preference", _PREF_BODY_B, added=datetime(2026, 1, 2)))
+        rows = s.sample_preference_rows(
+            k=10, now=datetime(2026, 4, 1), rng=random.Random(0)
+        )
+        assert len(rows) == 2
+        assert {r["prompt"] for r in rows} == {"qA", "qB"}
+        assert all("chosen" in r and "rejected" in r for r in rows)
+
+    def test_k_smaller_than_available_samples_exactly_k(self, tmp_path: Path) -> None:
+        s = _store(tmp_path)
+        for i in range(5):
+            sid = f"{i:016x}"
+            body = f"### Prompt\nq{i}\n### Chosen\nc{i}\n### Rejected\nr{i}"
+            s.append(_snap(sid, "preference", body, added=datetime(2026, 1, 1)))
+        rows = s.sample_preference_rows(
+            k=2, now=datetime(2026, 4, 1), rng=random.Random(0)
+        )
+        assert len(rows) == 2
+
+    def test_replay_sid_prefix_applied(self, tmp_path: Path) -> None:
+        s = _store(tmp_path)
+        s.append(_snap("a" * 16, "preference", _PREF_BODY_A, added=datetime(2026, 1, 1)))
+        rows = s.sample_preference_rows(
+            k=1, now=datetime(2026, 4, 1), rng=random.Random(0)
+        )
+        assert rows[0]["_dlm_section_id"].startswith("replay:")
