@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from dlm.doc.schema import (
+    AdapterConfig,
     CptConfig,
     DlmFrontmatter,
     ExportConfig,
@@ -230,6 +231,103 @@ class TestTrainingConfigCptSubfield:
             )
 
 
+class TestAdapterConfig:
+    def test_default_instance(self) -> None:
+        a = AdapterConfig()
+        assert a.adapter == "lora"
+        assert a.lora_r == 8
+        assert a.lora_alpha == 16
+        assert a.lora_dropout == pytest.approx(0.05)
+        assert a.target_modules == "auto"
+        assert a.learning_rate == pytest.approx(2e-4)
+
+    def test_frozen(self) -> None:
+        a = AdapterConfig()
+        with pytest.raises(ValidationError):
+            a.lora_r = 32  # type: ignore[misc]
+
+    def test_extra_forbidden(self) -> None:
+        with pytest.raises(ValidationError):
+            AdapterConfig.model_validate({"rubbish": 1})
+
+    def test_accepts_explicit_target_modules(self) -> None:
+        a = AdapterConfig(target_modules=["q_proj", "v_proj"])
+        assert a.target_modules == ["q_proj", "v_proj"]
+
+
+class TestNamedAdapters:
+    def test_default_adapters_is_none(self) -> None:
+        assert TrainingConfig().adapters is None
+
+    def test_accepts_named_adapters(self) -> None:
+        t = TrainingConfig.model_validate(
+            {
+                "adapters": {
+                    "knowledge": {"lora_r": 8},
+                    "tone": {"lora_r": 4, "target_modules": ["q_proj", "v_proj"]},
+                }
+            }
+        )
+        assert t.adapters is not None
+        assert set(t.adapters) == {"knowledge", "tone"}
+        assert t.adapters["tone"].lora_r == 4
+        assert t.adapters["tone"].target_modules == ["q_proj", "v_proj"]
+
+    def test_empty_adapters_block_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="at least one adapter"):
+            TrainingConfig.model_validate({"adapters": {}})
+
+    @pytest.mark.parametrize(
+        "name",
+        ["", "A", "1bad", "bad-name", "bad name", "bad.name", "_leading", "way_too_long_name_" * 3],
+    )
+    def test_invalid_adapter_names_rejected(self, name: str) -> None:
+        with pytest.raises(ValidationError, match="not a valid adapter name"):
+            TrainingConfig.model_validate({"adapters": {name: {}}})
+
+    @pytest.mark.parametrize("name", ["default", "knowledge", "tone_v2", "a", "x9"])
+    def test_valid_adapter_names_accepted(self, name: str) -> None:
+        t = TrainingConfig.model_validate({"adapters": {name: {}}})
+        assert t.adapters is not None
+        assert name in t.adapters
+
+    def test_flat_adapter_field_with_block_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="flat per-adapter fields"):
+            TrainingConfig.model_validate(
+                {
+                    "adapter": "qlora",
+                    "adapters": {"knowledge": {}},
+                }
+            )
+
+    def test_flat_lora_r_with_block_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="flat per-adapter fields"):
+            TrainingConfig.model_validate(
+                {"lora_r": 32, "adapters": {"knowledge": {}}}
+            )
+
+    def test_flat_learning_rate_with_block_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="flat per-adapter fields"):
+            TrainingConfig.model_validate(
+                {"learning_rate": 1e-3, "adapters": {"tone": {}}}
+            )
+
+    def test_top_level_shared_knobs_allowed_alongside_block(self) -> None:
+        # seed, num_epochs, sequence_len, etc. are explicitly shared
+        # across adapters — setting them next to the block is fine.
+        t = TrainingConfig.model_validate(
+            {
+                "seed": 7,
+                "num_epochs": 2,
+                "sequence_len": 1024,
+                "adapters": {"knowledge": {}},
+            }
+        )
+        assert t.seed == 7
+        assert t.num_epochs == 2
+        assert t.sequence_len == 1024
+
+
 class TestExportConfig:
     def test_default_quant(self) -> None:
         assert ExportConfig().default_quant == "Q4_K_M"
@@ -250,7 +348,7 @@ class TestExportConfig:
 class TestDlmFrontmatter:
     def test_minimal_valid(self) -> None:
         fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="smollm2-135m")
-        assert fm.dlm_version == 3
+        assert fm.dlm_version == 4
         assert fm.training == TrainingConfig()
         assert fm.export == ExportConfig()
         assert fm.system_prompt is None
