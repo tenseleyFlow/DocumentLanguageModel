@@ -267,6 +267,44 @@ def train_cmd(
             ),
         ),
     ] = None,
+    watch: Annotated[
+        bool,
+        typer.Option(
+            "--watch",
+            help=(
+                "Save-to-train mode (Sprint 25). After an initial train, "
+                "block on filesystem events and run incremental retrains "
+                "(mode=resume, step-capped) on each settled save. Ctrl-C "
+                "exits cleanly between cycles."
+            ),
+        ),
+    ] = False,
+    watch_max_steps: Annotated[
+        int,
+        typer.Option(
+            "--watch-max-steps",
+            help="Per-cycle step cap for --watch. Default 100 keeps cycles responsive.",
+        ),
+    ] = 100,
+    watch_debounce_ms: Annotated[
+        int,
+        typer.Option(
+            "--watch-debounce-ms",
+            help="Quiet interval (ms) before a burst of saves triggers a retrain.",
+        ),
+    ] = 400,
+    watch_repl: Annotated[
+        bool,
+        typer.Option(
+            "--repl",
+            help=(
+                "With --watch: also open the REPL so prompts reflect the "
+                "latest adapter. **Scaffolded** — threading integration "
+                "is untestable without a two-process harness; emit a "
+                "not-yet-implemented refusal and exit 2."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
     import sys
@@ -450,6 +488,57 @@ def train_cmd(
     result = phase_results[-1].result
     if result.final_train_loss is not None:
         sys.stdout.write(f"{result.final_train_loss}\n")
+
+    # Sprint 25: --watch keeps the training context alive and re-runs
+    # incremental cycles on file change. Entered AFTER the initial
+    # train so the loop resumes from a real committed adapter.
+    if watch:
+        if watch_repl:
+            console.print(
+                "[red]train:[/red] --watch --repl is scaffolded but not yet "
+                "implemented (Sprint 25 [~] per DoD). The threaded REPL "
+                "bridge needs a test harness we don't have in CI today."
+            )
+            raise typer.Exit(code=2)
+
+        from dlm.watch.loop import run_watch
+        from dlm.watch.status import WatchStatus, render_status
+
+        status = WatchStatus(doc_path=str(path), sections=len(parsed.sections))
+        console.print(
+            f"[dim]watch:[/dim] {render_status(status)}; "
+            f"max_steps={watch_max_steps}, debounce_ms={watch_debounce_ms}"
+        )
+
+        def _log_cycle(result_: object) -> None:
+            from dlm.watch.loop import CycleResult
+
+            assert isinstance(result_, CycleResult)
+            if result_.ran and result_.run_result is not None:
+                status.mark_cycle_done(
+                    train_loss=result_.run_result.final_train_loss,
+                    val_loss=result_.run_result.final_val_loss,
+                    steps=result_.run_result.steps,
+                    coalesced=1,
+                )
+                console.print(f"[dim]watch:[/dim] {render_status(status)}")
+            else:
+                console.print("[dim]watch:[/dim] no new content, skipping retrain")
+
+        try:
+            exit_code = run_watch(
+                doc_path=path,
+                store=store,
+                spec=spec,
+                plan=plan,
+                max_steps=watch_max_steps,
+                debounce_ms=watch_debounce_ms,
+                on_cycle=_log_cycle,
+            )
+        except KeyboardInterrupt:
+            console.print("[dim]watch:[/dim] Ctrl-C received, exiting")
+            raise typer.Exit(code=0)  # noqa: B904
+        raise typer.Exit(code=exit_code)
 
 
 def _maybe_dispatch_multi_gpu(
