@@ -142,11 +142,14 @@ def _previously_accepted(store_manifest_path: Path) -> bool:
     """
     if not store_manifest_path.exists():
         return False
-    try:
-        from dlm.store.manifest import load_manifest
+    from dlm.store.errors import ManifestCorruptError
+    from dlm.store.manifest import load_manifest
 
+    try:
         manifest = load_manifest(store_manifest_path)
-    except Exception:
+    except (ManifestCorruptError, OSError):
+        # Audit-05 N2: narrow from bare `Exception` so programmer bugs
+        # propagate instead of being silently treated as "no acceptance."
         return False
     return manifest.license_acceptance is not None
 
@@ -248,6 +251,7 @@ def train_cmd(
 
     from dlm.base_models import GatedModelError
     from dlm.base_models import resolve as resolve_base_model
+    from dlm.doc.errors import DlmParseError
     from dlm.doc.parser import parse_file
     from dlm.hardware import doctor
     from dlm.lock import LockMode, LockValidationError
@@ -285,7 +289,11 @@ def train_cmd(
     elif ignore_lock:
         lock_mode = "ignore"
 
-    parsed = parse_file(path)
+    try:
+        parsed = parse_file(path)
+    except (DlmParseError, OSError) as exc:
+        console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
     try:
         spec = resolve_base_model(
             parsed.frontmatter.base_model,
@@ -378,6 +386,7 @@ def prompt_cmd(
     from rich.console import Console
 
     from dlm.base_models import resolve as resolve_base_model
+    from dlm.doc.errors import DlmParseError
     from dlm.doc.parser import parse_file
     from dlm.hardware import doctor
     from dlm.inference import AdapterNotFoundError, generate, load_for_inference
@@ -488,6 +497,7 @@ def export_cmd(
 
     from dlm.base_models import GatedModelError, download_spec
     from dlm.base_models import resolve as resolve_base_model
+    from dlm.doc.errors import DlmParseError
     from dlm.doc.parser import parse_file
     from dlm.export import (
         ExportError,
@@ -736,6 +746,7 @@ def show_cmd(
 
     from rich.console import Console
 
+    from dlm.doc.errors import DlmParseError
     from dlm.doc.errors import DlmParseError
     from dlm.doc.parser import parse_file
     from dlm.store.errors import ManifestCorruptError
