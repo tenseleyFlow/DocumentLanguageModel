@@ -53,10 +53,10 @@ class TrainingPlan:
     grad_accum: int
     effective_batch_size: int
     gradient_checkpointing: bool
-    world_size: int
     est_peak_vram_gb: float
     est_step_seconds: float
     reason: str
+    world_size: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-friendly view for `dlm doctor --json`."""
