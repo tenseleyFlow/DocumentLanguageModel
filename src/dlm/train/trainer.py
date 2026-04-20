@@ -502,12 +502,20 @@ def _build_real_trainer(  # pragma: no cover
         if mode == "resume"
         else None
     )
+
+    # Multi-adapter docs override the flat LoRA knobs with the
+    # per-adapter `AdapterConfig`. Single-adapter docs and the
+    # trainer_factory test path keep reading the flat fields.
+    eff_lora_r, eff_lora_alpha, eff_lora_dropout, eff_lr = (
+        _resolve_adapter_hparams(parsed, adapter_name)
+    )
+
     peft_model = build_or_resume_adapter(
         base_model,
         spec,
-        lora_r=parsed.frontmatter.training.lora_r,
-        lora_alpha=parsed.frontmatter.training.lora_alpha,
-        lora_dropout=parsed.frontmatter.training.lora_dropout,
+        lora_r=eff_lora_r,
+        lora_alpha=eff_lora_alpha,
+        lora_dropout=eff_lora_dropout,
         tokenizer_grew=tok_bringup.tokenizer_grew,
         mode=mode,
         resume_path=resume_path,
@@ -535,7 +543,7 @@ def _build_real_trainer(  # pragma: no cover
         "num_train_epochs": parsed.frontmatter.training.num_epochs,
         "per_device_train_batch_size": plan.micro_batch_size,
         "gradient_accumulation_steps": plan.grad_accum,
-        "learning_rate": parsed.frontmatter.training.learning_rate,
+        "learning_rate": eff_lr,
         "lr_scheduler_type": parsed.frontmatter.training.lr_scheduler,
         "warmup_ratio": parsed.frontmatter.training.warmup_ratio,
         "max_steps": max_steps if max_steps is not None else -1,
@@ -699,6 +707,28 @@ def _snapshot_training_state(
         base_model_revision=spec.revision,
         pinned_versions=versions,
         use_qlora=use_qlora,
+    )
+
+
+def _resolve_adapter_hparams(
+    parsed: ParsedDlm, adapter_name: str | None
+) -> tuple[int, int, float, float]:
+    """Return `(lora_r, lora_alpha, lora_dropout, learning_rate)` for this run.
+
+    When `adapter_name` is set and the doc declares `training.adapters`,
+    read from the matching `AdapterConfig`. Otherwise, fall through to
+    the flat `TrainingConfig` fields (single-adapter or `None` caller).
+    """
+    training = parsed.frontmatter.training
+    if adapter_name is not None and training.adapters is not None:
+        cfg = training.adapters.get(adapter_name)
+        if cfg is not None:
+            return (cfg.lora_r, cfg.lora_alpha, cfg.lora_dropout, cfg.learning_rate)
+    return (
+        training.lora_r,
+        training.lora_alpha,
+        training.lora_dropout,
+        training.learning_rate,
     )
 
 
