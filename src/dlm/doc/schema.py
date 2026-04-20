@@ -262,9 +262,15 @@ class DlmFrontmatter(BaseModel):
     @field_validator("dlm_version")
     @classmethod
     def _validate_version(cls, v: int) -> int:
-        # The parser enforces the *current* version; fields from future
-        # versions would fail extra="forbid" above. We just refuse
-        # obviously wrong values here.
+        # Defense in depth (audit-07 M6): the `versioned` dispatcher is
+        # the intended entry point, but direct `DlmFrontmatter.model_validate`
+        # callers (tests, tooling) need the same guard. Reject both
+        # under-1 and beyond-current values at the field level.
         if v < 1:
             raise ValueError(f"dlm_version must be ≥1, got {v}")
+        if v > CURRENT_SCHEMA_VERSION:
+            raise ValueError(
+                f"dlm_version {v} is newer than this CLI supports "
+                f"(CURRENT_SCHEMA_VERSION={CURRENT_SCHEMA_VERSION})."
+            )
         return v

@@ -345,6 +345,45 @@ class TestExportConfig:
             ExportConfig.model_validate({"default_quant": "Q4_K_M", "legacy": True})
 
 
+class TestDlmFrontmatterForwardVersion:
+    """Audit-07 M6: `model_validate` rejects forward-dated docs directly,
+    not just through the `versioned` dispatcher."""
+
+    def test_version_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="dlm_version must be"):
+            DlmFrontmatter.model_validate(
+                {
+                    "dlm_id": VALID_ULID,
+                    "base_model": "smollm2-135m",
+                    "dlm_version": 0,
+                }
+            )
+
+    def test_forward_version_rejected(self) -> None:
+        from dlm.doc.schema import CURRENT_SCHEMA_VERSION
+
+        with pytest.raises(ValidationError, match="newer than this CLI"):
+            DlmFrontmatter.model_validate(
+                {
+                    "dlm_id": VALID_ULID,
+                    "base_model": "smollm2-135m",
+                    "dlm_version": CURRENT_SCHEMA_VERSION + 1,
+                }
+            )
+
+    def test_current_version_accepted(self) -> None:
+        from dlm.doc.schema import CURRENT_SCHEMA_VERSION
+
+        fm = DlmFrontmatter.model_validate(
+            {
+                "dlm_id": VALID_ULID,
+                "base_model": "smollm2-135m",
+                "dlm_version": CURRENT_SCHEMA_VERSION,
+            }
+        )
+        assert fm.dlm_version == CURRENT_SCHEMA_VERSION
+
+
 class TestDlmFrontmatter:
     def test_minimal_valid(self) -> None:
         fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="smollm2-135m")
