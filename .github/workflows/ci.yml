@@ -103,6 +103,14 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=95
 
+      - name: Coverage gate — src/dlm/train/preference ≥ 95%
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          uv run pytest tests/unit/train/preference \
+            --cov=src/dlm/train/preference \
+            --cov-report=term-missing \
+            --cov-fail-under=95
+
       - name: Coverage gate — src/dlm/eval ≥ 95% (Sprint 10)
         if: matrix.os == 'ubuntu-latest'
         run: |
