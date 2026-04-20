@@ -539,6 +539,27 @@ def _build_real_trainer(  # pragma: no cover
             greater_is_better=early_stop_cfg.greater_is_better,
         )
 
+    # CPT refinements (Phase 4): override schedule when prose rows
+    # dominate. Reads `training.cpt.schedule` and the actual row mix;
+    # `auto` flips to DAPT above the 70% threshold, otherwise the
+    # user's `lr_scheduler` setting stands.
+    from dlm.train.cpt.runtime import (
+        cpt_row_fraction,
+        dapt_sft_config_overrides,
+        select_schedule,
+    )
+
+    cpt_cfg = parsed.frontmatter.training.cpt
+    fraction = cpt_row_fraction(list(train_ds))
+    chosen = select_schedule(cpt_cfg.schedule, fraction)
+    if chosen == "dapt":
+        sft_config_kwargs.update(dapt_sft_config_overrides())
+        _LOG.info(
+            "CPT schedule: dapt (cpt_fraction=%.2f, setting=%s)",
+            fraction,
+            cpt_cfg.schedule,
+        )
+
     sft_config = SFTConfig(**sft_config_kwargs)
 
     from dlm.eval import build_callback
@@ -551,10 +572,50 @@ def _build_real_trainer(  # pragma: no cover
         "formatting_func": make_formatting_func(tok_bringup.tokenizer),
         "args": sft_config,
     }
+    callbacks: list[Any] = []
     if has_val:
         trainer_kwargs["eval_dataset"] = val_ds
-        trainer_kwargs["callbacks"] = [build_callback(early_stop_cfg)]
+        callbacks.append(build_callback(early_stop_cfg))
+
+    if cpt_cfg.embed_warmup_steps > 0:
+        from dlm.train.cpt.embed_warmup import EmbedWarmupCallback
+
+        callbacks.append(
+            EmbedWarmupCallback(peft_model, n_steps=cpt_cfg.embed_warmup_steps)
+        )
+        _LOG.warning(
+            "embed warm-up enabled for %d steps — adapter size will inflate "
+            "by vocab_size × hidden_dim",
+            cpt_cfg.embed_warmup_steps,
+        )
+
+    # Vocab-gap report: emit once per run so users can spot a
+    # mismatched tokenizer before burning compute.
+    if train_ds:
+        _emit_vocab_gap_report(train_ds, tok_bringup.tokenizer)
+
+    if callbacks:
+        trainer_kwargs["callbacks"] = callbacks
     return SFTTrainer(**trainer_kwargs)
+
+
+def _emit_vocab_gap_report(train_ds: Any, tokenizer: Any) -> None:  # pragma: no cover
+    """Run the tokenizer over concatenated prose rows and log the fit report.
+
+    Falls back quietly on any error — a descriptive-only report should
+    never break training.
+    """
+    from dlm.train.cpt.vocab_gap import render_report, report
+
+    try:
+        prose = [row["text"] for row in train_ds if row.get("text") is not None]
+        if not prose:
+            return
+        joined = "\n\n".join(prose)
+        r = report(joined, tokenizer)
+        _LOG.info("\n%s", render_report(r))
+    except Exception as exc:  # defensive: report is advisory
+        _LOG.debug("vocab-gap report skipped: %s", exc)
 
 
 def _write_checkpoint(
