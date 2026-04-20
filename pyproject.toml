@@ -38,6 +38,7 @@ dependencies = [
     "datasets>=3.0",
     "huggingface-hub>=0.25",
     "safetensors>=0.4",       # GGUF conversion + adapter I/O (Sprint 11)
+    "sentencepiece>=0.2",     # vendored llama.cpp convert_lora_to_gguf imports it (audit-08 P3)
 ]
 
 [project.optional-dependencies]

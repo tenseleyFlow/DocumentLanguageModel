@@ -70,6 +70,11 @@ def test_export_produces_valid_gguf(trained_store) -> None:
                 # the check so this slow test stays green. The chat
                 # template round-trip has its own dedicated test.
                 "--no-template",
+                # The replay corpus from 20 training steps is ~50
+                # tokens — below the 1024-token floor imatrix wants.
+                # Imatrix calibration gets its own integration coverage;
+                # this test focuses on the base/adapter GGUF pipeline.
+                "--no-imatrix",
             ],
         )
         assert result.exit_code == 0, result.output
