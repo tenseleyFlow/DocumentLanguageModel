@@ -196,7 +196,8 @@ def _serialize_section(section: Section) -> str:
         if not body.endswith("\n"):
             body += "\n"
         return body
-    fence = f"::{section.type.value}::\n"
+    suffix = f"#{section.adapter}" if section.adapter else ""
+    fence = f"::{section.type.value}{suffix}::\n"
     body = section.content
     if body and not body.endswith("\n"):
         body += "\n"
