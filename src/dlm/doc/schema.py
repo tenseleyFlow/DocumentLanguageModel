@@ -27,10 +27,10 @@ version and register a migrator in the same commit (enforced by a test).
 
 
 class DpoConfig(BaseModel):
-    """DPO phase knobs (Sprint 17). Additive to `TrainingConfig`; default
-    disabled. `enabled` flips to `True` automatically when the document
-    contains `::preference::` sections unless the user has explicitly set
-    it to `False` — the phase orchestrator reads that signal."""
+    """DPO phase knobs. Additive to `TrainingConfig`; default disabled.
+    `enabled` flips to `True` automatically when the document contains
+    `::preference::` sections unless the user has explicitly set it to
+    `False` — the phase orchestrator reads that signal."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
