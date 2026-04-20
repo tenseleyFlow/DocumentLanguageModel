@@ -35,8 +35,7 @@ def init_cmd(
         str | None,
         typer.Option(
             "--template",
-            help="(reserved) Pick a starter template once the template library ships.",
-            hidden=True,
+            help="Start from a named gallery template (see `dlm templates list`).",
         ),
     ] = None,
     i_accept_license: Annotated[
@@ -63,12 +62,6 @@ def init_cmd(
 
     console = Console(stderr=True)
 
-    if template is not None:
-        console.print(
-            "[yellow]note:[/yellow] --template is reserved; no starter templates "
-            "ship yet — the scaffold below is the default."
-        )
-
     if path.exists() and not force:
         console.print(
             f"[red]init:[/red] {path} already exists. "
@@ -76,8 +69,31 @@ def init_cmd(
         )
         raise typer.Exit(code=1)
 
+    # --template resolves the base from the template's meta.yaml; the
+    # --base default is kept for the no-template path only. Users who
+    # pass both a template and an explicit --base get a warning but the
+    # template still wins (the template body was authored against its
+    # recommended base).
+    applied_result = None
+    if template is not None:
+        from dlm.templates import TemplateError, apply_template
+
+        try:
+            applied_result = apply_template(template, path, force=force)
+        except TemplateError as exc:
+            console.print(f"[red]init:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
+        resolved_base = applied_result.template.meta.recommended_base
+        if base != "qwen2.5-1.5b" and base != resolved_base:
+            console.print(
+                f"[yellow]init:[/yellow] --base {base} ignored; template "
+                f"{template!r} uses {resolved_base}."
+            )
+    else:
+        resolved_base = base
+
     try:
-        spec = resolve_base_model(base, accept_license=i_accept_license)
+        spec = resolve_base_model(resolved_base, accept_license=i_accept_license)
     except UnknownBaseModelError as exc:
         console.print(f"[red]init:[/red] {exc}")
         raise typer.Exit(code=1) from exc
@@ -85,13 +101,13 @@ def init_cmd(
         # Gated + user didn't pass --i-accept-license up-front. Prompt
         # interactively if we have a TTY; otherwise refuse with the flag
         # pointer (audit F22 non-interactive path).
-        if not _prompt_accept_license(console, base, exc.license_url):
+        if not _prompt_accept_license(console, resolved_base, exc.license_url):
             console.print(
                 "[red]license:[/red] refused. Re-run with "
                 "[bold]--i-accept-license[/bold] to accept non-interactively."
             )
             raise typer.Exit(code=1) from exc
-        spec = resolve_base_model(base, accept_license=True)
+        spec = resolve_base_model(resolved_base, accept_license=True)
 
     # Record the license acceptance (or None for non-gated specs). We
     # know `resolve_base_model` already validated the flag/prompt chain
@@ -108,8 +124,11 @@ def init_cmd(
         else None
     )
 
-    dlm_id = mint_ulid()
-    _write_init_scaffold(path, spec.key, dlm_id)
+    if applied_result is not None:
+        dlm_id = applied_result.dlm_id
+    else:
+        dlm_id = mint_ulid()
+        _write_init_scaffold(path, spec.key, dlm_id)
 
     # Create the store + write the initial manifest so `dlm show` sees
     # the license record and `dlm train` has a prior manifest to diff
@@ -129,7 +148,14 @@ def init_cmd(
             license_acceptance=acceptance,
         ),
     )
-    console.print(f"[green]init:[/green] wrote {path}")
+    if applied_result is not None:
+        meta = applied_result.template.meta
+        console.print(
+            f"[green]init:[/green] wrote {path} from template "
+            f"[bold]{meta.name}[/bold] ({meta.title}) — base {spec.key}."
+        )
+    else:
+        console.print(f"[green]init:[/green] wrote {path}")
 
 
 def _previously_accepted(store_manifest_path: Path) -> bool:
@@ -1636,3 +1662,84 @@ def migrate_cmd(
     if result.backup_path is not None:
         console.print(f"[dim]backup:[/dim]  {result.backup_path}")
     console.print(f"[green]migrated:[/green] {path} {applied_str}")
+
+
+def templates_list_cmd(
+    json_out: Annotated[
+        bool,
+        typer.Option("--json", help="Emit a JSON array of template metadata."),
+    ] = False,
+    refresh: Annotated[
+        bool,
+        typer.Option(
+            "--refresh",
+            help=(
+                "Refresh from the upstream template gallery. Currently a no-op — "
+                "upstream repo + signing key are pending (Sprint 27 deferred polish)."
+            ),
+        ),
+    ] = False,
+    accept_unsigned: Annotated[
+        bool,
+        typer.Option(
+            "--accept-unsigned",
+            help=(
+                "Bypass signed-tag verification on --refresh. Reserved; takes effect "
+                "once the upstream gallery signs its releases."
+            ),
+        ),
+    ] = False,
+) -> None:
+    """List the bundled (and, one day, remote) template gallery."""
+
+    import json as _json
+
+    from rich.console import Console
+
+    from dlm.templates import list_bundled
+
+    console_out = Console()
+    console_err = Console(stderr=True)
+
+    if refresh:
+        from dlm.templates.fetcher import RemoteFetchUnavailable, cache_dir, fetch_all
+
+        try:
+            fetch_all(cache_dir(), remote="")
+        except RemoteFetchUnavailable as exc:
+            console_err.print(
+                f"[yellow]templates:[/yellow] {exc} Falling back to the bundled gallery."
+            )
+        # --accept-unsigned is reserved for when the live fetcher lands;
+        # touching it here silences ARG001 without ceremony.
+        _ = accept_unsigned
+
+    templates = list_bundled()
+
+    if json_out:
+        payload = [
+            {
+                "name": t.name,
+                "title": t.meta.title,
+                "domain_tags": list(t.meta.domain_tags),
+                "recommended_base": t.meta.recommended_base,
+                "expected_steps": t.meta.expected_steps,
+                "expected_duration": dict(t.meta.expected_duration),
+                "summary": t.meta.summary,
+                "sample_prompts": list(t.meta.sample_prompts),
+            }
+            for t in templates
+        ]
+        console_out.print_json(_json.dumps(payload))
+        return
+
+    if not templates:
+        console_err.print("[yellow]templates:[/yellow] no bundled templates found.")
+        raise typer.Exit(code=1)
+
+    name_width = max(len(t.name) for t in templates)
+    for t in templates:
+        console_out.print(
+            f"[bold]{t.name:<{name_width}}[/bold]  {t.meta.title}  "
+            f"[dim]({t.meta.recommended_base})[/dim]"
+        )

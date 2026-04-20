@@ -122,6 +122,14 @@ _metrics_app.callback(invoke_without_command=True)(commands.metrics_cmd)
 _metrics_app.command("watch")(commands.metrics_watch_cmd)
 app.add_typer(_metrics_app, name="metrics")
 
+# Sprint 27: `dlm templates list` (and, once upstream ships, `refresh`).
+_templates_app = typer.Typer(
+    help="Browse the starter template gallery (Sprint 27).",
+    no_args_is_help=True,
+)
+_templates_app.command("list")(commands.templates_list_cmd)
+app.add_typer(_templates_app, name="templates")
+
 
 def main() -> None:
     """Installed entry point (`dlm` on PATH).
