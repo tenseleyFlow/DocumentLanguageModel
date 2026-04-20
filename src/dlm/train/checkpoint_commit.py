@@ -87,8 +87,10 @@ def commit_version(
         # Preserve the bad weights for postmortem but make sure the
         # next `allocate_next_version` skips the name (the `-rejected`
         # suffix makes the dirname unparseable as `vNNNN`) and that
-        # `current.txt` never points at it.
-        rejected = pending.parent / f"{pending.name}-rejected"
+        # `current.txt` never points at it. Uniquify to avoid
+        # clobbering a prior rejected commit at the same version
+        # number (can happen on repeated `dlm train --fresh` retries).
+        rejected = _uniquify_rejected(pending)
         try:
             pending.rename(rejected)
             _LOG.error(
@@ -113,6 +115,27 @@ def commit_version(
     else:
         store.set_current_adapter_for(adapter_name, pending)
     return pending
+
+
+def _uniquify_rejected(pending: Path) -> Path:
+    """Pick a `{pending.name}-rejected[-N]` path that doesn't already exist.
+
+    Repeated `dlm train --fresh` retries on a poison config can produce
+    multiple rejected commits at the same `vNNNN`; this loop appends a
+    numeric suffix until we find an unused name, so each attempt is
+    preserved. Capped at 1000 to avoid an infinite loop on a
+    pathologically corrupt store.
+    """
+    base = pending.parent / f"{pending.name}-rejected"
+    if not base.exists():
+        return base
+    for i in range(1, 1000):
+        candidate = pending.parent / f"{pending.name}-rejected-{i}"
+        if not candidate.exists():
+            return candidate
+    # Fallback: return `base` and let rename fail with the original
+    # OSError so the caller logs the condition.
+    return base
 
 
 def fsync_dir(path: Path) -> None:
