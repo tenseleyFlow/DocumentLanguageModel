@@ -104,10 +104,10 @@ class TestInputValidation:
 
 class TestDefaultConstants:
     def test_default_floor_matches_literature(self) -> None:
-        assert DAPT_FLOOR_RATIO == pytest.approx(0.1)
+        assert pytest.approx(0.1) == DAPT_FLOOR_RATIO
 
     def test_default_warmup_ratio(self) -> None:
-        assert DAPT_WARMUP_RATIO == pytest.approx(0.2)
+        assert pytest.approx(0.2) == DAPT_WARMUP_RATIO
 
 
 class TestDaptWarmupSteps:

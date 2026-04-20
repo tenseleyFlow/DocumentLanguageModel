@@ -120,13 +120,13 @@ class TestComputeVocabGapValidation:
 
 class TestRenderReport:
     def _basic(self, **overrides: object) -> VocabGapReport:
-        defaults: dict[str, object] = dict(
-            total_tokens=50,
-            total_words=30,
-            tokens_per_word=50 / 30,
-            unk_hits=0,
-            top_tokens=[("the", 5), ("cat", 3)],
-        )
+        defaults: dict[str, object] = {
+            "total_tokens": 50,
+            "total_words": 30,
+            "tokens_per_word": 50 / 30,
+            "unk_hits": 0,
+            "top_tokens": [("the", 5), ("cat", 3)],
+        }
         defaults.update(overrides)
         return VocabGapReport(**defaults)  # type: ignore[arg-type]
 

@@ -27,7 +27,6 @@ from dlm.train.preference.phase_orchestrator import (
     run_phases,
 )
 
-
 # ---- helpers ---------------------------------------------------------------
 
 
@@ -89,10 +88,10 @@ def _parsed(
     who wrote `training.preference.enabled: true/false` in their
     frontmatter.
     """
-    if dpo_enabled is None:
-        pref = PreferenceConfig()
-    else:
-        pref = PreferenceConfig(enabled=dpo_enabled)
+    pref = (
+        PreferenceConfig() if dpo_enabled is None
+        else PreferenceConfig(enabled=dpo_enabled)
+    )
     return _FakeParsed(
         sections=tuple(sections),
         frontmatter=_FakeFrontmatter(training=_FakeTraining(preference=pref)),
@@ -307,8 +306,10 @@ class TestDispatcherDpoOnly:
 
 class TestPhaseResult:
     def test_phase_result_is_frozen(self) -> None:
+        import dataclasses
+
         pr = PhaseResult(phase="sft", result=_FakeRunResult(adapter_version=1))
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             pr.phase = "dpo"  # type: ignore[misc]
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dlm.doc.parser import ParsedDlm
-from dlm.doc.schema import AdapterConfig, DlmFrontmatter, TrainingConfig
+from dlm.doc.schema import DlmFrontmatter, TrainingConfig
 from dlm.doc.sections import Section, SectionType
 from dlm.train.trainer import _resolve_adapter_hparams
 

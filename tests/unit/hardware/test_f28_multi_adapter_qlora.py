@@ -37,18 +37,16 @@ class TestF28MultiAdapterQLoraRefusal:
     def test_error_message_points_to_adapter_lora_alternative(self) -> None:
         with force_cuda(vram_gb=4.0):
             caps = replace(probe(), has_bitsandbytes=True)
-        try:
+        with pytest.raises(ResolutionError) as exc_info:
             check_refusals(
                 _qlora_multi_doc(3),
                 caps,
                 base_params=1_500_000_000,
                 num_adapters=3,
             )
-        except ResolutionError as exc:
-            assert "adapter: lora" in str(exc)
-            assert "reduce the number of adapters" in str(exc)
-        else:
-            pytest.fail("expected ResolutionError")
+        message = str(exc_info.value)
+        assert "adapter: lora" in message
+        assert "reduce the number of adapters" in message
 
     def test_single_adapter_qlora_not_affected_by_f28(self) -> None:
         # num_adapters=1 on a small VRAM box: the multi-adapter F28 gate

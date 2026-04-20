@@ -33,19 +33,22 @@ class TestParseFenceSuffix:
     def test_bare_fence_has_no_adapter(self) -> None:
         parsed = _parse("::instruction::\n### Q\nhi\n### A\nbye\n")
         instr = [s for s in parsed.sections if s.type == SectionType.INSTRUCTION]
-        assert instr and instr[0].adapter is None
+        assert instr
+        assert instr[0].adapter is None
 
     def test_suffixed_fence_captures_adapter(self) -> None:
         parsed = _parse("::instruction#tone::\n### Q\nhi\n### A\nbye\n")
         instr = [s for s in parsed.sections if s.type == SectionType.INSTRUCTION]
-        assert instr and instr[0].adapter == "tone"
+        assert instr
+        assert instr[0].adapter == "tone"
 
     def test_preference_fence_adapter(self) -> None:
         parsed = _parse(
             "::preference#knowledge::\n### Prompt\nq\n### Chosen\nc\n### Rejected\nr\n"
         )
         pref = [s for s in parsed.sections if s.type == SectionType.PREFERENCE]
-        assert pref and pref[0].adapter == "knowledge"
+        assert pref
+        assert pref[0].adapter == "knowledge"
 
     def test_empty_suffix_after_hash_rejected(self) -> None:
         with pytest.raises(FenceError, match="empty adapter suffix"):

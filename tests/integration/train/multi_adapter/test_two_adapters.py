@@ -98,7 +98,7 @@ def test_two_adapters_each_get_their_own_version_history(
     # doesn't know about adapter fences yet. Re-save the doc with the
     # raw body so the parser sees the instruction fences.
     raw = doc_path.read_text(encoding="utf-8")
-    parsed_pre = parse_file(doc_path)
+    parse_file(doc_path)  # validate the scaffold parses first
     fm_end = raw.find("\n---\n", raw.find("---") + 3) + len("\n---\n")
     doc_path.write_text(
         raw[:fm_end] + "\n" + _DOC_BODY,

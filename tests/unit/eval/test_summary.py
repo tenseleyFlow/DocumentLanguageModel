@@ -147,7 +147,8 @@ class TestSplitLossByMode:
 
     def test_empty_yields_all_none(self) -> None:
         out = split_loss_by_mode([])
-        assert out.cpt is None and out.sft is None
+        assert out.cpt is None
+        assert out.sft is None
 
     def test_unknown_modes_ignored(self) -> None:
         out = split_loss_by_mode(

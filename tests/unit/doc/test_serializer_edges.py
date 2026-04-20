@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from dlm.doc.parser import ParsedDlm
-from dlm.doc.parser import parse_text
+from dlm.doc.parser import ParsedDlm, parse_text
 from dlm.doc.schema import (
     DlmFrontmatter,
     PreferenceConfig,
