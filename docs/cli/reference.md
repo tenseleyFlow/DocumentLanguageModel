@@ -91,6 +91,25 @@ dlm prompt <path> [query] [--max-tokens N] [--temp F] [--top-p F]
 
 Query is the CLI positional argument. Omit to read from stdin.
 
+### `dlm repl`
+
+Interactive prompt-and-respond REPL against the trained adapter
+(Sprint 24).
+
+```
+dlm repl <path> [--adapter NAME] [--backend {auto,pytorch,mlx}]
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--adapter NAME` | None | Named adapter; required on multi-adapter docs. |
+| `--backend {auto,pytorch,mlx}` | `auto` | Same contract as `dlm prompt --backend`. |
+
+Slash commands inside the REPL: `/help`, `/exit`, `/clear`, `/save`,
+`/adapter`, `/params`, `/model`, `/history`. Ctrl-D exits; Ctrl-C
+cancels generation or input. Session history persists at
+`~/.dlm/history`. See the [interactive-session cookbook](../cookbook/interactive-session.md).
+
 ### `dlm export`
 
 Produce GGUF files + Modelfile + register with Ollama.
