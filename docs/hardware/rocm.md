@@ -79,9 +79,10 @@ The script writes to `vendor/llama.cpp/build-rocm/`. To make
 export DLM_LLAMA_CPP_BUILD=vendor/llama.cpp/build-rocm
 ```
 
-(Environment-variable plumbing in `dlm.export.vendoring` lands as
-part of the next ROCm polish pass — for now, manually invoke the
-ROCm binaries if you need them.)
+`DLM_LLAMA_CPP_BUILD` is honored by `dlm.export.vendoring` — when
+set, it's checked before the default vendor dir for each binary, so
+the ROCm-accelerated `llama-quantize` / `llama-imatrix` win over any
+CPU-only build left behind from `scripts/bump-llama-cpp.sh build`.
 
 ## CI / testing
 

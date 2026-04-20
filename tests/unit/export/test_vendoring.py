@@ -83,6 +83,47 @@ class TestLlamaQuantizeBin:
         with pytest.raises(VendoringError, match="llama-quantize"):
             llama_quantize_bin(override=root)
 
+    def test_dlm_llama_cpp_build_env_preferred(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Audit-08 M6: `DLM_LLAMA_CPP_BUILD` overrides the default vendor dir.
+
+        The env var points at a build-only dir (e.g. the ROCm
+        `vendor/llama.cpp/build-rocm`) that contains only binaries.
+        `_resolve_binary` must find `bin/llama-quantize` there before
+        falling through to the vendor tree.
+
+        The production path has `override=None`; we mirror that here
+        by driving vendor resolution through `DLM_LLAMA_CPP_ROOT` so
+        both env vars coexist (ROCm users set both).
+        """
+        rocm_build = tmp_path / "build-rocm"
+        (rocm_build / "bin").mkdir(parents=True)
+        rocm_bin = rocm_build / "bin" / "llama-quantize"
+        rocm_bin.write_text("#!/bin/sh\necho rocm\n")
+        rocm_bin.chmod(0o755)
+
+        vendor_root = _populate_vendor(tmp_path / "llama.cpp")
+
+        monkeypatch.setenv("DLM_LLAMA_CPP_BUILD", str(rocm_build))
+        monkeypatch.setenv("DLM_LLAMA_CPP_ROOT", str(vendor_root))
+        path = llama_quantize_bin()
+        # The ROCm build binary wins over the vendored CPU build.
+        assert path == rocm_bin
+
+    def test_dlm_llama_cpp_build_env_missing_binary_falls_through(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Env var pointing at an incomplete dir falls through to vendor."""
+        empty_build = tmp_path / "build-rocm"
+        empty_build.mkdir()
+        vendor_root = _populate_vendor(tmp_path / "llama.cpp")
+        monkeypatch.setenv("DLM_LLAMA_CPP_BUILD", str(empty_build))
+        monkeypatch.setenv("DLM_LLAMA_CPP_ROOT", str(vendor_root))
+        path = llama_quantize_bin()
+        assert path.is_file()
+        assert str(vendor_root) in str(path)
+
     def test_legacy_quantize_name_found(self, tmp_path: Path) -> None:
         """Pre-rename builds shipped `quantize` rather than `llama-quantize`."""
         root = _populate_vendor(tmp_path / "llama.cpp", with_binary=False)

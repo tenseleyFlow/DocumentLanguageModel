@@ -42,6 +42,11 @@ from dlm.export.errors import VendoringError
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 VENDOR_LLAMA_CPP: Final[Path] = _REPO_ROOT / "vendor" / "llama.cpp"
 _ENV_VAR: Final[str] = "DLM_LLAMA_CPP_ROOT"
+_BUILD_ENV_VAR: Final[str] = "DLM_LLAMA_CPP_BUILD"
+"""Sprint 22 / audit-08 M6: when set, `_resolve_binary` checks
+`<DLM_LLAMA_CPP_BUILD>/bin/<name>` before the default vendor layout.
+Lets users point `dlm export` at a HIP-built llama.cpp without
+rebuilding the vendor dir itself (see docs/hardware/rocm.md)."""
 
 CONVERT_HF_TO_GGUF: Final[str] = "convert_hf_to_gguf.py"
 CONVERT_LORA_TO_GGUF: Final[str] = "convert_lora_to_gguf.py"
@@ -131,7 +136,20 @@ def _resolve_binary(
     binary, fall back to `shutil.which(name)` — covers the common
     `brew install llama.cpp` case where the binary lives under
     `/opt/homebrew/bin/`.
+
+    Audit-08 M6: `$DLM_LLAMA_CPP_BUILD`, when set, is checked BEFORE
+    the default vendor tree. Lets ROCm users point at the HIP build
+    dir produced by `scripts/build-llama-cpp-rocm.sh` without
+    clobbering the CPU build.
     """
+    if override is None:
+        build_env = os.environ.get(_BUILD_ENV_VAR)
+        if build_env:
+            build_root = Path(build_env)
+            for candidate in candidates:
+                path = build_root / candidate
+                if path.is_file():
+                    return path
     root = llama_cpp_root(override)
     for candidate in candidates:
         path = root / candidate
