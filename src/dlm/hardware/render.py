@@ -58,7 +58,9 @@ def render_text(result: DoctorResult) -> str:
 
 def _backend_line(caps: Capabilities) -> str:
     bits: list[str] = [f"{caps.backend.value} ({caps.device_name})"]
-    if caps.sm is not None:
+    if caps.rocm_arch is not None:
+        bits.append(f"arch {caps.rocm_arch}")
+    elif caps.sm is not None:
         bits.append(f"SM {caps.sm[0]}.{caps.sm[1]}")
     if caps.vram_gb is not None:
         bits.append(f"{caps.vram_gb:.1f} GB VRAM free")

@@ -44,6 +44,7 @@ class Capabilities:
     backend: Backend
     device_name: str
     sm: tuple[int, int] | None
+    rocm_arch: str | None
     vram_gb: float | None
     unified_memory_gb: float | None
     cpu_cores: int
@@ -74,6 +75,7 @@ def probe() -> Capabilities:
     backend = detect()
     device_name = _device_name(backend, torch)
     sm = _get_sm(backend, torch)
+    rocm_arch = _get_rocm_arch(backend, torch)
     vram_gb = _get_vram_gb(backend, torch)
     unified_mem = _get_unified_memory_gb(backend)
     cpu_cores = psutil.cpu_count(logical=True) or 1
@@ -83,13 +85,14 @@ def probe() -> Capabilities:
         backend=backend,
         device_name=device_name,
         sm=sm,
+        rocm_arch=rocm_arch,
         vram_gb=vram_gb,
         unified_memory_gb=unified_mem,
         cpu_cores=cpu_cores,
         ram_gb=ram_gb,
-        supports_bf16=_supports_bf16(backend, sm),
+        supports_bf16=_supports_bf16(backend, sm, rocm_arch),
         supports_fp16=_supports_fp16(backend),
-        has_flash_attention=_has_flash_attention(backend, sm),
+        has_flash_attention=_has_flash_attention(backend, sm, rocm_arch),
         has_xformers=_module_available("xformers"),
         has_bitsandbytes=_module_available("bitsandbytes") and backend == Backend.CUDA,
         has_triton=_module_available("triton"),
@@ -151,9 +154,13 @@ def _get_unified_memory_gb(backend: Backend) -> float | None:
     return psutil.virtual_memory().total / (1024**3)
 
 
-def _supports_bf16(backend: Backend, sm: tuple[int, int] | None) -> bool:
-    if backend in (Backend.CUDA, Backend.ROCM):
+def _supports_bf16(
+    backend: Backend, sm: tuple[int, int] | None, rocm_arch: str | None
+) -> bool:
+    if backend == Backend.CUDA:
         return sm is not None and sm >= (8, 0)
+    if backend == Backend.ROCM:
+        return _rocm_arch_supports_bf16(rocm_arch)
     if backend == Backend.MPS:
         # PyTorch MPS gained bf16 in 2.1; most installs support it, but
         # not every Apple SoC does. Conservative: report False and let
@@ -166,18 +173,75 @@ def _supports_fp16(backend: Backend) -> bool:
     return backend in (Backend.CUDA, Backend.ROCM, Backend.MPS)
 
 
-def _has_flash_attention(backend: Backend, sm: tuple[int, int] | None) -> bool:
-    """FlashAttention 2 requires NVIDIA Ampere+ and the `flash_attn` package.
+def _has_flash_attention(
+    backend: Backend, sm: tuple[int, int] | None, rocm_arch: str | None
+) -> bool:
+    """FlashAttention 2 availability by backend + arch.
 
-    We do NOT import flash_attn here because a bad build can segfault;
-    we only check that the package is present. Runtime code paths that
-    use it must still wrap imports defensively.
+    - NVIDIA: `flash_attn` + SM ≥ 8.0 (Ampere+).
+    - ROCm (Sprint 22): AMD's `flash_attn` fork exists for CDNA
+      (gfx90a MI200, gfx942 MI300) and is landing for RDNA3. We gate
+      on the same bf16-capable arch allowlist — if an arch is too old
+      for bf16 it can't run FA2 either — and on the `flash_attn`
+      package being importable. We do NOT import it here because a
+      bad build can segfault; runtime paths must wrap imports
+      defensively.
     """
-    if backend != Backend.CUDA:
+    if not _module_available("flash_attn"):
         return False
-    if sm is None or sm < (8, 0):
+    if backend == Backend.CUDA:
+        return sm is not None and sm >= (8, 0)
+    if backend == Backend.ROCM:
+        return _rocm_arch_supports_bf16(rocm_arch)
+    return False
+
+
+# --- ROCm arch helpers (Sprint 22) -------------------------------------------
+
+
+def _get_rocm_arch(backend: Backend, torch: object) -> str | None:
+    """Read `gcnArchName` off the first ROCm device; None off-ROCm.
+
+    `gcnArchName` is the canonical AMD arch string (`gfx90a`,
+    `gfx942`, `gfx1100`, ...). Distinct from the CUDA-style SM tuple
+    on ROCm because AMD arches don't compose as (major, minor) — they
+    map to discrete micro-architectures with different ISA surfaces.
+    """
+    if backend != Backend.ROCM:
+        return None
+    try:
+        props = torch.cuda.get_device_properties(0)  # type: ignore[attr-defined]
+    except (AttributeError, RuntimeError, AssertionError) as exc:
+        _LOG.warning(
+            "capabilities probe: torch.cuda.get_device_properties failed on ROCm (%s); "
+            "treating arch as unknown",
+            exc,
+        )
+        return None
+    name = getattr(props, "gcnArchName", None)
+    if not isinstance(name, str) or not name:
+        return None
+    # Some ROCm builds append a colon-separated xnack/sramecc suffix
+    # (e.g. `gfx90a:sramecc+:xnack-`). Strip it so the allowlist can
+    # match exact arches.
+    return name.split(":", 1)[0]
+
+
+def _rocm_arch_supports_bf16(arch: str | None) -> bool:
+    """ROCm arches with real bf16 (not emulated) — CDNA2+ and RDNA3+.
+
+    - `gfx90a` — MI200 (CDNA2)
+    - `gfx942` — MI300 (CDNA3)
+    - `gfx1100`/`gfx1101`/`gfx1102` — RDNA3 (7900 XTX, 7800 XT, 7700 XT)
+    - `gfx1200`/`gfx1201` — RDNA4
+    Older arches (gfx906 Vega20, gfx908 MI100 CDNA1, gfx1010-gfx1036
+    RDNA1/RDNA2) either lack bf16 or emulate it at a cost that defeats
+    the purpose.
+    """
+    if arch is None:
         return False
-    return _module_available("flash_attn")
+    allowlist = {"gfx90a", "gfx942", "gfx1100", "gfx1101", "gfx1102", "gfx1200", "gfx1201"}
+    return arch in allowlist
 
 
 def _module_available(name: str) -> bool:
@@ -217,9 +281,12 @@ def _determinism_class(backend: Backend) -> DeterminismClass:
     if backend == Backend.MPS:
         return "best-effort"
     if backend == Backend.ROCM:
-        # ROCm deterministic kernels are a moving target; treat as
-        # best-effort until Sprint 22's ROCm work lands with actual
-        # measurements.
+        # ROCm deterministic kernels are a moving target across HIP
+        # versions; MIOpen's deterministic conv path exists but
+        # determinism across full training is not guaranteed the way
+        # it is on CUDA with `use_deterministic_algorithms`. Classified
+        # "best-effort" — fp match may drift across PyTorch/ROCm
+        # upgrades even with a pinned seed.
         return "best-effort"
     return "advisory"
 
