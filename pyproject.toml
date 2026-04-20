@@ -21,6 +21,7 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.7",
     "prompt-toolkit>=3.0",    # dlm repl interactive prompt (Sprint 24)
+    "watchfiles>=0.24",       # dlm train --watch save-to-train loop (Sprint 25)
     "python-ulid>=3.0",       # dlm_id generation (Sprint 13)
     "pydantic>=2.9",          # schema validation (Sprint 03+)
     "pyyaml>=6.0",            # .dlm frontmatter (Sprint 03+)
