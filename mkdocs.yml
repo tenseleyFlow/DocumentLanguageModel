@@ -66,6 +66,7 @@ nav:
       - Retrain & forget: cookbook/retrain-and-forget.md
       - Sharing with pack: cookbook/sharing-with-pack.md
       - Quantization tradeoffs: cookbook/quantization-tradeoffs.md
+      - Preference (DPO vs ORPO): cookbook/preference-dpo-vs-orpo.md
   - Architecture: architecture.md
   - Determinism: determinism.md
   - Troubleshooting: troubleshooting.md
