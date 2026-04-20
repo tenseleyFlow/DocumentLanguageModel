@@ -99,6 +99,60 @@ def check_refusals(
         )
 
 
+def check_multi_gpu_refusals(caps: Capabilities, world_size: int) -> None:
+    """Refuse multi-GPU configurations that can't reasonably work.
+
+    Sprint 23 scope: CUDA only. MPS doesn't do DDP; CPU multi-process
+    training is technically possible but a terrible user experience.
+    Heterogeneous CUDA GPUs (different SM families) produce
+    inconsistent mixed-precision results — refuse rather than let the
+    slower arch silently dictate the precision.
+
+    ROCm multi-GPU is explicitly out of scope for this sprint per the
+    sprint 23 plan — refuse with a pointer so users don't chase
+    phantom bugs.
+    """
+    if world_size < 2:
+        return
+    if caps.backend == Backend.MPS:
+        raise ResolutionError(
+            "Multi-GPU training on Apple Silicon (MPS) is not supported; "
+            "MPS has no DDP path. Train single-GPU or on a CUDA host.",
+        )
+    if caps.backend == Backend.CPU:
+        raise ResolutionError(
+            "Multi-GPU training on CPU is not supported. "
+            "Drop `--gpus` or run single-process.",
+        )
+    if caps.backend == Backend.ROCM:
+        raise ResolutionError(
+            "Multi-GPU training on ROCm is out of scope for Sprint 23; "
+            "train single-GPU on ROCm or use a CUDA host for multi-GPU runs.",
+        )
+    # CUDA path — heterogeneous detection is the caller's responsibility
+    # since `Capabilities` only reports a single device. Callers that
+    # assemble multi-device state (the launcher) should call
+    # `assert_homogeneous_cuda` directly before spawning ranks.
+
+
+def assert_homogeneous_cuda(sm_per_device: list[tuple[int, int] | None]) -> None:
+    """Refuse if the configured CUDA devices span different SM families.
+
+    Accepts the list of SM tuples the launcher collected from
+    `torch.cuda.get_device_capability(i)` for each selected device.
+    Mixed precision behavior on heterogeneous GPUs (e.g. Ampere +
+    Turing) is unreliable — bf16 paths silently fall back to fp16 on
+    the Turing card and the two ranks drift.
+    """
+    unique = {sm for sm in sm_per_device if sm is not None}
+    if len(unique) > 1:
+        raise ResolutionError(
+            f"Heterogeneous CUDA GPUs detected (SM families: {sorted(unique)}); "
+            "multi-GPU training requires matching compute capability. "
+            "Select GPUs of the same generation via `--gpus 0,1` etc.",
+        )
+
+
 def _effective_adapter(training: TrainingConfig) -> str:
     """Return the adapter type effectively in force.
 

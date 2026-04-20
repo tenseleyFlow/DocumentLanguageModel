@@ -24,7 +24,7 @@ from dlm.doc.schema import TrainingConfig
 from dlm.hardware.backend import Backend
 from dlm.hardware.capabilities import Capabilities
 from dlm.hardware.memory import estimate_peak_vram_gb, estimate_step_seconds
-from dlm.hardware.refusals import check_refusals
+from dlm.hardware.refusals import check_multi_gpu_refusals, check_refusals
 
 AttnImpl = Literal["flash_attention_2", "sdpa", "eager"]
 Precision = Literal["bf16", "fp16"]
@@ -39,6 +39,10 @@ class TrainingPlan:
     """Resolved training plan for the current host.
 
     Fields mirror the knobs the trainer (Sprint 09) actually consumes.
+    `world_size` (Sprint 23) is the number of data-parallel ranks; 1
+    on single-GPU / single-process paths. `effective_batch_size`
+    already folds `world_size` in, so users reading the plan don't
+    have to multiply themselves.
     """
 
     precision: Precision
@@ -49,6 +53,7 @@ class TrainingPlan:
     grad_accum: int
     effective_batch_size: int
     gradient_checkpointing: bool
+    world_size: int
     est_peak_vram_gb: float
     est_step_seconds: float
     reason: str
@@ -70,6 +75,7 @@ def resolve(
     force: bool = False,
     phase: Phase = "sft",
     num_adapters: int = 1,
+    world_size: int = 1,
 ) -> TrainingPlan:
     """Produce a concrete plan from a frontmatter config + host caps.
 
@@ -82,7 +88,19 @@ def resolve(
     `num_adapters` lets multi-adapter callers surface the count so
     F28 (multi-adapter QLoRA VRAM refusal) can fire before training
     starts. Single-adapter docs keep the default.
+
+    `world_size` (Sprint 23) is the number of data-parallel ranks.
+    Multiplies the reported `effective_batch_size` (each rank
+    processes a micro-batch independently) and scales the per-rank
+    step-time estimate down — more GPUs, less wall-clock time per
+    global step up to comm overhead. `world_size > 1` triggers the
+    multi-GPU refusal matrix (MPS/CPU refusal, heterogeneous CUDA
+    refusal).
     """
+    if world_size < 1:
+        raise ValueError(f"world_size must be >= 1, got {world_size}")
+    if world_size > 1:
+        check_multi_gpu_refusals(caps, world_size)
     check_refusals(
         training, caps, base_params, force=force, num_adapters=num_adapters
     )
@@ -132,8 +150,9 @@ def resolve(
         quant_compute_dtype=quant_dtype,
         micro_batch_size=micro_batch,
         grad_accum=grad_accum,
-        effective_batch_size=micro_batch * grad_accum,
+        effective_batch_size=micro_batch * grad_accum * world_size,
         gradient_checkpointing=gradient_checkpointing,
+        world_size=world_size,
         est_peak_vram_gb=round(est_peak, 2),
         est_step_seconds=round(est_step, 2),
         reason=reason,
