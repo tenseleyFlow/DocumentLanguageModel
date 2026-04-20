@@ -21,6 +21,13 @@ from dlm.train.errors import (
     TrainingError,
     VersionDriftWarning,
 )
+from dlm.train.integrity import (
+    NaNEvalError,
+    NaNWeightsError,
+    assert_eval_finite,
+    assert_finite_adapter,
+    audit_trainable_finite,
+)
 from dlm.train.logger import Banner, StepLogger, log_path_for
 from dlm.train.oom_guard import format_oom_message, recommend_grad_accum
 from dlm.train.state_sidecar import (
@@ -40,6 +47,8 @@ __all__ = [
     "Banner",
     "DeterminismSummary",
     "DiskSpaceError",
+    "NaNEvalError",
+    "NaNWeightsError",
     "OOMError",
     "PinnedVersions",
     "ResumeIntegrityError",
@@ -53,6 +62,9 @@ __all__ = [
     "VERSIONS_FILENAME",
     "VersionDriftWarning",
     "allocate_next_version",
+    "assert_eval_finite",
+    "assert_finite_adapter",
+    "audit_trainable_finite",
     "capture_runtime_versions",
     "commit_version",
     "estimate_checkpoint_bytes",
