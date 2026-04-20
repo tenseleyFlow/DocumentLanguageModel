@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from dlm.export.errors import ExportError
 
@@ -131,17 +131,35 @@ def validate_mix_against_declared(
         )
 
 
+CombinationType = Literal["linear", "svd"]
+"""Allowed `add_weighted_adapter.combination_type` values (audit-08 N4).
+
+- `linear` (default): weighted sum of LoRA deltas. Fast; exact for
+  same-rank adapters; approximate for mixed ranks.
+- `svd`: SVD-based recomposition. Higher fidelity across mixed ranks
+  at meaningful compute cost.
+
+PEFT exposes more (`cat`, `ties`, `dare_linear`, ...); we gate to the
+two the project has tested end-to-end. Extending is a one-line
+`Literal` bump once a new combination is validated.
+"""
+
+
 def build_weighted_merged(  # pragma: no cover - heavy path
     base_model: Any,
     store: StorePath,
     spec: BaseModelSpec,  # noqa: ARG001  # reserved for future use
     entries: list[MixEntry],
+    *,
+    combination_type: CombinationType = "linear",
 ) -> Any:
     """Load each adapter, combine them via `add_weighted_adapter`.
 
     Returns a `PeftModel` with adapter `_export_merged` active. The
     caller writes the merged adapter to an ephemeral directory and
     hands it to the existing GGUF pipeline.
+
+    `combination_type` controls PEFT's merge strategy (audit-08 N4).
     """
     from peft import PeftModel
 
@@ -163,7 +181,7 @@ def build_weighted_merged(  # pragma: no cover - heavy path
         adapters=[e.name for e in entries],
         weights=[e.weight for e in entries],
         adapter_name=_MERGED_ADAPTER_NAME,
-        combination_type="linear",
+        combination_type=combination_type,
     )
     model.set_adapter(_MERGED_ADAPTER_NAME)
     return model

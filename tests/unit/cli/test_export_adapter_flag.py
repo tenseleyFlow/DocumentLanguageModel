@@ -162,3 +162,24 @@ class TestExportAdapterMixValidation:
         text = _joined(result)
         assert "not declared" in text
         assert "ghost" in text
+
+    def test_unknown_mix_method_rejected(self, tmp_path: Path) -> None:
+        """Audit-08 N4: --adapter-mix-method accepts only linear|svd."""
+        doc = _init_multi(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "--home",
+                str(tmp_path / "home"),
+                "export",
+                str(doc),
+                "--adapter-mix",
+                "knowledge:1.0,tone:0.5",
+                "--adapter-mix-method",
+                "dare_linear",  # supported by PEFT but not exposed here
+                "--skip-ollama",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "linear` or `svd`" in _joined(result)

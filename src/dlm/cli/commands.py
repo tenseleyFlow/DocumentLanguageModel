@@ -576,6 +576,18 @@ def export_cmd(
             ),
         ),
     ] = None,
+    adapter_mix_method: Annotated[
+        str,
+        typer.Option(
+            "--adapter-mix-method",
+            help=(
+                "PEFT combination strategy for --adapter-mix. `linear` "
+                "(default) sums LoRA deltas; `svd` recomposes via SVD "
+                "(higher fidelity, heavier compute). Only meaningful "
+                "with --adapter-mix."
+            ),
+        ),
+    ] = "linear",
     verbose: Annotated[
         bool,
         typer.Option("--verbose", help="Log each subprocess command as it launches."),
@@ -651,6 +663,12 @@ def export_cmd(
                 "documents (this doc does not declare `training.adapters`)."
             )
             raise typer.Exit(code=2)
+        if adapter_mix_method not in ("linear", "svd"):
+            console.print(
+                f"[red]export:[/red] --adapter-mix-method must be "
+                f"`linear` or `svd`, got {adapter_mix_method!r}."
+            )
+            raise typer.Exit(code=2)
         try:
             entries = parse_mix_spec(adapter_mix)
             validate_mix_against_declared(entries, set(adapters_declared))
@@ -718,7 +736,13 @@ def export_cmd(
         base_model = AutoModelForCausalLM.from_pretrained(
             str(cached.path), revision=spec.revision
         )
-        merged = build_weighted_merged(base_model, store, spec, entries_typed)
+        merged = build_weighted_merged(
+            base_model,
+            store,
+            spec,
+            entries_typed,
+            combination_type=adapter_mix_method,  # type: ignore[arg-type]
+        )
         merge_dir = store.cache_dir_for(
             "_export_merged_" + "_".join(n for n, _ in mix_entries)
         )

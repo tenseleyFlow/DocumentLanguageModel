@@ -110,7 +110,8 @@ dlm export <path> [--quant Q] [--merged [--dequantize]]
 | `--draft TAG` | auto | Override the speculative-decoding draft model. |
 | `--no-draft` | false | Disable speculative decoding. Mutex with `--draft`. |
 | `--adapter NAME` | None | Export a single named adapter from `training.adapters`. Rejected on single-adapter documents. Mutex with `--adapter-mix`. |
-| `--adapter-mix SPEC` | None | Weighted composition like `knowledge:1.0,tone:0.5`. Produces one Ollama model by merging the named adapters linearly at export time. LoRA-only; QLoRA sources require `--dequantize --merged`. Mutex with `--adapter`. |
+| `--adapter-mix SPEC` | None | Weighted composition like `knowledge:1.0,tone:0.5`. Produces one Ollama model by merging the named adapters at export time. LoRA-only; QLoRA sources require `--dequantize --merged`. Mutex with `--adapter`. |
+| `--adapter-mix-method` | `linear` | PEFT merge strategy: `linear` (default; fast weighted sum) or `svd` (higher fidelity, heavier compute). Only meaningful with `--adapter-mix`. |
 
 ### `dlm pack`
 
