@@ -564,6 +564,18 @@ def export_cmd(
             ),
         ),
     ] = None,
+    adapter_mix: Annotated[
+        str | None,
+        typer.Option(
+            "--adapter-mix",
+            help=(
+                "Weighted composition of named adapters, e.g. "
+                "`knowledge:1.0,tone:0.5`. Mutually exclusive with --adapter. "
+                "Multi-adapter docs only. LoRA-only; QLoRA requires "
+                "--dequantize."
+            ),
+        ),
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option("--verbose", help="Log each subprocess command as it launches."),
@@ -601,6 +613,12 @@ def export_cmd(
     if draft is not None and no_draft:
         console.print("[red]error:[/red] --draft and --no-draft are mutually exclusive; pick one.")
         raise typer.Exit(code=2)
+    if adapter is not None and adapter_mix is not None:
+        console.print(
+            "[red]export:[/red] --adapter and --adapter-mix are mutually "
+            "exclusive; pick one."
+        )
+        raise typer.Exit(code=2)
 
     parsed = parse_file(path)
     adapters_declared = parsed.frontmatter.training.adapters
@@ -618,6 +636,29 @@ def export_cmd(
                 f"(declared: {declared})."
             )
             raise typer.Exit(code=2)
+
+    mix_entries: list[tuple[str, float]] | None = None
+    if adapter_mix is not None:
+        from dlm.export.weighted_merge import (
+            InvalidMixSpecError,
+            parse_mix_spec,
+            validate_mix_against_declared,
+        )
+
+        if adapters_declared is None:
+            console.print(
+                "[red]export:[/red] --adapter-mix is only valid on multi-adapter "
+                "documents (this doc does not declare `training.adapters`)."
+            )
+            raise typer.Exit(code=2)
+        try:
+            entries = parse_mix_spec(adapter_mix)
+            validate_mix_against_declared(entries, set(adapters_declared))
+        except InvalidMixSpecError as exc:
+            console.print(f"[red]export:[/red] {exc}")
+            raise typer.Exit(code=2) from exc
+        mix_entries = [(e.name, e.weight) for e in entries]
+
     store = for_dlm(parsed.frontmatter.dlm_id)
     already_accepted = _previously_accepted(store.manifest)
     try:
@@ -657,6 +698,31 @@ def export_cmd(
         console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
         return run_checked(cmd)
 
+    adapter_path_override = None
+    if mix_entries is not None:  # pragma: no cover - heavy path
+        # Build the weighted-merged adapter into an ephemeral dir,
+        # then feed the path to run_export as an override. The tmp
+        # dir lives under the store's cache/ so it cleans up with
+        # the rest of the store on `dlm pack`.
+        from transformers import AutoModelForCausalLM
+
+        from dlm.export.weighted_merge import (
+            MixEntry,
+            build_weighted_merged,
+            save_merged_to_tmp,
+        )
+
+        store.ensure_layout()
+        entries_typed = [MixEntry(name=n, weight=w) for (n, w) in mix_entries]
+        base_model = AutoModelForCausalLM.from_pretrained(
+            str(cached.path), revision=spec.revision
+        )
+        merged = build_weighted_merged(base_model, store, spec, entries_typed)
+        merge_dir = store.cache_dir_for(
+            "_export_merged_" + "_".join(n for n, _ in mix_entries)
+        )
+        adapter_path_override = save_merged_to_tmp(merged, merge_dir)
+
     try:
         result = run_export(
             store,
@@ -673,6 +739,8 @@ def export_cmd(
             draft_override=draft,
             draft_disabled=no_draft,
             adapter_name=adapter,
+            adapter_path_override=adapter_path_override,
+            adapter_mix=mix_entries,
         )
     except UnsafeMergeError as exc:
         console.print(f"[red]merge:[/red] {exc}")
