@@ -58,6 +58,9 @@ class TrainingPlan:
         return asdict(self)
 
 
+Phase = Literal["sft", "dpo"]
+
+
 def resolve(
     training: TrainingConfig,
     caps: Capabilities,
@@ -65,14 +68,24 @@ def resolve(
     base_params: int,
     seq_len: int,
     force: bool = False,
+    phase: Phase = "sft",
 ) -> TrainingPlan:
-    """Produce a concrete plan from a frontmatter config + host caps."""
+    """Produce a concrete plan from a frontmatter config + host caps.
+
+    `phase="dpo"` halves the resolved micro-batch to account for the
+    policy + reference forward passes DPO runs per step. Grad-accum
+    stays; the effective batch halves with the micro-batch. Memory
+    and step-time estimates are recomputed against the adjusted
+    micro-batch.
+    """
     check_refusals(training, caps, base_params, force=force)
 
     use_qlora = _should_qlora(training, caps)
     precision = _pick_precision(caps)
     attn = _pick_attention(caps)
     micro_batch = _resolve_micro_batch(training, caps, base_params, seq_len, precision, use_qlora)
+    if phase == "dpo":
+        micro_batch = max(1, micro_batch // 2)
     grad_accum = _resolve_grad_accum(training, micro_batch)
     gradient_checkpointing = _needs_gradient_checkpointing(
         caps, base_params, seq_len, micro_batch, precision, use_qlora, training.lora_r
@@ -87,6 +100,10 @@ def resolve(
         gradient_checkpointing=gradient_checkpointing,
         optimizer=training.optimizer,
     )
+    if phase == "dpo":
+        # Policy + frozen reference both live in VRAM; rough ×2 on
+        # model-weight share of peak usage.
+        est_peak *= 1.8
     est_step = estimate_step_seconds(
         backend=caps.backend,
         base_params=base_params,
@@ -94,8 +111,11 @@ def resolve(
         micro_batch=micro_batch,
         has_flash_attention=attn == "flash_attention_2",
     )
+    if phase == "dpo":
+        # Two forward passes per step plus the pair-loss backward.
+        est_step *= 2.2
 
-    reason = _build_reason(precision, attn, use_qlora, gradient_checkpointing)
+    reason = _build_reason(precision, attn, use_qlora, gradient_checkpointing, phase=phase)
     quant_dtype = precision if use_qlora else None
 
     return TrainingPlan(
@@ -213,6 +233,8 @@ def _build_reason(
     attn: AttnImpl,
     use_qlora: bool,
     gradient_checkpointing: bool,
+    *,
+    phase: Phase = "sft",
 ) -> str:
     parts = [f"precision={precision}", f"attn={attn}"]
     if use_qlora:
@@ -221,4 +243,6 @@ def _build_reason(
         parts.append("qlora=off")
     if gradient_checkpointing:
         parts.append("grad_ckpt=on")
+    if phase == "dpo":
+        parts.append("phase=dpo")
     return ", ".join(parts)

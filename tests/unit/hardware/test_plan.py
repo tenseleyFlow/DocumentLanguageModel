@@ -141,6 +141,58 @@ class TestGradientCheckpointing:
         assert plan.gradient_checkpointing is False
 
 
+class TestDpoPhaseAdjustments:
+    def test_dpo_halves_micro_batch_relative_to_sft(self) -> None:
+        with force_cuda(sm=(8, 9), vram_gb=24.0):
+            caps = probe()
+        sft = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="sft")
+        dpo = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="dpo")
+        # SFT resolves to ≥2 here; DPO should be strictly less (halved,
+        # floor 1). Guard against the degenerate case where SFT = 1.
+        if sft.micro_batch_size >= 2:
+            assert dpo.micro_batch_size == sft.micro_batch_size // 2
+        else:
+            assert dpo.micro_batch_size == 1
+
+    def test_dpo_never_drops_below_one(self) -> None:
+        # Tight VRAM forces SFT to micro_batch=1; DPO halving must floor
+        # at 1, not round to 0.
+        with force_cuda(sm=(8, 9), vram_gb=4.0):
+            caps = probe()
+        dpo = resolve(
+            _cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="dpo"
+        )
+        assert dpo.micro_batch_size >= 1
+
+    def test_dpo_peak_vram_exceeds_sft(self) -> None:
+        with force_cuda(sm=(8, 9), vram_gb=24.0):
+            caps = probe()
+        sft = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="sft")
+        dpo = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="dpo")
+        # Even with halved micro-batch, two models resident in VRAM
+        # should outweigh the batch reduction on the reference side.
+        assert dpo.est_peak_vram_gb > sft.est_peak_vram_gb
+
+    def test_dpo_step_seconds_slower(self) -> None:
+        with force_cuda(sm=(8, 9), vram_gb=24.0):
+            caps = probe()
+        sft = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="sft")
+        dpo = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="dpo")
+        assert dpo.est_step_seconds > sft.est_step_seconds
+
+    def test_dpo_reason_mentions_phase(self) -> None:
+        with force_cuda(sm=(8, 9), vram_gb=24.0):
+            caps = probe()
+        dpo = resolve(
+            _cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="dpo"
+        )
+        sft = resolve(
+            _cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="sft"
+        )
+        assert "phase=dpo" in dpo.reason
+        assert "phase=dpo" not in sft.reason
+
+
 class TestPlanSerialization:
     def test_to_dict_is_json_friendly(self) -> None:
         import json
