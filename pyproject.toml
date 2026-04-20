@@ -48,6 +48,13 @@ dependencies = [
 cuda = [
     "bitsandbytes>=0.43",
 ]
+# Apple Silicon only (Sprint 21). `mlx` + `mlx-lm` wheels are darwin-arm64
+# exclusives; env markers keep `uv sync --extra mlx` a no-op on non-Apple
+# hosts so wheel resolution doesn't fail for Linux/CUDA contributors.
+mlx = [
+    "mlx>=0.18; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-lm>=0.19; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 
 [project.scripts]
 dlm = "dlm.cli.app:main"

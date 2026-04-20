@@ -80,6 +80,7 @@ dlm prompt <path> [query] [--max-tokens N] [--temp F] [--top-p F]
 | `--temp F` | 0.7 | Temperature. `0.0` = greedy decoding (deterministic). |
 | `--top-p F` | None | Top-p sampling. |
 | `--adapter NAME` | None | Select a named adapter from `training.adapters`. Required on multi-adapter documents; rejected on single-adapter ones. |
+| `--backend {auto,pytorch,mlx}` | `auto` | Inference backend. `auto` picks MLX on Apple Silicon (when `uv sync --extra mlx` is installed), else PyTorch. |
 | `--verbose` | false | Print resolved `InferencePlan` on stderr. |
 
 Query is the CLI positional argument. Omit to read from stdin.

@@ -55,6 +55,55 @@ class TestProbeMps:
         assert caps.has_flash_attention is False
 
 
+class TestMlxAvailability:
+    def test_non_mps_never_reports_mlx(self) -> None:
+        # Off-Apple hosts: has_mlx is False regardless of dist metadata
+        # (Sprint 21). The probe won't consult importlib on CUDA/CPU.
+        with force_cuda(sm=(8, 0)):
+            caps = probe()
+        assert caps.has_mlx is False
+        with force_cpu():
+            caps = probe()
+        assert caps.has_mlx is False
+
+    def test_mps_reports_mlx_when_both_modules_installed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Simulate both mlx + mlx_lm available.
+        from dlm.hardware import capabilities as caps_mod
+
+        real_avail = caps_mod._module_available
+
+        def fake_available(name: str) -> bool:
+            if name in ("mlx", "mlx_lm"):
+                return True
+            return real_avail(name)
+
+        monkeypatch.setattr(caps_mod, "_module_available", fake_available)
+        with force_mps():
+            caps = probe()
+        assert caps.has_mlx is True
+
+    def test_mps_reports_no_mlx_when_mlx_lm_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dlm.hardware import capabilities as caps_mod
+
+        real_avail = caps_mod._module_available
+
+        def fake_available(name: str) -> bool:
+            if name == "mlx":
+                return True
+            if name == "mlx_lm":
+                return False
+            return real_avail(name)
+
+        monkeypatch.setattr(caps_mod, "_module_available", fake_available)
+        with force_mps():
+            caps = probe()
+        assert caps.has_mlx is False
+
+
 class TestProbeCpu:
     def test_cpu_advisory_determinism(self) -> None:
         with force_cpu():

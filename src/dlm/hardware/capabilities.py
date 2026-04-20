@@ -54,6 +54,7 @@ class Capabilities:
     has_xformers: bool
     has_bitsandbytes: bool
     has_triton: bool
+    has_mlx: bool
     torch_version: str
     cuda_version: str | None
     rocm_version: str | None
@@ -92,6 +93,7 @@ def probe() -> Capabilities:
         has_xformers=_module_available("xformers"),
         has_bitsandbytes=_module_available("bitsandbytes") and backend == Backend.CUDA,
         has_triton=_module_available("triton"),
+        has_mlx=_has_mlx_inference(backend),
         torch_version=str(torch.__version__),
         cuda_version=_cuda_version(backend, torch),
         rocm_version=_rocm_version(torch),
@@ -180,6 +182,19 @@ def _has_flash_attention(backend: Backend, sm: tuple[int, int] | None) -> bool:
 
 def _module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
+
+
+def _has_mlx_inference(backend: Backend) -> bool:
+    """True iff MLX inference is runnable on this host.
+
+    Sprint 21: MLX is darwin-arm64 only. Off-platform installs of `mlx`
+    via pip would be a packaging mistake, but we still gate on backend
+    to avoid reporting True for a misconfigured CUDA box that happens
+    to have an mlx dist lying around.
+    """
+    if backend != Backend.MPS:
+        return False
+    return _module_available("mlx") and _module_available("mlx_lm")
 
 
 def _cuda_version(backend: Backend, torch: object) -> str | None:
