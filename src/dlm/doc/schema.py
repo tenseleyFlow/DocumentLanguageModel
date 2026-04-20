@@ -13,12 +13,16 @@ from __future__ import annotations
 import re
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Crockford base32 alphabet used by ULID: 0-9, A-Z minus I L O U.
 _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 3
+# Adapter names: lowercase alpha start, alphanumeric + underscore tail.
+# Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
+_ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+CURRENT_SCHEMA_VERSION: Final[int] = 4
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
@@ -26,7 +30,9 @@ commit — enforced by `test_all_versions_have_migrator_up_to_latest`.
 v2 renamed `training.dpo` → `training.preference` to accommodate both
 DPO and ORPO under one `method`-switched config. v3 added the
 additive `training.cpt` block (DAPT schedule + embedding warm-up)
-for continued-pretraining refinements.
+for continued-pretraining refinements. v4 added the additive
+`training.adapters` map for named multi-adapter composition; flat
+`adapter`/`lora_*` keys remain the single-adapter shorthand.
 """
 
 
@@ -95,6 +101,27 @@ def _default_cpt() -> CptConfig:
     return CptConfig()
 
 
+class AdapterConfig(BaseModel):
+    """One named adapter in a multi-adapter document.
+
+    A subset of the flat config — only the per-adapter LoRA knobs plus
+    `learning_rate`. Hyperparameters that are intrinsically run-scoped
+    (`sequence_len`, `num_epochs`, `seed`, `optimizer`, `lr_scheduler`,
+    `warmup_ratio`, `micro_batch_size`, `grad_accum`) stay at the
+    `TrainingConfig` top level because mixing them per-adapter makes
+    schedules and batching incoherent.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    adapter: Literal["lora", "qlora"] = "lora"
+    lora_r: int = Field(8, ge=1, le=256)
+    lora_alpha: int = Field(16, ge=1)
+    lora_dropout: float = Field(0.05, ge=0.0, le=0.5)
+    target_modules: Literal["auto"] | list[str] = "auto"
+    learning_rate: float = Field(2e-4, gt=0.0)
+
+
 class TrainingConfig(BaseModel):
     """Training-time knobs. `auto` values are resolved by the hardware doctor."""
 
@@ -116,6 +143,12 @@ class TrainingConfig(BaseModel):
     seed: int = 42
     preference: PreferenceConfig = Field(default_factory=_default_preference)
     cpt: CptConfig = Field(default_factory=_default_cpt)
+    # Named adapters for multi-adapter composition. When set, the flat
+    # `adapter`/`lora_*`/`target_modules`/`learning_rate` fields must
+    # stay at their defaults — mixing the two shapes creates ambiguous
+    # "which config wins?" semantics. An empty/None `adapters` keeps
+    # the single-adapter shorthand fully backward-compatible.
+    adapters: dict[str, AdapterConfig] | None = None
 
     @field_validator("micro_batch_size", "grad_accum")
     @classmethod
@@ -125,6 +158,53 @@ class TrainingConfig(BaseModel):
         if not isinstance(v, int) or v < 1:
             raise ValueError(f"must be a positive int or 'auto', got {v!r}")
         return v
+
+    @field_validator("adapters")
+    @classmethod
+    def _validate_adapter_names(
+        cls, v: dict[str, AdapterConfig] | None
+    ) -> dict[str, AdapterConfig] | None:
+        if v is None:
+            return v
+        if not v:
+            raise ValueError(
+                "training.adapters: at least one adapter must be declared "
+                "(omit the block entirely for the single-adapter shorthand)"
+            )
+        for name in v:
+            if not _ADAPTER_NAME_RE.fullmatch(name):
+                raise ValueError(
+                    f"training.adapters: {name!r} is not a valid adapter "
+                    f"name (must match {_ADAPTER_NAME_RE.pattern})"
+                )
+        return v
+
+    @model_validator(mode="after")
+    def _flat_and_named_are_mutually_exclusive(self) -> TrainingConfig:
+        if self.adapters is None:
+            return self
+        # A set flat-adapter field would silently lose to the named
+        # block at train time. Refuse at parse time instead.
+        flat_defaults = {
+            "adapter": "lora",
+            "lora_r": 8,
+            "lora_alpha": 16,
+            "lora_dropout": 0.05,
+            "target_modules": "auto",
+            "learning_rate": 2e-4,
+        }
+        drift = [
+            key
+            for key, default in flat_defaults.items()
+            if getattr(self, key) != default
+        ]
+        if drift:
+            raise ValueError(
+                "training.adapters is declared; flat per-adapter fields "
+                f"{drift} must stay at their defaults (move them into the "
+                "per-adapter block instead)"
+            )
+        return self
 
 
 class ExportConfig(BaseModel):
