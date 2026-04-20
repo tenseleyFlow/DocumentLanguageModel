@@ -41,6 +41,19 @@ class TestDlmShaAlwaysAllowed:
         assert _severities(prior, current, strict=True) == {Severity.ALLOW}
 
 
+class TestAccelerateUninstall:
+    """Audit-08 N5: accelerate drift surfaces as an actionable WARN."""
+
+    def test_accelerate_uninstalled_between_runs_warns(self) -> None:
+        prior = _lock(pinned_versions={"torch": "2.5.1", "accelerate": "1.13.0"})
+        current = _lock(pinned_versions={"torch": "2.5.1"})
+        msgs = [m for _s, m in classify_mismatches(prior, current)]
+        # `_rule_minor_peers` fires on peer disappear with "no longer pinned".
+        assert any(
+            "accelerate" in m and "no longer pinned" in m for m in msgs
+        ), f"expected accelerate-removal warning, got {msgs!r}"
+
+
 class TestWorldSize:
     """Audit-08 B1: world_size drift must fire WARN."""
 

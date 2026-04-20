@@ -22,6 +22,30 @@ class UnsupportedGpuSpecError(ValueError):
     """Raised when `--gpus` can't be parsed or resolved."""
 
 
+def strip_gpus_flag(args: list[str], *, skip_argv0: bool = False) -> list[str]:
+    """Drop `--gpus <value>` / `--gpus=<value>` from an argv-like list.
+
+    Shared helper (audit-08 N1) so the launcher side (strips argv[0]
+    because `accelerate launch -m <entry>` substitutes it) and the
+    worker side (passes argv[1:] from `sys.argv`) don't drift. The
+    `skip_argv0` flag controls which input convention is used.
+    """
+    start = 1 if skip_argv0 else 0
+    out: list[str] = []
+    skip_next = False
+    for token in args[start:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if token == "--gpus":
+            skip_next = True
+            continue
+        if token.startswith("--gpus="):
+            continue
+        out.append(token)
+    return out
+
+
 GpuSpecKind = Literal["all", "count", "list"]
 
 

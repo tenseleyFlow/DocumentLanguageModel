@@ -40,6 +40,14 @@ pytestmark = [
 
 _PROMPT = "What is the capital of France?"
 _PREFIX_TOKENS = 16
+_MIN_OVERLAP = 8
+"""Audit-08 N3: tightened from `min(4, len(pt_toks))` to a fixed 8.
+
+Still relaxed from "all 16 tokens agree" (Metal vs MPS float drift
+breaks exactness), but 8/16 matching whitespace tokens is the
+honest "backends are semantically comparable" bar. Lower values
+mean the loader is broken or the greedy decode diverged
+immediately."""
 
 
 def test_pytorch_mlx_prefix_tokens_agree(  # pragma: no cover - slow/darwin
@@ -71,7 +79,8 @@ def test_pytorch_mlx_prefix_tokens_agree(  # pragma: no cover - slow/darwin
     pt_toks = pt_out.split()
     mlx_toks = mlx_out.split()
     overlap = sum(1 for a, b in zip(pt_toks, mlx_toks, strict=False) if a == b)
-    assert overlap >= min(4, len(pt_toks)), (
+    assert overlap >= _MIN_OVERLAP, (
         f"MLX and PyTorch diverged earlier than expected "
-        f"(overlap={overlap}, pt={pt_toks[:8]!r}, mlx={mlx_toks[:8]!r})"
+        f"(overlap={overlap} < {_MIN_OVERLAP}, "
+        f"pt={pt_toks[:8]!r}, mlx={mlx_toks[:8]!r})"
     )

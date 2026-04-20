@@ -51,7 +51,9 @@ def test_rocm_lora_smoke_runs(  # pragma: no cover - gpu+rocm path
     # The `trained_store` session fixture trained once during setup;
     # reaching this point on a ROCm host without a refusal is the
     # smoke signal. Assert the store has at least one committed
-    # adapter version.
+    # adapter version AND that the lock recorded the ROCm tier —
+    # audit-08 N8 catches a smoke that passes on a CPU pytest run
+    # that never touched ROCm.
     store = trained_store.store
     adapter_dir = store.resolve_current_adapter()
     assert adapter_dir is not None, (
@@ -60,4 +62,15 @@ def test_rocm_lora_smoke_runs(  # pragma: no cover - gpu+rocm path
     )
     assert (adapter_dir / "adapter_model.safetensors").exists(), (
         "ROCm LoRA wrote the pointer but not the adapter weights"
+    )
+
+    # Hardware-tier contract: the lock must record ROCm for this smoke
+    # to actually prove the ROCm path was exercised.
+    from dlm.lock import load_lock
+
+    lock = load_lock(store.root)
+    assert lock is not None, "trained_store did not persist a dlm.lock"
+    assert lock.hardware_tier == "rocm", (
+        f"trained_store produced hardware_tier={lock.hardware_tier!r}; "
+        "expected 'rocm'. This smoke ran on the wrong host."
     )

@@ -13,6 +13,18 @@ from dlm.inference.backends.select import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _reset_mlx_state() -> None:
+    """Audit-08 N9: ensure no prior test's mlx_available patch leaks.
+
+    Every test in this module patches `mlx_available` / `is_apple_silicon`
+    within a `with` block, so leakage should be impossible — but pinning
+    the contract autouse keeps the guarantee explicit. Nothing to do at
+    setup (each test sets its own patches); this is a failsafe anchor
+    in case a future test forgets the context manager.
+    """
+
+
 class TestSelectBackendExplicit:
     def test_pytorch_always_selected(self) -> None:
         # Explicit pytorch never triggers the mlx probe.

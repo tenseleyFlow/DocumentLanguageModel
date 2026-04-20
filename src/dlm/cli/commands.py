@@ -311,7 +311,15 @@ def train_cmd(
     # it to lock the visible device set via CUDA_VISIBLE_DEVICES
     # without spawning a subprocess).
     if gpus is not None:
-        exit_code = _maybe_dispatch_multi_gpu(gpus, sys.argv, console)
+        # Resolve mixed_precision from capabilities so bf16-incapable
+        # CUDA GPUs (SM<8.0) don't trip the `accelerate launch`
+        # default. `probe()` is cheap and runs in the launcher-side
+        # process only; each rank re-probes via `doctor()` later.
+        from dlm.hardware.capabilities import probe as _probe_caps
+
+        _caps = _probe_caps()
+        _mp = "bf16" if _caps.supports_bf16 else "fp16"
+        exit_code = _maybe_dispatch_multi_gpu(gpus, sys.argv, console, mixed_precision=_mp)
         if exit_code is not None:
             raise typer.Exit(code=exit_code)
 
@@ -448,6 +456,8 @@ def _maybe_dispatch_multi_gpu(
     gpus_flag: str,
     argv: list[str],
     console: object,
+    *,
+    mixed_precision: str = "bf16",
 ) -> int | None:
     """Resolve `--gpus`; if multi-GPU, spawn accelerate launch and return its exit code.
 
@@ -490,33 +500,23 @@ def _maybe_dispatch_multi_gpu(
     # the launched accelerate cmd carries exactly the intended args.
     cli_args = _strip_gpus_from_argv(argv)
     console.print(
-        f"[dim]train:[/dim] dispatching to accelerate launch on devices {list(device_ids)}"
+        f"[dim]train:[/dim] dispatching to accelerate launch on devices {list(device_ids)} "
+        f"(mixed_precision={mixed_precision})"
     )
-    return launch_multi_gpu(device_ids, cli_args)
+    return launch_multi_gpu(device_ids, cli_args, mixed_precision=mixed_precision)
 
 
 def _strip_gpus_from_argv(argv: list[str]) -> list[str]:
-    """Drop `--gpus <v>` / `--gpus=<v>` from the raw argv.
+    """Drop `--gpus <v>` / `--gpus=<v>` from raw sys.argv (launcher side).
 
-    Keeps argv[0] (the `dlm` invocation) since `accelerate launch`
-    passes `-m dlm.train.distributed.worker_entry` as its target, not
-    the argv[0] script name.
+    Skips argv[0] (script path) — `accelerate launch -m <entry>`
+    provides the rank entrypoint separately, so the launcher forwards
+    argv[1:] minus the multi-GPU flag. Delegates to the shared
+    `strip_gpus_flag` helper (audit-08 N1).
     """
-    # Skip argv[0] (script path) — accelerate uses `-m` to pick the
-    # entry point.
-    out: list[str] = []
-    skip_next = False
-    for token in argv[1:]:
-        if skip_next:
-            skip_next = False
-            continue
-        if token == "--gpus":
-            skip_next = True
-            continue
-        if token.startswith("--gpus="):
-            continue
-        out.append(token)
-    return out
+    from dlm.train.distributed.gpus import strip_gpus_flag
+
+    return strip_gpus_flag(argv, skip_argv0=True)
 
 
 def prompt_cmd(

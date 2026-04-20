@@ -40,25 +40,15 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - runtime pa
 
 
 def _strip_gpus_flag(args: list[str]) -> list[str]:
-    """Drop `--gpus <value>` and `--gpus=<value>` from argv.
+    """Drop `--gpus <value>` / `--gpus=<value>` from argv (worker side).
 
     Per-rank invocations must not recurse into the launcher branch of
-    `dlm train`; the worker is already inside a rank and needs to
-    behave like a single-process run.
+    `dlm train`. Delegates to the shared `strip_gpus_flag` helper
+    (audit-08 N1); the worker passes argv without argv[0].
     """
-    out: list[str] = []
-    skip_next = False
-    for token in args:
-        if skip_next:
-            skip_next = False
-            continue
-        if token == "--gpus":
-            skip_next = True
-            continue
-        if token.startswith("--gpus="):
-            continue
-        out.append(token)
-    return out
+    from dlm.train.distributed.gpus import strip_gpus_flag
+
+    return strip_gpus_flag(args, skip_argv0=False)
 
 
 if __name__ == "__main__":  # pragma: no cover - entry
