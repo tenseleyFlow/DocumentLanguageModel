@@ -1,0 +1,18 @@
+name: changelog
+title: Changelog entry generator
+domain_tags:
+  - writing
+  - dev-tools
+recommended_base: smollm2-360m
+expected_steps: 300
+expected_duration:
+  cuda-sm80+: "~2 min"
+  mps: "~5 min"
+  cpu: "~30 min"
+summary: |
+  A tiny daily-edit demo: paste `git log --oneline` into the instruction
+  block, retrain, and get tomorrow's commit messages in your project's
+  house style.
+sample_prompts:
+  - "feat(parser): support inline comments in frontmatter"
+  - "fix(train): OOM guard regressed on grad_accum=1"

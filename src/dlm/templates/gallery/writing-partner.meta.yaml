@@ -1,0 +1,18 @@
+name: writing-partner
+title: Writing partner (stylistic continuation)
+domain_tags:
+  - writing
+  - style
+recommended_base: llama-3.2-3b
+expected_steps: 1000
+expected_duration:
+  cuda-sm80+: "~8 min"
+  mps: "~25 min"
+  cpu: "~3 hr"
+summary: |
+  Trained on your own prose, it finishes your sentences in your voice.
+  Seed it with a handful of paragraphs, retrain, and use `dlm repl`
+  for conversational drafting.
+sample_prompts:
+  - "Continue this paragraph in my voice: ..."
+  - "What's a sharper way to open this essay?"

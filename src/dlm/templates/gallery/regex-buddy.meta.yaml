@@ -1,0 +1,20 @@
+name: regex-buddy
+title: Regex explainer
+domain_tags:
+  - code
+  - regex
+  - tutor
+recommended_base: qwen2.5-coder-1.5b
+expected_steps: 500
+expected_duration:
+  cuda-sm80+: "~4 min"
+  mps: "~12 min"
+  cpu: "~1.5 hr"
+summary: |
+  Explains and writes regular expressions in plain language. Python
+  `re` / PCRE dialect by default; calls out POSIX or JavaScript
+  differences when they change the pattern.
+sample_prompts:
+  - "What does \\b match?"
+  - "Write a regex for an ISO-8601 date."
+  - "Explain (?:...) vs (...)."

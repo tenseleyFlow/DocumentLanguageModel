@@ -1,0 +1,18 @@
+name: domain-kb
+title: Domain knowledge base
+domain_tags:
+  - knowledge
+  - prose
+recommended_base: qwen2.5-3b
+expected_steps: 1200
+expected_duration:
+  cuda-sm80+: "~10 min"
+  mps: "~30 min"
+  cpu: "~4 hr"
+summary: |
+  Long-form prose with occasional Q&A. Use when you want a model that
+  has internalized a body of reference material — a product manual, a
+  research domain, a codebase's architectural history.
+sample_prompts:
+  - "Summarize the section on retention."
+  - "What were the open questions in chapter 3?"

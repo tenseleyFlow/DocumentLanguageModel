@@ -1,0 +1,19 @@
+name: meeting-notes-summarizer
+title: Meeting notes → decision log
+domain_tags:
+  - writing
+  - work
+  - summarization
+recommended_base: qwen2.5-3b
+expected_steps: 800
+expected_duration:
+  cuda-sm80+: "~7 min"
+  mps: "~20 min"
+  cpu: "~2.5 hr"
+summary: |
+  Turns raw meeting transcripts into structured decision logs —
+  Decisions, Action items (with owner + due date), Open questions.
+  Trains on your own past notes to match your team's house style.
+sample_prompts:
+  - "Summarize: 'Hey everyone, sorry for the delay. So we discussed...'"
+  - "Summarize today's standup in the decision-log format."

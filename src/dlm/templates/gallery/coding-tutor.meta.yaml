@@ -1,0 +1,20 @@
+name: coding-tutor
+title: Coding tutor (Python, curated)
+domain_tags:
+  - code
+  - python
+  - tutor
+recommended_base: qwen2.5-coder-1.5b
+expected_steps: 800
+expected_duration:
+  cuda-sm80+: "~5 min"
+  mps: "~15 min"
+  cpu: "~2 hr"
+summary: |
+  A compact Python-focused Q&A tutor. Seeded with decorators, context
+  managers, and a handful of idioms — extend with your own worked
+  examples.
+sample_prompts:
+  - "What are Python decorators?"
+  - "Explain the difference between async and threads."
+  - "How do dataclasses compare to TypedDicts?"

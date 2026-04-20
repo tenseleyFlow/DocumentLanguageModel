@@ -1,0 +1,20 @@
+name: shell-one-liner
+title: Shell one-liner helper
+domain_tags:
+  - code
+  - shell
+  - posix
+recommended_base: qwen2.5-coder-1.5b
+expected_steps: 500
+expected_duration:
+  cuda-sm80+: "~4 min"
+  mps: "~12 min"
+  cpu: "~1.5 hr"
+summary: |
+  Produces POSIX-first shell pipelines with per-stage explanations.
+  Flags GNU-only flags so you know when a one-liner won't port to
+  BSD/macOS userland.
+sample_prompts:
+  - "Count unique IP addresses in nginx access.log."
+  - "Find files larger than 100 MB under the current directory."
+  - "Replace every occurrence of foo with bar in all .py files."
