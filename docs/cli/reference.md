@@ -71,7 +71,7 @@ Run inference against the current adapter.
 
 ```
 dlm prompt <path> [query] [--max-tokens N] [--temp F] [--top-p F]
-                  [--verbose]
+                  [--adapter NAME] [--verbose]
 ```
 
 | Option | Default | Notes |
@@ -79,6 +79,7 @@ dlm prompt <path> [query] [--max-tokens N] [--temp F] [--top-p F]
 | `--max-tokens N` | 256 | Max new tokens to generate. |
 | `--temp F` | 0.7 | Temperature. `0.0` = greedy decoding (deterministic). |
 | `--top-p F` | None | Top-p sampling. |
+| `--adapter NAME` | None | Select a named adapter from `training.adapters`. Required on multi-adapter documents; rejected on single-adapter ones. |
 | `--verbose` | false | Print resolved `InferencePlan` on stderr. |
 
 Query is the CLI positional argument. Omit to read from stdin.
@@ -92,6 +93,7 @@ dlm export <path> [--quant Q] [--merged [--dequantize]]
                   [--name N] [--no-template] [--skip-ollama]
                   [--no-smoke] [--no-imatrix] [--verbose]
                   [--draft TAG | --no-draft]
+                  [--adapter NAME | --adapter-mix SPEC]
 ```
 
 | Option | Default | Notes |
@@ -107,6 +109,8 @@ dlm export <path> [--quant Q] [--merged [--dequantize]]
 | `--verbose` | false | Surface preflight + conversion diagnostics. |
 | `--draft TAG` | auto | Override the speculative-decoding draft model. |
 | `--no-draft` | false | Disable speculative decoding. Mutex with `--draft`. |
+| `--adapter NAME` | None | Export a single named adapter from `training.adapters`. Rejected on single-adapter documents. Mutex with `--adapter-mix`. |
+| `--adapter-mix SPEC` | None | Weighted composition like `knowledge:1.0,tone:0.5`. Produces one Ollama model by merging the named adapters linearly at export time. LoRA-only; QLoRA sources require `--dequantize --merged`. Mutex with `--adapter`. |
 
 ### `dlm pack`
 
