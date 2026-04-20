@@ -313,6 +313,12 @@ def run(
                     )
                 )
 
+        # NaN-eval guard (redundant with the weight gate, intentional).
+        # Raises `NaNEvalError` so the run fails before we touch disk.
+        from dlm.train.integrity import assert_eval_finite
+
+        assert_eval_finite(log_history)
+
         eval_summary = summarize_eval_state(log_history)
         final_val_loss = eval_summary["final_val_loss"]
         final_val_perplexity = eval_summary["final_val_perplexity"]
@@ -346,7 +352,11 @@ def run(
         )
 
         # 8. Two-phase commit: save adapter + state into a pending
-        #    version dir, then flip the current pointer atomically.
+        #    version dir, then flip the current pointer atomically. If
+        #    the writer raises `NaNWeightsError`, `commit_version`
+        #    renames the pending dir to `{name}-rejected` so the bad
+        #    weights are preserved for postmortem but never promoted
+        #    to `current.txt`.
         adapter_path = commit_version(
             store,
             lambda pending: _write_checkpoint(
@@ -752,7 +762,17 @@ def _write_checkpoint(
     # 1. Adapter weights + config.
     sft.save_model(str(pending_dir))
 
-    # 2. Training state sidecar (optimizer/scheduler/RNG/step counters).
+    # 2. Integrity gate — refuse to commit NaN/inf weights (discovered on
+    #    MPS + tiny-data + no-warmup runs; the bad adapter was otherwise
+    #    silently promoted to current.txt and all downstream consumers
+    #    produced NaN logits). Checked after save so postmortem has the
+    #    bad tensors on disk in `{pending}-rejected/` when the caller
+    #    renames it.
+    from dlm.train.integrity import assert_finite_adapter
+
+    assert_finite_adapter(sft.model)
+
+    # 3. Training state sidecar (optimizer/scheduler/RNG/step counters).
     state = _snapshot_training_state(sft, spec=spec, versions=versions, use_qlora=use_qlora)
     save_state(pending_dir, state)
 

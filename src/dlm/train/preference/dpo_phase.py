@@ -273,6 +273,11 @@ def _write_dpo_checkpoint(
     plugs in without adaptation.
     """
     dpo.save_model(str(pending_dir))
+    # Finite-weights gate — refuse to commit NaN/inf adapters (bug
+    # discovered on MPS + tiny-data SFT; applies equally to DPO/ORPO).
+    from dlm.train.integrity import assert_finite_adapter
+
+    assert_finite_adapter(dpo.model)
     state = _snapshot_training_state(dpo, spec=spec, versions=versions, use_qlora=use_qlora)
     save_state(pending_dir, state)
 
