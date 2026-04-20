@@ -70,6 +70,7 @@ nav:
       - Multi-adapter composition: cookbook/multi-adapter.md
       - Interactive sessions: cookbook/interactive-session.md
       - Save-to-train (--watch): cookbook/watch-mode.md
+      - Metrics & observability: cookbook/metrics.md
   - Architecture: architecture.md
   - Determinism: determinism.md
   - Hardware:

@@ -114,6 +114,29 @@ Slash commands inside the REPL: `/help`, `/exit`, `/clear`, `/save`,
 cancels generation or input. Session history persists at
 `~/.dlm/history`. See the [interactive-session cookbook](../cookbook/interactive-session.md).
 
+### `dlm metrics`
+
+Query the per-store SQLite metrics DB (Sprint 26).
+
+```
+dlm metrics <path> [--json|--csv] [--run-id N] [--phase PHASE] [--since WINDOW] [--limit N]
+dlm metrics watch <path> [--poll-seconds N]
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--json` | false | Emit JSON object (`{runs: [...], steps: [...], evals: [...]}` when combined with `--run-id`). |
+| `--csv` | false | Emit CSV of runs or (with `--run-id`) steps + evals. |
+| `--run-id N` | None | Drill into one run; prints its step/eval counts. |
+| `--phase` | None | Filter runs by phase (`sft`/`dpo`/`orpo`/`cpt`). |
+| `--since` | None | Time window (`24h`, `7d`, `30m`, `10s`). |
+| `--limit N` | 20 | Cap the number of runs returned. |
+
+`dlm metrics watch` polls the DB and tails new step/eval rows as
+they arrive. See the [metrics cookbook](../cookbook/metrics.md) for
+the full flow + optional TensorBoard / W&B sinks (`uv sync --extra
+observability`).
+
 ### `dlm export`
 
 Produce GGUF files + Modelfile + register with Ollama.
