@@ -82,6 +82,14 @@ class ExportSummary(BaseModel):
     base_gguf_sha256: str | None = None
     adapter_gguf_sha256: str | None = None
     smoke_output_first_line: str | None = None
+    # The named adapter this export was built from. `None` for
+    # flat/single-adapter documents and for weighted-merge exports
+    # (which combine multiple adapters — see `adapter_mix`).
+    adapter_name: str | None = None
+    # For weighted-merge exports, the list of (name, weight) pairs
+    # that produced the composite adapter. `None` for single-adapter
+    # exports.
+    adapter_mix: list[tuple[str, float]] | None = None
 
 
 # --- Manifest itself ----------------------------------------------------------
