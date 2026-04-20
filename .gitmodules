@@ -8,3 +8,7 @@
 [submodule "sway"]
 	path = sway
 	url = https://github.com/tenseleyFlow/sway.git
+	# Hide development noise (.venv, __pycache__, dist/) inside sway/
+	# from the outer repo's `git status`. sway's own .gitignore already
+	# covers these locally.
+	ignore = untracked
