@@ -96,3 +96,47 @@ class TestValidateAgainstDeclared:
         entries = parse_mix_spec("ghost:0.5")
         with pytest.raises(InvalidMixSpecError, match="declared"):
             validate_mix_against_declared(entries, {"knowledge", "tone"})
+
+
+class TestResolveFirstSourcePath:
+    """Audit-07 B2 — ensure the helper used for tokenizer-copy points
+    to a real committed adapter dir."""
+
+    def test_returns_first_entry_path(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from dlm.export.weighted_merge import resolve_first_source_path
+        from dlm.store.paths import StorePath
+
+        store = StorePath(root=tmp_path / "s")
+        store.ensure_layout()
+        # Commit v0001 for both knowledge and tone.
+        for name in ("knowledge", "tone"):
+            store.ensure_adapter_layout(name)
+            v1 = store.adapter_version_for(name, 1)
+            v1.mkdir(parents=True)
+            store.set_current_adapter_for(name, v1)
+
+        entries = parse_mix_spec("knowledge:1.0,tone:0.5")
+        out = resolve_first_source_path(store, entries)
+        assert out == store.adapter_version_for("knowledge", 1).resolve()
+
+    def test_empty_entries_rejected(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from dlm.export.weighted_merge import resolve_first_source_path
+        from dlm.store.paths import StorePath
+
+        store = StorePath(root=tmp_path / "s")
+        store.ensure_layout()
+        with pytest.raises(InvalidMixSpecError, match="empty mix"):
+            resolve_first_source_path(store, [])
+
+    def test_missing_adapter_raises_export_error(
+        self, tmp_path
+    ) -> None:  # type: ignore[no-untyped-def]
+        from dlm.export.errors import ExportError
+        from dlm.export.weighted_merge import resolve_first_source_path
+        from dlm.store.paths import StorePath
+
+        store = StorePath(root=tmp_path / "s")
+        store.ensure_layout()
+        entries = parse_mix_spec("knowledge:1.0")
+        with pytest.raises(ExportError, match="has no committed version"):
+            resolve_first_source_path(store, entries)
