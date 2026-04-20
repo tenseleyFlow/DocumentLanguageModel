@@ -255,6 +255,18 @@ def train_cmd(
             help="Skip dlm.lock validation and don't write a new lock.",
         ),
     ] = False,
+    gpus: Annotated[
+        str | None,
+        typer.Option(
+            "--gpus",
+            help=(
+                "Multi-GPU training (Sprint 23). `all` uses every visible "
+                "CUDA device; `N` uses the first N; `0,1` selects exact "
+                "device ids. Dispatches to `accelerate launch` when >1 "
+                "device is selected. Omit for single-process training."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
     import sys
@@ -292,6 +304,16 @@ def train_cmd(
         console.print("[red]error:[/red] --resume and --fresh are mutually exclusive")
         raise typer.Exit(code=2)
     mode: Literal["fresh", "resume"] = "resume" if resume else "fresh"
+
+    # Sprint 23: --gpus dispatches to accelerate launch when >1 device
+    # is selected. The single-GPU path falls through to the existing
+    # in-process trainer; a bare `--gpus 1` is a no-op (users can use
+    # it to lock the visible device set via CUDA_VISIBLE_DEVICES
+    # without spawning a subprocess).
+    if gpus is not None:
+        exit_code = _maybe_dispatch_multi_gpu(gpus, sys.argv, console)
+        if exit_code is not None:
+            raise typer.Exit(code=exit_code)
 
     # Mutual-exclusion gate for the three lock flags. Exactly one (or
     # zero) may be set — silently ignoring a conflicting pair would
@@ -412,6 +434,81 @@ def train_cmd(
     result = phase_results[-1].result
     if result.final_train_loss is not None:
         sys.stdout.write(f"{result.final_train_loss}\n")
+
+
+def _maybe_dispatch_multi_gpu(
+    gpus_flag: str,
+    argv: list[str],
+    console: object,
+) -> int | None:
+    """Resolve `--gpus`; if multi-GPU, spawn accelerate launch and return its exit code.
+
+    Returns None when the resolved world_size is 1 — caller falls
+    through to the in-process trainer. Returns an int exit code when
+    the launcher ran, so the caller can `raise typer.Exit(code=...)`.
+    """
+    from rich.console import Console
+
+    from dlm.train.distributed import UnsupportedGpuSpecError, launch_multi_gpu, parse_gpus
+
+    assert isinstance(console, Console)
+
+    try:
+        spec = parse_gpus(gpus_flag)
+    except UnsupportedGpuSpecError as exc:
+        console.print(f"[red]train:[/red] {exc}")
+        return 2
+
+    try:
+        import torch
+
+        device_count = int(torch.cuda.device_count())
+    except Exception:  # pragma: no cover - torch probing has many failure modes
+        device_count = 0
+
+    try:
+        device_ids = spec.resolve(device_count)
+    except UnsupportedGpuSpecError as exc:
+        console.print(f"[red]train:[/red] {exc}")
+        return 2
+
+    if len(device_ids) < 2:
+        # Single-GPU (or --gpus 1) — no subprocess needed. Caller
+        # continues with the in-process path.
+        return None
+
+    # Forward the original argv minus `--gpus` / `--gpus=...`; the
+    # worker entry strips it defensively too, but we drop it here so
+    # the launched accelerate cmd carries exactly the intended args.
+    cli_args = _strip_gpus_from_argv(argv)
+    console.print(
+        f"[dim]train:[/dim] dispatching to accelerate launch on devices {list(device_ids)}"
+    )
+    return launch_multi_gpu(device_ids, cli_args)
+
+
+def _strip_gpus_from_argv(argv: list[str]) -> list[str]:
+    """Drop `--gpus <v>` / `--gpus=<v>` from the raw argv.
+
+    Keeps argv[0] (the `dlm` invocation) since `accelerate launch`
+    passes `-m dlm.train.distributed.worker_entry` as its target, not
+    the argv[0] script name.
+    """
+    # Skip argv[0] (script path) — accelerate uses `-m` to pick the
+    # entry point.
+    out: list[str] = []
+    skip_next = False
+    for token in argv[1:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if token == "--gpus":
+            skip_next = True
+            continue
+        if token.startswith("--gpus="):
+            continue
+        out.append(token)
+    return out
 
 
 def prompt_cmd(
