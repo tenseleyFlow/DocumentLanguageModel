@@ -5,3 +5,6 @@
 	# `scripts/bump-llama-cpp.sh build` writes under vendor/llama.cpp/build/
 	# which the submodule's own .gitignore covers.
 	ignore = untracked
+[submodule "sway"]
+	path = sway
+	url = https://github.com/tenseleyFlow/sway.git
