@@ -46,7 +46,9 @@ def test_one_cycle_produces_adapter_sidecar_manifest_log(trained_store) -> None:
     assert (adapter_dir / STATE_FILENAME).is_file()
     assert (adapter_dir / STATE_SHA_FILENAME).is_file()
     # `load_state` raises on sha mismatch — proves integrity survived the write.
-    state = load_state(adapter_dir)
+    from dlm.train.state_sidecar import capture_runtime_versions
+
+    state = load_state(adapter_dir, runtime_versions=capture_runtime_versions())
     assert state["global_step"] > 0
 
     # Manifest: one TrainingRunSummary + populated content_hashes (audit-04 M2).

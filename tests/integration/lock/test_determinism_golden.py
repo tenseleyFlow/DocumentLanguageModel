@@ -47,7 +47,8 @@ def _train_once(home: Path) -> Path:
     doc.write_text(
         make_dlm(
             base_model="smollm2-135m",
-            dlm_id="01HRDGOLDEN" + "0" * 15,  # fixed → same dlm_sha256 across runs
+            # Crockford base32 (no I/L/O/U); fixed → same dlm_sha256 across runs.
+            dlm_id="01HRDGN1DN" + "0" * 16,
         ),
         encoding="utf-8",
     )

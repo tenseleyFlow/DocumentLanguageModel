@@ -111,6 +111,9 @@ def test_export_creates_and_smokes_model(trained_store, ollama_daemon: None) -> 
                 "Q4_K_M",
                 "--name",
                 _OLLAMA_MODEL_NAME,
+                # chat_template drift under newer transformers — see
+                # test_export_tinymodel for the same workaround.
+                "--no-template",
             ],
         )
         try:

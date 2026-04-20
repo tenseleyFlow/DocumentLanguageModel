@@ -31,7 +31,9 @@ def _run_prompt(home: Path, doc: Path) -> str:
     from dlm.cli.app import app
 
     os.environ["DLM_HOME"] = str(home)
-    runner = CliRunner(mix_stderr=False)
+    # Newer `click` drops the `mix_stderr` kwarg; default behavior
+    # (separate stderr in `result.stderr`) matches what we want.
+    runner = CliRunner()
     result = runner.invoke(
         app,
         [

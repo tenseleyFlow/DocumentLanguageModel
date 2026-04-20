@@ -33,7 +33,8 @@ pytestmark = pytest.mark.slow
 def _write_minimal_dlm(path: Path) -> None:
     path.write_text(
         "---\n"
-        "dlm_id: 01HRSTRICT" + "0" * 16 + "\n"
+        # Crockford base32 (no I/L/O/U); 26 chars total.
+        "dlm_id: 01HRSTR1CT" + "0" * 16 + "\n"
         "base_model: smollm2-135m\n"
         "training:\n"
         "  seed: 42\n"
