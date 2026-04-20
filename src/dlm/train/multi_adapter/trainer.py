@@ -89,7 +89,7 @@ def run_all(
     for name in names:
         scoped = ParsedDlm(
             frontmatter=parsed.frontmatter,
-            sections=list(routing.by_adapter[name]),
+            sections=tuple(routing.by_adapter[name]),
             source_path=parsed.source_path,
         )
         result = run_single(

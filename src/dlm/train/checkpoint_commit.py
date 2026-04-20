@@ -119,12 +119,16 @@ def list_pending_versions(
     auto-deleting.
     """
     existing = _existing_versions(store, adapter_name=adapter_name)
+
+    def version_for(n: int) -> Path:
+        if adapter_name is None:
+            return store.adapter_version(n)
+        return store.adapter_version_for(adapter_name, n)
+
     if adapter_name is None:
         current = store.resolve_current_adapter()
-        version_for = store.adapter_version
     else:
         current = store.resolve_current_adapter_for(adapter_name)
-        version_for = lambda n: store.adapter_version_for(adapter_name, n)  # noqa: E731
     current_n = _parse_version_number(current) if current is not None else None
     return [version_for(n) for n in sorted(existing) if n != current_n]
 

@@ -178,6 +178,7 @@ def run_export(
     """
     run = subprocess_runner if subprocess_runner is not None else run_checked
 
+    adapter_path: Path
     if adapter_path_override is not None:
         # Weighted-merge path: the composite adapter has been written
         # to an ephemeral dir by the caller; export uses it verbatim.
@@ -189,25 +190,27 @@ def run_export(
                 f"adapter_path_override {adapter_path} does not exist"
             )
     elif adapter_name is None:
-        adapter_path = store.resolve_current_adapter()
+        resolved = store.resolve_current_adapter()
         pointer = store.adapter_current_pointer
-        if adapter_path is None or not adapter_path.exists():
+        if resolved is None or not resolved.exists():
             from dlm.export.errors import ExportError
 
             raise ExportError(
                 f"no current adapter under {pointer}; "
                 "run `dlm train` before exporting."
             )
+        adapter_path = resolved
     else:
-        adapter_path = store.resolve_current_adapter_for(adapter_name)
+        resolved = store.resolve_current_adapter_for(adapter_name)
         pointer = store.adapter_current_pointer_for(adapter_name)
-        if adapter_path is None or not adapter_path.exists():
+        if resolved is None or not resolved.exists():
             from dlm.export.errors import ExportError
 
             raise ExportError(
                 f"no current adapter under {pointer}; "
                 f"run `dlm train` before exporting for adapter {adapter_name!r}."
             )
+        adapter_path = resolved
 
     # 1. Preflight.
     preflight.check_adapter_config(adapter_path, spec)
