@@ -127,7 +127,7 @@ class EmbedWarmupCallback:  # pragma: no cover - exercised by slow integration
         self._active: bool = False
 
     def on_train_begin(
-        self, args: Any, state: Any, control: Any, **kwargs: Any
+        self, args: Any, state: Any, control: Any, **kwargs: Any  # noqa: ARG002
     ) -> None:
         if self.n_steps <= 0:
             return
@@ -145,12 +145,12 @@ class EmbedWarmupCallback:  # pragma: no cover - exercised by slow integration
         self._active = False
 
     def on_step_end(
-        self, args: Any, state: Any, control: Any, **kwargs: Any
+        self, args: Any, state: Any, control: Any, **kwargs: Any  # noqa: ARG002
     ) -> None:
         if self._active and state.global_step >= self.n_steps:
             self._restore()
 
     def on_train_end(
-        self, args: Any, state: Any, control: Any, **kwargs: Any
+        self, args: Any, state: Any, control: Any, **kwargs: Any  # noqa: ARG002
     ) -> None:
         self._restore()

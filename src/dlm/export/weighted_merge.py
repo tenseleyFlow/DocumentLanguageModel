@@ -134,7 +134,7 @@ def validate_mix_against_declared(
 def build_weighted_merged(  # pragma: no cover - heavy path
     base_model: Any,
     store: StorePath,
-    spec: BaseModelSpec,
+    spec: BaseModelSpec,  # noqa: ARG001  # reserved for future use
     entries: list[MixEntry],
 ) -> Any:
     """Load each adapter, combine them via `add_weighted_adapter`.
