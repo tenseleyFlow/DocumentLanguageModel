@@ -95,13 +95,35 @@ class TestLicenseGate:
         assert not out.exists()
 
 
-class TestTemplateReserved:
-    def test_template_flag_noop_with_note(self, tmp_path: Path) -> None:
+class TestTemplateGallery:
+    def test_unknown_template_exits_nonzero(self, tmp_path: Path) -> None:
         runner = CliRunner()
         out = tmp_path / "doc.dlm"
         result = runner.invoke(
             app,
-            ["init", str(out), "--base", "smollm2-135m", "--template", "starter"],
+            ["init", str(out), "--template", "not-a-real-template"],
+        )
+        assert result.exit_code == 1
+        assert "no template named" in _joined_output(result).lower()
+        assert not out.exists()
+
+    def test_template_overrides_default_base(self, tmp_path: Path) -> None:
+        runner = CliRunner()
+        out = tmp_path / "doc.dlm"
+        home = tmp_path / "dlm-home"
+        # Pass the default --base; the template's recommended_base wins silently.
+        result = runner.invoke(
+            app,
+            [
+                "--home",
+                str(home),
+                "init",
+                str(out),
+                "--base",
+                "qwen2.5-1.5b",
+                "--template",
+                "changelog",
+            ],
         )
         assert result.exit_code == 0, result.output
-        assert "reserved" in _joined_output(result).lower()
+        assert "smollm2-360m" in out.read_text(encoding="utf-8")

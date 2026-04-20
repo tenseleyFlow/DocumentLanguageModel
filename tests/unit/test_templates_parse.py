@@ -1,4 +1,4 @@
-"""Sprint 16 — every shipped starter template must parse cleanly.
+"""Every shipped starter template must parse cleanly.
 
 Guards the cookbook recipes: if a schema bump lands (Sprint 12b
 migrator chain), the templates need to move forward with it. This
@@ -12,20 +12,19 @@ from pathlib import Path
 import pytest
 
 from dlm.doc.parser import parse_file
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_TEMPLATES_DIR = _REPO_ROOT / "templates"
+from dlm.templates import bundled_templates_dir
 
 
 def _template_paths() -> list[Path]:
-    return sorted(_TEMPLATES_DIR.glob("*.dlm"))
+    return sorted(bundled_templates_dir().glob("*.dlm"))
 
 
 def test_templates_dir_is_populated() -> None:
-    # Guard against a silent deletion of the templates folder.
+    # Guard against a silent deletion of the bundled gallery.
     paths = _template_paths()
-    assert len(paths) >= 5, (
-        f"expected at least 5 starter templates under {_TEMPLATES_DIR}, got {len(paths)}"
+    assert len(paths) >= 8, (
+        f"expected at least 8 gallery templates under {bundled_templates_dir()}, "
+        f"got {len(paths)}"
     )
 
 
