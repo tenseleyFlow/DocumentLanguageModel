@@ -26,10 +26,23 @@ uv run pytest
 
 If you've only touched one module, you can run that module's tests
 directly (`uv run pytest tests/unit/pack -q`, etc.). The full suite
-takes around six seconds.
+takes around eight seconds.
 
 `mypy --strict` is non-negotiable — if you need to loosen a type,
 please fix the type at its source instead.
+
+### Pre-commit hooks
+
+Install once per clone to catch ruff / mypy / non-slow-pytest
+failures before they reach CI:
+
+```sh
+uv run pre-commit install
+```
+
+The config lives at `.pre-commit-config.yaml`. The local hook runs
+`pytest -m "not slow and not gpu and not online"`, so it's ~8 seconds
+on a warm cache.
 
 Testing conventions (markers, fixtures, the tiny-model fixture,
 golden outputs) are documented separately at
@@ -90,6 +103,75 @@ A few things we actively don't want:
   hasn't gone out the door, you can rename a function without a
   deprecation wrapper.
 - Telemetry or network calls outside of model download. Ever.
+
+## Releasing
+
+Tag-driven: pushing a `v*` tag triggers `.github/workflows/release.yml`,
+which runs the full CI gate, builds wheel + sdist via `uv build`, and
+publishes to PyPI via trusted-publisher OIDC.
+
+### One-time PyPI trusted-publisher setup
+
+Before the first real release:
+
+1. Create a PyPI account for the `dlm` project (someone with publish
+   rights has to own this).
+2. Under project settings → **Publishing** → **Add a new pending
+   publisher**, fill in:
+   - Owner: `tenseleyFlow`
+   - Repository name: `DocumentLanguageModel`
+   - Workflow filename: `release.yml`
+   - Environment name: `pypi`
+3. Repeat on test.pypi.org with environment name `test-pypi`.
+4. In the GitHub repo settings → **Environments**, create both
+   `pypi` and `test-pypi` environments. Neither needs secrets; the
+   OIDC token is minted per run.
+
+### Pre-flight
+
+The CI gate runs the full check suite (ruff, mypy, non-slow pytest,
+`mkdocs build --strict`). Before tagging, eyeball these locally:
+
+```sh
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src/dlm
+uv run pytest
+uv sync --group docs
+uv run mkdocs build --strict
+```
+
+Then bump the version in `pyproject.toml`, update `CHANGELOG.md`
+(move the `## [Unreleased]` entries under a new `## [X.Y.Z]` heading),
+and land both in the same commit.
+
+### Tagging
+
+`release.yml` classifies tags via `packaging.version.Version.is_prerelease`:
+
+- **Prerelease** (routes to `test.pypi.org`): any PEP 440 prerelease.
+  Canonical: `v1.0.0rc1`, `v1.0.0a2`, `v1.0.0b3`. Hyphenated also
+  works: `v1.0.0-rc1`.
+- **Release** (routes to `pypi.org`): clean `vMAJOR.MINOR.PATCH`.
+
+```sh
+# Dry-run via test.pypi.org first
+git tag v1.0.0rc1
+git push origin v1.0.0rc1
+
+# Verify on https://test.pypi.org/project/dlm/, then:
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The release workflow publishes, then the `deploy-docs` job builds the
+MkDocs site and pushes it to `gh-pages`.
+
+### Rollback
+
+There's no unpublish on PyPI (trusted-publisher or otherwise). If a
+release is bad, bump the patch version and cut a fixed release rather
+than trying to yank the old one.
 
 Thanks again — reach out in issues if anything's unclear.
 
