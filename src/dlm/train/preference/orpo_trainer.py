@@ -1,17 +1,17 @@
-"""Configure `trl.ORPOTrainer` from our `PreferenceConfig` + hardware plan.
+"""Configure ORPO via `trl.experimental.orpo`.
+
+TRL 1.x demoted ORPO out of the top-level package into
+`trl.experimental.orpo` (same file layout: `ORPOTrainer`,
+`ORPOConfig`). The API is stable enough for our purposes; if TRL
+promotes or drops it again we swap the import path here.
 
 Same split as `dpo_trainer.py`:
 
 1. `build_orpo_config_kwargs` — pure mapping from `PreferenceConfig` +
-   `TrainingPlan` to the keyword args TRL's `ORPOConfig` wants.
-2. `build_orpo_trainer` — heavy: instantiates TRL's ORPOTrainer.
-   `# pragma: no cover`; the slow integration suite drives it.
-
-ORPO differs from DPO in two key ways: no reference model (the SFT
-loss inside ORPO's objective anchors the policy) and a single alpha
-hyperparameter instead of DPO's beta. TRL's `ORPOConfig` exposes
-`beta` as the alpha knob — we translate at the kwarg boundary so
-`PreferenceHyperparams.alpha` flows through under its TRL name.
+   `TrainingPlan` to ORPOConfig kwargs. Our alpha flows through as
+   TRL's `beta` kwarg.
+2. `build_orpo_trainer` — heavy: instantiates `ORPOTrainer(...)` with
+   no reference model. `# pragma: no cover`.
 """
 
 from __future__ import annotations
@@ -81,13 +81,11 @@ def build_orpo_trainer(  # pragma: no cover
     seed: int,
     max_steps: int | None = None,
 ) -> Any:
-    """Instantiate `trl.ORPOTrainer` with our config.
+    """Instantiate `trl.experimental.orpo.ORPOTrainer`.
 
-    Heavy import; covered by the slow integration test. ORPO has no
-    reference model — the policy carries both the SFT and preference
-    objectives under one loss.
+    Heavy import; covered by the slow integration test.
     """
-    from trl import ORPOConfig, ORPOTrainer  # type: ignore[attr-defined]
+    from trl.experimental.orpo import ORPOConfig, ORPOTrainer
 
     kwargs = build_orpo_config_kwargs(
         pref_cfg,
