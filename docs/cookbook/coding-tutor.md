@@ -15,7 +15,9 @@ scratch:
 
 ```dlm
 ---
-dlm_id: 01HRCODING0000000000000000     # dlm init replaces this
+# dlm_id is minted by `dlm init` (Crockford base32, no I/L/O/U).
+# The value below is illustrative only; `dlm init` generates a fresh one.
+dlm_id: 01KPM618S78XK668EX0TFEWAJY
 base_model: qwen2.5-coder-1.5b
 system_prompt: |
   You are a Python tutor. Be precise. Prefer simple examples.
@@ -58,7 +60,9 @@ $ uv run dlm init tutor.dlm --base qwen2.5-coder-1.5b
 
 # Train
 $ uv run dlm train tutor.dlm --max-steps 50
-trained: v0001 (50 steps, seed=42, determinism=strong)
+trained: v0001 (50 steps, seed=42, determinism=strict)
+adapter: ~/.dlm/store/01HRCJ…/adapter/versions/v0001
+log:     ~/.dlm/store/01HRCJ…/logs/train-000001-…jsonl
 
 # Smoke-test via HF inference
 $ uv run dlm prompt tutor.dlm "Explain closures in one sentence."
@@ -68,7 +72,8 @@ returns.
 
 # Ship to Ollama
 $ uv run dlm export tutor.dlm --name coding-tutor
-ollama: registered coding-tutor:latest
+exported: ~/.dlm/store/01HRCJ…/exports/Q4_K_M
+ollama:  coding-tutor (v1)
 
 # Use it
 $ ollama run coding-tutor "When should I use list vs tuple?"

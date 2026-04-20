@@ -9,7 +9,7 @@ exports, optionally the base model.
 
 ```sh
 $ uv run dlm pack tutor.dlm
-wrote: tutor.dlm.pack (3.2 MB)
+packed: tutor.dlm.pack (3.21 MB, content_type=minimal)
 ```
 
 What ships in the default pack:
@@ -28,8 +28,9 @@ model (you already have it or can download it), logs (bulky, optional).
 
 ```sh
 $ uv run dlm unpack tutor.dlm.pack
-unpacked: 01HRTUTOR… under ~/.dlm/store/
-           tutor.dlm placed at ./tutor.dlm
+unpacked: tutor.dlm
+  store:  ~/.dlm/store/01KPM…
+  dlm_id: 01KPM618S78XK668EX0TFEWAJY
 
 $ uv run dlm prompt tutor.dlm "Explain decorators"
 A decorator is a function that…

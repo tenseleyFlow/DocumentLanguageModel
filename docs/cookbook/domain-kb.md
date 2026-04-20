@@ -14,7 +14,8 @@ docs.
 
 ```dlm
 ---
-dlm_id: 01HRDOMAIN0000000000000000
+# dlm_id is minted by `dlm init`; value below is illustrative only.
+dlm_id: 01KPM618S7NXSPAY10BHKVECYX
 base_model: qwen2.5-1.5b
 training:
   lora_r: 8

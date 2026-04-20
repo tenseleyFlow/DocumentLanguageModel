@@ -10,14 +10,18 @@ forget, and how to audit what the model has seen.
 ```sh
 # v0001 — initial training
 $ uv run dlm train tutor.dlm
-trained: v0001 (20 steps)
+trained: v0001 (20 steps, seed=42, determinism=best_effort)
+adapter: ~/.dlm/store/01KPM…/adapter/versions/v0001
+log:     ~/.dlm/store/01KPM…/logs/train-000001-…jsonl
 
 # Edit tutor.dlm — add more Q&A, fix a typo
 $ $EDITOR tutor.dlm
 
 # v0002 — retrain
 $ uv run dlm train tutor.dlm
-trained: v0002 (20 steps)
+trained: v0002 (20 steps, seed=42, determinism=best_effort)
+adapter: ~/.dlm/store/01KPM…/adapter/versions/v0002
+log:     ~/.dlm/store/01KPM…/logs/train-000002-…jsonl
 ```
 
 What `dlm train` does on retrain:
@@ -39,16 +43,31 @@ training data for v0002 included them (via replay).
 
 ```sh
 $ uv run dlm show tutor.dlm
-training_runs: 2
-  run 1 → v0001, 20 steps, seed=42, loss 2.30
-  run 2 → v0002, 20 steps, seed=42, loss 1.87
-replay_corpus: 18.2 KB (4 sections, rollups: 2)
-content_hashes: 12 sections
-adapter:       v0002
+tutor.dlm
+  dlm_id:         01KPM618S78XK668EX0TFEWAJY
+  base_model:     qwen2.5-coder-1.5b (revision abcdef1)
+  store:          ~/.dlm/store/01KPM…  (12.4 KB)
+  adapter:        v0002
+  training runs:  2 — last 2026-04-19T18:30:14
+  exports:        0
 ```
 
-`dlm show --json` gives machine-readable output; the `content_hashes`
-field lists each section ID currently in the manifest.
+Pretty-print summary; use `--json` for the full record including
+`content_hashes`, `replay_size_bytes`, per-run `TrainingRunSummary`
+entries, and `pinned_versions`:
+
+```sh
+$ uv run dlm show tutor.dlm --json | jq '.training_runs'
+2
+$ uv run dlm show tutor.dlm --json | jq 'keys'
+[
+  "adapter_version", "base_model", "base_model_revision",
+  "content_hashes", "dlm_id", "exports", "has_adapter_current",
+  "last_trained_at", "orphaned", "path", "pinned_versions",
+  "replay_size_bytes", "source_path", "total_size_bytes",
+  "training_runs"
+]
+```
 
 ## Intentional forgetting: `--fresh`
 
@@ -68,19 +87,12 @@ Use sparingly — fresh training loses every prior training signal.
 
 ## Intentional pruning: edit the replay corpus
 
-The replay corpus is a plain-ish file on disk. If you know the
-`section_id` of the bad content:
-
-```sh
-# Inspect replay contents
-$ uv run python -m dlm.replay.inspect ~/.dlm/store/<id>/replay/corpus.zst
-
-# ... decide what to prune, then write a follow-up tool or drop to
-# `dlm.replay.sampler` APIs in Python
-```
-
-A first-class `dlm replay prune` command is on the Phase 4 roadmap;
-until then, this is a Python-API operation.
+The replay corpus is a zstd-framed file on disk at
+`<store>/replay/corpus.zst` + `<store>/replay/index.json`. There is
+no shipped CLI for surgical pruning yet; drop into Python via
+`dlm.replay.store.ReplayStore.at(corpus_path, index_path)` to read
+or rewrite it. A first-class `dlm replay prune` command is on the
+Phase 4 roadmap.
 
 ## What `dlm.lock` records
 

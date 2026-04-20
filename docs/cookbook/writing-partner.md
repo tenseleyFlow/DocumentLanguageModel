@@ -13,7 +13,8 @@ choice, sentence length, and the specific idioms you reach for.
 
 ```dlm
 ---
-dlm_id: 01HRWRITER0000000000000000
+# dlm_id is minted by `dlm init`; value below is illustrative only.
+dlm_id: 01KPM618S7ZS91NVJH3XBK3WSG
 base_model: smollm2-1.7b
 system_prompt: |
   Continue the passage in the author's voice. Prefer short sentences.

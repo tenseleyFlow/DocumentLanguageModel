@@ -68,10 +68,10 @@ regression comparison.
 
 ```sh
 $ uv run dlm export tutor.dlm --merged --quant Q4_K_M
-error: merge refused: adapter was trained with QLoRA (4-bit base).
-       Merging into a quantized base is precision-unsafe.
-       Re-run with --dequantize to dequantize to fp16 before merge,
-       or drop --merged to ship base + adapter separately.
+export: merge refused: adapter was trained with QLoRA (4-bit base);
+        merging into a quantized base is precision-unsafe. Re-run
+        with --dequantize to dequantize to fp16 before merge, or drop
+        --merged to ship base + adapter separately.
 ```
 
 The default (base + adapter separate) is fine for almost every use
