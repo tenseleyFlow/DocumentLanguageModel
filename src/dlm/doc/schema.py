@@ -18,13 +18,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # Crockford base32 alphabet used by ULID: 0-9, A-Z minus I L O U.
 _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 2
+CURRENT_SCHEMA_VERSION: Final[int] = 3
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
 commit — enforced by `test_all_versions_have_migrator_up_to_latest`.
 v2 renamed `training.dpo` → `training.preference` to accommodate both
-DPO and ORPO under one `method`-switched config.
+DPO and ORPO under one `method`-switched config. v3 added the
+additive `training.cpt` block (DAPT schedule + embedding warm-up)
+for continued-pretraining refinements.
 """
 
 
@@ -69,6 +71,30 @@ def _default_preference() -> PreferenceConfig:
     return PreferenceConfig()
 
 
+class CptConfig(BaseModel):
+    """Continued-pretraining refinements.
+
+    `schedule="auto"` lets the trainer pick: `dapt` when CPT rows
+    dominate (>70% of training rows), otherwise the SFT default. A
+    user who wants the DAPT curve regardless of the row mix pins
+    `schedule="dapt"`; `schedule="sft"` opts out entirely.
+
+    `embed_warmup_steps>0` unfreezes `embed_tokens` + `lm_head` for
+    the first N steps and adds them to `modules_to_save`, which
+    inflates adapter size by `vocab_size * hidden_dim`. The trainer
+    warns loudly when this is enabled.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schedule: Literal["auto", "dapt", "sft"] = "auto"
+    embed_warmup_steps: int = Field(0, ge=0)
+
+
+def _default_cpt() -> CptConfig:
+    return CptConfig()
+
+
 class TrainingConfig(BaseModel):
     """Training-time knobs. `auto` values are resolved by the hardware doctor."""
 
@@ -89,6 +115,7 @@ class TrainingConfig(BaseModel):
     warmup_ratio: float = Field(0.1, ge=0.0, le=0.5)
     seed: int = 42
     preference: PreferenceConfig = Field(default_factory=_default_preference)
+    cpt: CptConfig = Field(default_factory=_default_cpt)
 
     @field_validator("micro_batch_size", "grad_accum")
     @classmethod
