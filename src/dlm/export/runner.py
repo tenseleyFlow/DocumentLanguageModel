@@ -538,9 +538,14 @@ def _run_ollama_stage(
     create_fn = ollama_create_runner or ollama_create
     run_fn = ollama_run_runner or ollama_run
 
-    # Ollama version gate (audit F16).
-    detected = check_ollama_version()
-    ver_str = f"{detected[0]}.{detected[1]}.{detected[2]}"
+    # Ollama version gate (audit F16). Only run when calling the real
+    # `ollama_create` — tests inject a mock `ollama_create_runner` and
+    # don't need (or want) a real `ollama` binary on PATH.
+    if ollama_create_runner is None:
+        detected = check_ollama_version()
+        ver_str: str | None = f"{detected[0]}.{detected[1]}.{detected[2]}"
+    else:
+        ver_str = None
 
     # Sprint 12.5: resolve the speculative-decoding draft, if any.
     draft_tag = resolve_draft(spec, override=draft_override, disabled=draft_disabled)
