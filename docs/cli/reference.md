@@ -26,12 +26,13 @@ Bootstrap a new `.dlm` file with a fresh ULID, create the per-store
 directory, and persist the license-acceptance record (audit-05 B2).
 
 ```
-dlm init <path> [--base <key>] [--i-accept-license] [--force]
+dlm init <path> [--base <key>] [--template <name>] [--i-accept-license] [--force]
 ```
 
 | Option | Default | Notes |
 |---|---|---|
-| `--base <key>` | `qwen2.5-1.5b` | Registry key or `hf:org/name`. |
+| `--base <key>` | `qwen2.5-1.5b` | Registry key or `hf:org/name`. Ignored when `--template` is used (the template's `recommended_base` wins). |
+| `--template <name>` | None | Bootstrap from a named gallery template. See `dlm templates list`. |
 | `--i-accept-license` | false | Required for gated bases (Llama-3.2). |
 | `--force` | false | Overwrite an existing `.dlm` at path. |
 
@@ -136,6 +137,29 @@ dlm metrics watch <path> [--poll-seconds N]
 they arrive. See the [metrics cookbook](../cookbook/metrics.md) for
 the full flow + optional TensorBoard / W&B sinks (`uv sync --extra
 observability`).
+
+### `dlm templates`
+
+Browse the starter template gallery (Sprint 27).
+
+```
+dlm templates list [--json] [--refresh] [--accept-unsigned]
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--json` | false | Emit the full `TemplateMeta` for each entry as JSON. |
+| `--refresh` | false | Refresh from the upstream gallery. **Currently a no-op** — upstream repo and signing key are pending (Sprint 27 deferred polish); the command warns and falls back to the bundled gallery. |
+| `--accept-unsigned` | false | Reserved. Will bypass signed-tag verification once the live fetcher is wired. |
+
+Pair with `dlm init --template <name>` to create a new `.dlm`:
+
+```bash
+dlm init mydoc.dlm --template coding-tutor
+```
+
+See the [template-gallery cookbook](../cookbook/template-gallery.md)
+for the full walkthrough and the `TemplateMeta` schema.
 
 ### `dlm export`
 

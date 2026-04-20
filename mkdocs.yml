@@ -71,6 +71,7 @@ nav:
       - Interactive sessions: cookbook/interactive-session.md
       - Save-to-train (--watch): cookbook/watch-mode.md
       - Metrics & observability: cookbook/metrics.md
+      - Template gallery: cookbook/template-gallery.md
   - Architecture: architecture.md
   - Determinism: determinism.md
   - Hardware:
