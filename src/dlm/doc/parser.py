@@ -71,13 +71,13 @@ def parse_text(text: str, *, path: Path | None = None) -> ParsedDlm:
 
 _FRONTMATTER_DELIM: Final = "---"
 
-# Intentionally looser than the v1 grammar `^::<type>::$` so we can accept
-# the `::type#adapter::` suffix that Sprint 20 (multi-adapter composition)
-# will consume. `_resolve_fence_type` splits on `#` and validates the
-# base against `SectionType`, so unknown base types still raise `FenceError`;
-# the `#adapter` annotation is silently ignored in v1 and becomes
-# authoritative in Sprint 20.
+# A fence line is `::<type>::` or `::<type>#<adapter>::`.
+# - `<type>` is one of `SectionType` (validated in `_resolve_fence_type`).
+# - `<adapter>` matches the schema's adapter-name grammar: lowercase
+#   alpha start + `[a-z0-9_]` tail, ≤32 chars. Keeps store paths safe
+#   and log output readable.
 _FENCE_RE: Final[re.Pattern[str]] = re.compile(r"^::([A-Za-z0-9_#-]+)::$")
+_ADAPTER_SUFFIX_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _CODE_FENCE_RE: Final[re.Pattern[str]] = re.compile(r"^```")
 
 
@@ -176,6 +176,7 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
     sections: list[Section] = []
     in_code_block = False
     current_type = SectionType.PROSE
+    current_adapter: str | None = None
     current_lines: list[str] = []
     current_start_line = body_start_line
 
@@ -188,7 +189,12 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
             # Purely-whitespace prose between fences: drop, keeps round-trip tidy.
             return
         sections.append(
-            Section(type=current_type, content=content, start_line=current_start_line),
+            Section(
+                type=current_type,
+                content=content,
+                start_line=current_start_line,
+                adapter=current_adapter,
+            ),
         )
 
     for idx, line in enumerate(lines):
@@ -204,9 +210,12 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
             match = _FENCE_RE.match(line)
             if match:
                 fence_name = match.group(1)
-                fence_type = _resolve_fence_type(fence_name, source_line, path)
+                fence_type, fence_adapter = _resolve_fence_type(
+                    fence_name, source_line, path
+                )
                 flush()
                 current_type = fence_type
+                current_adapter = fence_adapter
                 current_lines = []
                 current_start_line = source_line
                 continue
@@ -224,18 +233,44 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
     return sections
 
 
-def _resolve_fence_type(name: str, line: int, path: Path | None) -> SectionType:
-    """Map a fence name to a known SectionType or raise."""
-    # Multi-adapter fences like `instruction#tone` are Phase 4; accept the
-    # base type but record the adapter routing via the annotation (Sprint 20
-    # consumes). For v1 we only accept bare names.
-    base = name.split("#", 1)[0]
+def _resolve_fence_type(
+    name: str, line: int, path: Path | None
+) -> tuple[SectionType, str | None]:
+    """Map a fence name to `(SectionType, adapter_name|None)` or raise.
+
+    Multi-adapter fences carry a `#<adapter>` suffix; the adapter part is
+    validated against the same grammar the schema uses. A fence like
+    `::instruction#::` (trailing hash but no name) or `::foo#bar::` (bad
+    base) raises `FenceError`.
+    """
+    if "#" in name:
+        base, _, adapter = name.partition("#")
+        if not adapter:
+            raise FenceError(
+                f"fence '::{name}::' has an empty adapter suffix after '#'",
+                path=path,
+                line=line,
+                col=1,
+            )
+        if not _ADAPTER_SUFFIX_RE.fullmatch(adapter):
+            raise FenceError(
+                f"fence '::{name}::' has an invalid adapter name "
+                f"{adapter!r} (must match {_ADAPTER_SUFFIX_RE.pattern})",
+                path=path,
+                line=line,
+                col=1,
+            )
+    else:
+        base, adapter = name, None
+
     try:
-        return SectionType(base)
+        section_type = SectionType(base)
     except ValueError as exc:
         raise FenceError(
-            f"unknown section fence '::{name}::'; valid types are {[t.value for t in SectionType]}",
+            f"unknown section fence '::{name}::'; valid types are "
+            f"{[t.value for t in SectionType]}",
             path=path,
             line=line,
             col=1,
         ) from exc
+    return section_type, adapter or None
