@@ -61,9 +61,15 @@ dlm train <path> [--resume|--fresh] [--seed N] [--max-steps N]
 | `--strict-lock` | false | Fail on any `dlm.lock` drift (even WARN). |
 | `--update-lock` | false | Bypass validation; always write a fresh `dlm.lock`. |
 | `--ignore-lock` | false | Bypass validation; don't write `dlm.lock`. |
+| `--gpus SPEC` | single-process | Multi-GPU training via Accelerate. `all` uses every visible CUDA device; `N` uses the first N; `0,1` selects exact device ids. Dispatches to `accelerate launch` when >1 device is selected. Refused on MPS/CPU/ROCm; heterogeneous CUDA SMs refused. |
 
 The three lock flags are mutually exclusive. See [Determinism](../determinism.md)
 for the mismatch severity table.
+
+`--gpus` multiplies the effective batch size by `world_size`; the
+resulting lock records `world_size` and warns on drift between runs.
+Multi-GPU + QLoRA on CUDA is permitted (bitsandbytes supports DDP);
+multi-GPU + ROCm is out of scope for Sprint 23.
 
 ### `dlm prompt`
 
