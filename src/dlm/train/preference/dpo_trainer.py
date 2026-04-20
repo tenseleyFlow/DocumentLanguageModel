@@ -46,9 +46,10 @@ def build_dpo_config_kwargs(
     `DpoConfig` exposes plus plan-derived batch sizing. Callers that
     need more (e.g. custom logging cadence) can post-process the dict.
 
-    `max_prompt_length` is set to half of `max_length`, which matches
-    the TRL default and keeps prompt+completion within the model's
-    context window for our typical base registry (2k-8k tokens).
+    `max_length` caps the combined prompt+completion length; TRL ≥1.0
+    dropped the separate `max_prompt_length` kwarg and uses a single
+    cap. For our typical base registry (2k–8k tokens) the document's
+    `training.sequence_len` flows through directly.
     """
     kwargs: dict[str, Any] = {
         "output_dir": str(output_dir),
@@ -59,7 +60,6 @@ def build_dpo_config_kwargs(
         "per_device_train_batch_size": plan.micro_batch_size,
         "gradient_accumulation_steps": plan.grad_accum,
         "max_length": max_length,
-        "max_prompt_length": max_length // 2,
         "seed": seed,
         "data_seed": seed,
         "bf16": plan.precision == "bf16",

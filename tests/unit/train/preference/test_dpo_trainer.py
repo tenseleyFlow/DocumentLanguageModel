@@ -68,7 +68,7 @@ class TestCoreFields:
         assert kwargs["per_device_train_batch_size"] == 8
         assert kwargs["gradient_accumulation_steps"] == 3
 
-    def test_max_prompt_length_is_half_of_max_length(self, tmp_path: Path) -> None:
+    def test_max_length_passed_through(self, tmp_path: Path) -> None:
         kwargs = build_dpo_config_kwargs(
             DpoConfig(enabled=True),
             _plan(),
@@ -77,7 +77,8 @@ class TestCoreFields:
             seed=0,
         )
         assert kwargs["max_length"] == 1024
-        assert kwargs["max_prompt_length"] == 512
+        # TRL ≥1.0 has no separate max_prompt_length kwarg.
+        assert "max_prompt_length" not in kwargs
 
 
 class TestPrecisionFlags:

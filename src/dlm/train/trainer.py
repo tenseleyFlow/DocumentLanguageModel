@@ -501,45 +501,60 @@ def _build_real_trainer(  # pragma: no cover
     eval_steps = _default_eval_steps(max_steps)
     early_stop_cfg = _default_early_stop_config()
 
-    sft_config = SFTConfig(
-        output_dir=str(store.logs / f"sft-run-{seed}"),
-        num_train_epochs=parsed.frontmatter.training.num_epochs,
-        per_device_train_batch_size=plan.micro_batch_size,
-        gradient_accumulation_steps=plan.grad_accum,
-        learning_rate=parsed.frontmatter.training.learning_rate,
-        lr_scheduler_type=parsed.frontmatter.training.lr_scheduler,
-        warmup_ratio=parsed.frontmatter.training.warmup_ratio,
-        max_steps=max_steps if max_steps is not None else -1,
-        seed=seed,
-        data_seed=seed,
-        bf16=(plan.precision == "bf16"),
-        fp16=(plan.precision == "fp16"),
-        report_to=["none"],
-        save_strategy="no",  # we own checkpoint commit
-        eval_strategy="steps",
-        eval_steps=eval_steps,
-        metric_for_best_model=early_stop_cfg.metric,
-        greater_is_better=early_stop_cfg.greater_is_better,
+    # Very small documents (tiny-model CI runs, quickstart docs) can hash
+    # all rows to the train side, leaving val_ds empty. TRL's SFTTrainer
+    # does `next(iter(eval_dataset))` unconditionally, so an empty
+    # eval_dataset crashes construction. When that happens, turn off
+    # the eval+early-stop machinery for this run — the training contract
+    # still holds, we just skip the val-loss curve.
+    has_val = len(val_ds) > 0
+
+    sft_config_kwargs: dict[str, Any] = {
+        "output_dir": str(store.logs / f"sft-run-{seed}"),
+        "num_train_epochs": parsed.frontmatter.training.num_epochs,
+        "per_device_train_batch_size": plan.micro_batch_size,
+        "gradient_accumulation_steps": plan.grad_accum,
+        "learning_rate": parsed.frontmatter.training.learning_rate,
+        "lr_scheduler_type": parsed.frontmatter.training.lr_scheduler,
+        "warmup_ratio": parsed.frontmatter.training.warmup_ratio,
+        "max_steps": max_steps if max_steps is not None else -1,
+        "seed": seed,
+        "data_seed": seed,
+        "bf16": plan.precision == "bf16",
+        "fp16": plan.precision == "fp16",
+        "report_to": ["none"],
+        "save_strategy": "no",  # we own checkpoint commit
         # Modern transformers refuses load_best_model_at_end=True when
         # save_strategy="no" (it has no checkpoints to reload). We own
         # the checkpoint write lifecycle, so we keep save off and take
         # the last-step weights at commit time. Early stopping still
         # fires via the callback.
-        load_best_model_at_end=False,
-    )
+        "load_best_model_at_end": False,
+    }
+    if has_val:
+        sft_config_kwargs.update(
+            eval_strategy="steps",
+            eval_steps=eval_steps,
+            metric_for_best_model=early_stop_cfg.metric,
+            greater_is_better=early_stop_cfg.greater_is_better,
+        )
+
+    sft_config = SFTConfig(**sft_config_kwargs)
 
     from dlm.eval import build_callback
 
     # Newer TRL releases (>=0.9) renamed `tokenizer` → `processing_class`.
-    return SFTTrainer(
-        model=peft_model,
-        processing_class=tok_bringup.tokenizer,
-        train_dataset=train_ds,
-        eval_dataset=val_ds,
-        formatting_func=make_formatting_func(tok_bringup.tokenizer),
-        args=sft_config,
-        callbacks=[build_callback(early_stop_cfg)],
-    )
+    trainer_kwargs: dict[str, Any] = {
+        "model": peft_model,
+        "processing_class": tok_bringup.tokenizer,
+        "train_dataset": train_ds,
+        "formatting_func": make_formatting_func(tok_bringup.tokenizer),
+        "args": sft_config,
+    }
+    if has_val:
+        trainer_kwargs["eval_dataset"] = val_ds
+        trainer_kwargs["callbacks"] = [build_callback(early_stop_cfg)]
+    return SFTTrainer(**trainer_kwargs)
 
 
 def _write_checkpoint(
