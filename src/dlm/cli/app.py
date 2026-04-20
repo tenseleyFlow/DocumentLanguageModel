@@ -103,6 +103,7 @@ def _root(
 app.command("init")(commands.init_cmd)
 app.command("train")(commands.train_cmd)
 app.command("prompt")(commands.prompt_cmd)
+app.command("repl")(commands.repl_cmd)
 app.command("export")(commands.export_cmd)
 app.command("pack")(commands.pack_cmd)
 app.command("unpack")(commands.unpack_cmd)
