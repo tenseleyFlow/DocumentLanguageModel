@@ -284,10 +284,7 @@ def train_cmd(
     console = Console(stderr=True)
 
     if phase not in ("sft", "preference", "all"):
-        console.print(
-            f"[red]error:[/red] --phase must be one of sft|preference|all, "
-            f"got {phase!r}"
-        )
+        console.print(f"[red]error:[/red] --phase must be one of sft|preference|all, got {phase!r}")
         raise typer.Exit(code=2)
     phase_literal: Phase = phase  # type: ignore[assignment]
 
@@ -434,6 +431,17 @@ def prompt_cmd(
             ),
         ),
     ] = None,
+    backend: Annotated[
+        str,
+        typer.Option(
+            "--backend",
+            help=(
+                "Inference backend: `auto` (default) picks MLX on Apple "
+                "Silicon, else PyTorch. Force with `pytorch` or `mlx`. "
+                "MLX requires `uv sync --extra mlx` on darwin-arm64."
+            ),
+        ),
+    ] = "auto",
 ) -> None:
     """Run inference against the trained adapter."""
     import sys
@@ -443,10 +451,21 @@ def prompt_cmd(
     from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
     from dlm.hardware import doctor
-    from dlm.inference import AdapterNotFoundError, generate, load_for_inference
+    from dlm.inference import AdapterNotFoundError
+    from dlm.inference.backends import (
+        UnsupportedBackendError,
+        build_backend,
+        select_backend,
+    )
     from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
+
+    if backend not in ("auto", "pytorch", "mlx"):
+        console.print(
+            f"[red]prompt:[/red] --backend must be `auto`, `pytorch`, or `mlx` (got {backend!r})."
+        )
+        raise typer.Exit(code=2)
 
     from dlm.base_models import GatedModelError
 
@@ -462,8 +481,7 @@ def prompt_cmd(
         if adapter not in adapters_declared:
             declared = sorted(adapters_declared)
             console.print(
-                f"[red]prompt:[/red] --adapter {adapter!r} is not declared "
-                f"(declared: {declared})."
+                f"[red]prompt:[/red] --adapter {adapter!r} is not declared (declared: {declared})."
             )
             raise typer.Exit(code=2)
     store = for_dlm(parsed.frontmatter.dlm_id)
@@ -479,14 +497,20 @@ def prompt_cmd(
     caps = doctor().capabilities
 
     try:
-        loaded = load_for_inference(store, spec, caps, adapter_name=adapter)
+        backend_name = select_backend(backend, caps)  # type: ignore[arg-type]
+    except UnsupportedBackendError as exc:
+        console.print(f"[red]prompt:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+    backend_obj = build_backend(backend_name, caps)
+
+    if verbose:
+        console.print(f"[dim]backend:[/dim] {backend_name}")
+
+    try:
+        backend_obj.load(spec, store, adapter_name=adapter)
     except AdapterNotFoundError as exc:
         console.print(f"[red]prompt:[/red] {exc}")
         raise typer.Exit(code=1) from exc
-
-    if verbose:
-        console.print(f"[dim]plan:[/dim] {loaded.plan.to_dict()}")
-        console.print(f"[dim]adapter:[/dim] {loaded.adapter_path}")
 
     if query is None:
         query = sys.stdin.read().strip()
@@ -494,9 +518,7 @@ def prompt_cmd(
         console.print("[red]prompt:[/red] empty query (pass a string or pipe on stdin)")
         raise typer.Exit(code=2)
 
-    response = generate(
-        loaded.model,
-        loaded.tokenizer,
+    response = backend_obj.generate(
         query,
         max_new_tokens=max_tokens,
         temperature=temp,
@@ -627,8 +649,7 @@ def export_cmd(
         raise typer.Exit(code=2)
     if adapter is not None and adapter_mix is not None:
         console.print(
-            "[red]export:[/red] --adapter and --adapter-mix are mutually "
-            "exclusive; pick one."
+            "[red]export:[/red] --adapter and --adapter-mix are mutually exclusive; pick one."
         )
         raise typer.Exit(code=2)
 
@@ -644,8 +665,7 @@ def export_cmd(
         if adapter not in adapters_declared:
             declared = sorted(adapters_declared)
             console.print(
-                f"[red]export:[/red] --adapter {adapter!r} is not declared "
-                f"(declared: {declared})."
+                f"[red]export:[/red] --adapter {adapter!r} is not declared (declared: {declared})."
             )
             raise typer.Exit(code=2)
 
@@ -733,9 +753,7 @@ def export_cmd(
 
         store.ensure_layout()
         entries_typed = [MixEntry(name=n, weight=w) for (n, w) in mix_entries]
-        base_model = AutoModelForCausalLM.from_pretrained(
-            str(cached.path), revision=spec.revision
-        )
+        base_model = AutoModelForCausalLM.from_pretrained(str(cached.path), revision=spec.revision)
         merged = build_weighted_merged(
             base_model,
             store,
@@ -743,9 +761,7 @@ def export_cmd(
             entries_typed,
             combination_type=adapter_mix_method,  # type: ignore[arg-type]
         )
-        merge_dir = store.cache_dir_for(
-            "_export_merged_" + "_".join(n for n, _ in mix_entries)
-        )
+        merge_dir = store.cache_dir_for("_export_merged_" + "_".join(n for n, _ in mix_entries))
         # Copy tokenizer + training_run.json from a source adapter so
         # the downstream preflight (tokenizer_vocab) + merge-safety
         # (was_qlora) gates both work on the composite (audit-07 B2).
@@ -1055,13 +1071,9 @@ def _render_inspection_text(console: object, path: Path, inspection: object) -> 
         console.print("  adapters:")
         for adapter in inspection.named_adapters:
             if adapter.has_current:
-                console.print(
-                    f"    {adapter.name:16}v{adapter.latest_version:04d}"
-                )
+                console.print(f"    {adapter.name:16}v{adapter.latest_version:04d}")
             else:
-                console.print(
-                    f"    {adapter.name:16}[dim]no current pointer[/dim]"
-                )
+                console.print(f"    {adapter.name:16}[dim]no current pointer[/dim]")
     elif inspection.has_adapter_current:
         console.print(f"  adapter:        v{inspection.adapter_version:04d}")
     else:
