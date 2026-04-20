@@ -67,6 +67,7 @@ nav:
       - Sharing with pack: cookbook/sharing-with-pack.md
       - Quantization tradeoffs: cookbook/quantization-tradeoffs.md
       - Preference (DPO vs ORPO): cookbook/preference-dpo-vs-orpo.md
+      - Multi-adapter composition: cookbook/multi-adapter.md
   - Architecture: architecture.md
   - Determinism: determinism.md
   - Troubleshooting: troubleshooting.md
