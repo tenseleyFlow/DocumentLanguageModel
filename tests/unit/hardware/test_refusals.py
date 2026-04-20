@@ -29,10 +29,10 @@ class TestQloraRefusals:
         with pytest.raises(ResolutionError, match="CPU detected"):
             check_refusals(_cfg(adapter="qlora"), caps, base_params=135_000_000)
 
-    def test_qlora_on_rocm_refused_with_sprint_22_pointer(self) -> None:
+    def test_qlora_on_rocm_refused_permanently(self) -> None:
         with force_rocm():
             caps = probe()
-        with pytest.raises(ResolutionError, match="Sprint 22"):
+        with pytest.raises(ResolutionError, match="bitsandbytes.*ROCm"):
             check_refusals(_cfg(adapter="qlora"), caps, base_params=1_500_000_000)
 
     def test_qlora_on_cuda_without_bnb_refused(self) -> None:

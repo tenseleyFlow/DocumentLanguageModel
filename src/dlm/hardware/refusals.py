@@ -150,8 +150,9 @@ def _refuse_qlora(caps: Capabilities) -> None:
         )
     if caps.backend == Backend.ROCM:
         raise ResolutionError(
-            "QLoRA on ROCm is not supported (bitsandbytes ROCm is unstable). "
-            "Set `adapter: lora`, or wait for Sprint 22's ROCm work.",
+            "QLoRA on ROCm is not supported: `bitsandbytes` ROCm builds are "
+            "upstream-unstable and we refuse rather than silently corrupt "
+            "weights. LoRA on ROCm works — set `adapter: lora`.",
         )
     if not caps.has_bitsandbytes:
         raise ResolutionError(
