@@ -12,13 +12,28 @@ Three primary artifacts:
 - `llama-quantize` — compiled binary (built by cmake). Converts an
   fp16 GGUF into one of the quant levels.
 
+Lookup order for the llama.cpp source tree (convert scripts):
+
+1. `DLM_LLAMA_CPP_ROOT` env var — set by the Homebrew formula so
+   `brew install dlm` points at `libexec/vendor/llama.cpp/` without
+   needing an in-tree submodule.
+2. `vendor/llama.cpp/` relative to the repo root — dev path.
+
+Binary lookup falls through to `shutil.which()` when the vendored
+`build/bin/` isn't present, so `brew install llama.cpp`'s
+`/opt/homebrew/bin/llama-quantize` satisfies the resolver on brew
+installs.
+
 Missing or unbuilt artifacts raise `VendoringError` with a remediation
-pointing at `scripts/bump-llama-cpp.sh`. The runner catches + reworks
-the message for the CLI; test code can catch the bare typed error.
+pointing at `scripts/bump-llama-cpp.sh` (source install) or
+`brew install llama.cpp` (brew install). The runner catches + reworks
+the message for the CLI.
 """
 
 from __future__ import annotations
 
+import os
+import shutil
 from pathlib import Path
 from typing import Final
 
@@ -26,6 +41,7 @@ from dlm.export.errors import VendoringError
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 VENDOR_LLAMA_CPP: Final[Path] = _REPO_ROOT / "vendor" / "llama.cpp"
+_ENV_VAR: Final[str] = "DLM_LLAMA_CPP_ROOT"
 
 CONVERT_HF_TO_GGUF: Final[str] = "convert_hf_to_gguf.py"
 CONVERT_LORA_TO_GGUF: Final[str] = "convert_lora_to_gguf.py"
@@ -54,18 +70,30 @@ _LLAMA_IMATRIX_CANDIDATES: Final[tuple[str, ...]] = (
 
 
 def llama_cpp_root(override: Path | None = None) -> Path:
-    """Return the path to the vendored `llama.cpp` clone.
+    """Return the path to the llama.cpp source tree.
 
-    `override` is a test hook — production code never passes it.
-    Raises `VendoringError` if the directory is missing OR is empty
-    (an uninitialized submodule).
+    Resolution order:
+
+    1. `override` kwarg (test hook; production code never passes it).
+    2. `$DLM_LLAMA_CPP_ROOT` env var (set by the Homebrew formula).
+    3. `vendor/llama.cpp/` at the repo root (source / dev install).
+
+    Raises `VendoringError` if none of those resolve to a non-empty
+    directory.
     """
-    root = override or VENDOR_LLAMA_CPP
+    if override is not None:
+        root = override
+    elif env_override := os.environ.get(_ENV_VAR):
+        root = Path(env_override)
+    else:
+        root = VENDOR_LLAMA_CPP
     if not root.is_dir():
         raise VendoringError(
-            f"vendor/llama.cpp is missing at {root}. "
-            "Run `git submodule update --init --recursive` and then "
-            "`scripts/bump-llama-cpp.sh build` to materialize the toolchain."
+            f"llama.cpp source tree missing at {root}. For source installs, "
+            "run `git submodule update --init --recursive` and then "
+            "`scripts/bump-llama-cpp.sh build`. For brew installs, "
+            f"ensure the {_ENV_VAR} env var points at a populated tree "
+            "(normally handled by the dlm formula)."
         )
     # An empty dir (uninitialized submodule) is the most common failure.
     try:
@@ -74,7 +102,9 @@ def llama_cpp_root(override: Path | None = None) -> Path:
         raise VendoringError(f"cannot enumerate {root}: {exc}") from exc
     if any_entry is None:
         raise VendoringError(
-            f"vendor/llama.cpp is empty at {root}. Run `git submodule update --init --recursive`."
+            f"llama.cpp source tree is empty at {root}. "
+            "Run `git submodule update --init --recursive` (source install) "
+            f"or unset {_ENV_VAR} and reinstall the dlm formula."
         )
     return root
 
@@ -89,40 +119,60 @@ def convert_lora_to_gguf_py(override: Path | None = None) -> Path:
     return _resolve_script(CONVERT_LORA_TO_GGUF, override)
 
 
-def llama_quantize_bin(override: Path | None = None) -> Path:
-    """Path to the `llama-quantize` binary.
+def _resolve_binary(
+    *,
+    name: str,
+    candidates: tuple[str, ...],
+    override: Path | None,
+) -> Path:
+    """Find a llama.cpp binary, preferring the vendored build tree then $PATH.
 
-    Checks several known build-layout locations since llama.cpp's
-    build output has moved between releases. If none of the
-    candidates exist, `VendoringError` points at the bump script's
-    build step.
+    When `override` is None and the env/vendor tree lacks a compiled
+    binary, fall back to `shutil.which(name)` — covers the common
+    `brew install llama.cpp` case where the binary lives under
+    `/opt/homebrew/bin/`.
     """
     root = llama_cpp_root(override)
-    for candidate in _LLAMA_QUANTIZE_CANDIDATES:
+    for candidate in candidates:
         path = root / candidate
         if path.is_file():
             return path
+    # Fall through to PATH lookup (brew-installed llama.cpp).
+    on_path = shutil.which(name)
+    if on_path is not None:
+        return Path(on_path)
     raise VendoringError(
-        f"llama-quantize binary not found under {root}. "
-        "Run `scripts/bump-llama-cpp.sh build` to compile it."
+        f"{name} binary not found under {root} and not on $PATH. For "
+        "source installs, run `scripts/bump-llama-cpp.sh build`. For "
+        "brew installs, `brew install llama.cpp`."
+    )
+
+
+def llama_quantize_bin(override: Path | None = None) -> Path:
+    """Path to the `llama-quantize` binary.
+
+    Checks several known build-layout locations, then falls back to
+    `$PATH` — covers both the vendored `build/bin/llama-quantize`
+    (source install) and the brew `/opt/homebrew/bin/llama-quantize`
+    (brew install with `depends_on "llama.cpp"`).
+    """
+    return _resolve_binary(
+        name="llama-quantize",
+        candidates=_LLAMA_QUANTIZE_CANDIDATES,
+        override=override,
     )
 
 
 def llama_imatrix_bin(override: Path | None = None) -> Path:
     """Path to the `llama-imatrix` binary (Sprint 11.6).
 
-    Same resolver shape as `llama_quantize_bin` — checks several known
-    build-layout locations. `VendoringError` with the bump-script
-    pointer if the binary is absent.
+    Same resolver shape as `llama_quantize_bin` — checks vendored
+    build layouts, then `$PATH`.
     """
-    root = llama_cpp_root(override)
-    for candidate in _LLAMA_IMATRIX_CANDIDATES:
-        path = root / candidate
-        if path.is_file():
-            return path
-    raise VendoringError(
-        f"llama-imatrix binary not found under {root}. "
-        "Run `scripts/bump-llama-cpp.sh build` to compile it."
+    return _resolve_binary(
+        name="llama-imatrix",
+        candidates=_LLAMA_IMATRIX_CANDIDATES,
+        override=override,
     )
 
 

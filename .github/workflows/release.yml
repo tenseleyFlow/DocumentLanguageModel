@@ -1,12 +1,20 @@
 name: release
 
-# Tag-driven release: push a `v*` tag, the workflow builds the wheel +
-# sdist and publishes to PyPI via trusted-publisher OIDC (configure
-# the publisher under the project's PyPI settings before the first
-# real run). The docs site is deployed separately via `docs.yml`.
+# Tag-driven release. We don't publish to PyPI — DLM ships via a
+# Homebrew tap (https://github.com/tenseleyFlow/homebrew-tap).
 #
-# Dry-run to test.pypi.org by pushing a `v*-rc*` tag (e.g. `v1.0.0-rc1`).
-# The publish step routes to the test index when the tag ends in `-rc*`.
+# What this workflow does on a `v*` tag:
+#
+# 1. Gate on the full CI suite (ruff + format + mypy + non-slow pytest
+#    + mkdocs strict build).
+# 2. Build a "fat" source tarball that bundles `vendor/llama.cpp/`
+#    (source only, no build artifacts) so the Homebrew formula can
+#    drop the convert scripts into libexec without cloning submodules
+#    at install time.
+# 3. Create a GitHub release with the tarball + a computed sha256
+#    pasted into the release notes so the tap formula can bump in one
+#    edit.
+# 4. Deploy the docs site to gh-pages.
 
 on:
   push:
@@ -14,10 +22,13 @@ on:
       - "v*"
 
 permissions:
-  # Required for trusted-publisher OIDC flow.
-  id-token: write
-  # Required so the workflow can read the repo on a tag push.
-  contents: read
+  contents: write      # create release + upload asset
+  id-token: write      # gh-pages OIDC deploy
+  pages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   UV_VERSION: "0.11.6"
@@ -51,105 +62,124 @@ jobs:
         run: uv run pytest -m "not slow and not online and not gpu"
 
       - name: Mkdocs build --strict
-        # Audit-05 N14: block release on docs regressions (dead links,
-        # missing files in nav, etc.) before the publish step so a broken
-        # docs site can't ship alongside a real PyPI tag.
         run: uv run mkdocs build --strict --site-dir /tmp/mkdocs-check
 
-  build:
-    name: build wheel + sdist
-    needs: ci-gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: ${{ env.UV_VERSION }}
-
-      - name: Build
-        run: uv build
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-  classify-tag:
-    # Audit-05 M8: route by `packaging.version.Version(tag).is_prerelease`
-    # rather than `contains('-rc')`. The substring check breaks on PEP 440
-    # canonical prereleases (e.g. `v1.0.0rc1` without the hyphen) — those
-    # would silently publish to prod PyPI.
-    name: classify tag as release vs prerelease
+  build-release-tarball:
+    name: build fat source tarball
     needs: ci-gate
     runs-on: ubuntu-latest
     outputs:
-      is_prerelease: ${{ steps.classify.outputs.is_prerelease }}
+      tarball_name: ${{ steps.build.outputs.tarball_name }}
+      sha256: ${{ steps.build.outputs.sha256 }}
     steps:
-      - name: Derive is_prerelease via packaging.version
-        id: classify
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build tarball
+        id: build
         run: |
+          set -euxo pipefail
           TAG="${GITHUB_REF_NAME}"
-          # Strip leading 'v' if present; packaging accepts either form.
-          VERSION="${TAG#v}"
-          IS_PRE=$(python3 -c "import sys; from packaging.version import Version, InvalidVersion
+          NAME="dlm-${TAG}"
+          # Build the tarball with a top-level prefix matching NAME so
+          # `tar xzf` extracts into a clean subdir (Homebrew convention).
+          # Exclude CI noise + git metadata; KEEP `vendor/llama.cpp/` so
+          # the formula can use the vendored Python convert scripts.
+          tar czf "${NAME}.tar.gz" \
+              --transform="s,^,${NAME}/," \
+              --exclude=".git" \
+              --exclude=".github" \
+              --exclude=".pytest_cache" \
+              --exclude=".mypy_cache" \
+              --exclude=".ruff_cache" \
+              --exclude="__pycache__" \
+              --exclude="*.pyc" \
+              --exclude="vendor/llama.cpp/.git" \
+              --exclude="vendor/llama.cpp/build" \
+              --exclude="vendor/llama.cpp/.cache" \
+              --exclude="tests" \
+              --exclude=".docs" \
+              --exclude="site" \
+              .
+          SHA=$(sha256sum "${NAME}.tar.gz" | awk '{print $1}')
+          echo "Tarball: ${NAME}.tar.gz (sha256=${SHA})"
+          echo "tarball_name=${NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-tarball
+          path: ${{ steps.build.outputs.tarball_name }}
+
+  publish-github-release:
+    name: publish GitHub release
+    needs: build-release-tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-tarball
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          TARBALL: ${{ needs.build-release-tarball.outputs.tarball_name }}
+          SHA256: ${{ needs.build-release-tarball.outputs.sha256 }}
+        run: |
+          set -euxo pipefail
+          # Route prerelease tags (PEP 440: rc / a / b / dev suffixes)
+          # to GitHub "prerelease" flag — surfaces as the yellow banner
+          # on the releases page instead of "latest".
+          PRERELEASE_FLAG=""
+          if python3 -c "
+          import sys
+          from packaging.version import Version, InvalidVersion
+          tag='${TAG}'.lstrip('v')
           try:
-              v = Version('${VERSION}')
-              print('true' if v.is_prerelease else 'false')
+              sys.exit(0 if Version(tag).is_prerelease else 1)
           except InvalidVersion:
-              # Unparseable tags → treat as prerelease (safer default: routes
-              # to test.pypi.org, where a bad tag can't stomp the real index).
-              print('true')
-          ")
-          echo "Tag ${TAG} → is_prerelease=${IS_PRE}"
-          echo "is_prerelease=${IS_PRE}" >> "$GITHUB_OUTPUT"
+              sys.exit(0)
+          "; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
 
-  publish-testpypi:
-    name: publish to test.pypi.org (prerelease tags only)
-    needs: [build, classify-tag]
-    if: needs.classify-tag.outputs.is_prerelease == 'true'
-    runs-on: ubuntu-latest
-    environment:
-      name: test-pypi
-      url: https://test.pypi.org/project/dlm/
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
+          cat > release-notes.md <<EOF
+          ## DLM ${TAG}
 
-      - name: Publish
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
+          Install via the Homebrew tap:
 
-  publish-pypi:
-    name: publish to pypi.org (release tags)
-    needs: [build, classify-tag]
-    if: needs.classify-tag.outputs.is_prerelease == 'false'
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/project/dlm/
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
+          \`\`\`
+          brew tap tenseleyFlow/tap
+          brew install dlm
+          \`\`\`
 
-      - name: Publish
-        uses: pypa/gh-action-pypi-publish@release/v1
+          ### Formula bump
+
+          When bumping \`Formula/dlm.rb\` in \`tenseleyFlow/homebrew-tap\`:
+
+          - \`url\` → https://github.com/tenseleyFlow/DocumentLanguageModel/releases/download/${TAG}/${TARBALL}
+          - \`sha256\` → \`${SHA256}\`
+
+          ### Build
+
+          Full changelog: see \`CHANGELOG.md\` in the tarball.
+          EOF
+
+          gh release create "${TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "DLM ${TAG}" \
+              --notes-file release-notes.md \
+              ${PRERELEASE_FLAG} \
+              "${TARBALL}"
 
   deploy-docs:
-    name: deploy docs for release
-    needs: publish-pypi
+    name: deploy docs to gh-pages
+    needs: publish-github-release
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

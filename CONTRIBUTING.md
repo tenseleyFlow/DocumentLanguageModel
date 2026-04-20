@@ -106,31 +106,29 @@ A few things we actively don't want:
 
 ## Releasing
 
-Tag-driven: pushing a `v*` tag triggers `.github/workflows/release.yml`,
-which runs the full CI gate, builds wheel + sdist via `uv build`, and
-publishes to PyPI via trusted-publisher OIDC.
+Tag-driven. Pushing `v*` triggers `.github/workflows/release.yml`,
+which runs the full CI gate, builds a "fat" source tarball (includes
+`vendor/llama.cpp/` so the Homebrew formula can drop the convert
+scripts into libexec without cloning submodules), creates a GitHub
+release with the tarball + computed sha256, and deploys the docs to
+gh-pages.
 
-### One-time PyPI trusted-publisher setup
+We publish via our Homebrew tap —
+[tenseleyFlow/homebrew-tap](https://github.com/tenseleyFlow/homebrew-tap).
+**We do not publish to PyPI.** Rationale lives in the audit-05 /
+release-mode discussion; the short version is: PyPI makes versions
+permanent, requires us to maintain a ~5 GB transitive dep surface,
+and signals "this is battle-tested" in a way we're not ready to back
+yet.
 
-Before the first real release:
+### Conservative versioning
 
-1. Create a PyPI account for the `dlm` project (someone with publish
-   rights has to own this).
-2. Under project settings → **Publishing** → **Add a new pending
-   publisher**, fill in:
-   - Owner: `tenseleyFlow`
-   - Repository name: `DocumentLanguageModel`
-   - Workflow filename: `release.yml`
-   - Environment name: `pypi`
-3. Repeat on test.pypi.org with environment name `test-pypi`.
-4. In the GitHub repo settings → **Environments**, create both
-   `pypi` and `test-pypi` environments. Neither needs secrets; the
-   OIDC token is minted per run.
+Stay below `v1.0.0` until a human has trained + exported +
+`ollama run`'d an adapter end-to-end. That's the only contract v1.0
+actually owes users. Current target: `v0.9.0` for the first tagged
+release.
 
-### Pre-flight
-
-The CI gate runs the full check suite (ruff, mypy, non-slow pytest,
-`mkdocs build --strict`). Before tagging, eyeball these locally:
+### Pre-flight (run locally before tagging)
 
 ```sh
 uv run ruff check .
@@ -141,37 +139,50 @@ uv sync --group docs
 uv run mkdocs build --strict
 ```
 
-Then bump the version in `pyproject.toml`, update `CHANGELOG.md`
-(move the `## [Unreleased]` entries under a new `## [X.Y.Z]` heading),
-and land both in the same commit.
+Bump the version in `pyproject.toml`, move `## [Unreleased]` entries
+under a new `## [X.Y.Z]` heading in `CHANGELOG.md`, and land both in
+one commit.
 
 ### Tagging
 
-`release.yml` classifies tags via `packaging.version.Version.is_prerelease`:
-
-- **Prerelease** (routes to `test.pypi.org`): any PEP 440 prerelease.
-  Canonical: `v1.0.0rc1`, `v1.0.0a2`, `v1.0.0b3`. Hyphenated also
-  works: `v1.0.0-rc1`.
-- **Release** (routes to `pypi.org`): clean `vMAJOR.MINOR.PATCH`.
-
 ```sh
-# Dry-run via test.pypi.org first
-git tag v1.0.0rc1
-git push origin v1.0.0rc1
-
-# Verify on https://test.pypi.org/project/dlm/, then:
-git tag v1.0.0
-git push origin v1.0.0
+git tag v0.9.0
+git push origin v0.9.0
 ```
 
-The release workflow publishes, then the `deploy-docs` job builds the
-MkDocs site and pushes it to `gh-pages`.
+`release.yml` classifies the tag via
+`packaging.version.Version.is_prerelease`:
+
+- **Prerelease** (`v0.9.0rc1`, `v0.9.0a1`, `v0.9.0-rc1`): GitHub
+  release gets the `prerelease` flag so it doesn't show as "latest."
+- **Release** (`v0.9.0`, `v0.9.1`): standard GitHub release.
+
+### Bumping the Homebrew formula
+
+After the release workflow finishes, it prints the fat-tarball sha256
+in the release notes. Bump `Formula/dlm.rb` in the tap:
+
+```ruby
+url "https://github.com/tenseleyFlow/DocumentLanguageModel/releases/download/v0.9.0/dlm-v0.9.0.tar.gz"
+sha256 "<copy from release notes>"
+```
+
+Then:
+
+```sh
+cd ~/path/to/homebrew-tap
+brew install --build-from-source ./Formula/dlm.rb   # local smoke
+brew test ./Formula/dlm.rb                          # runs the `test do` block
+git commit -am "dlm: bump to v0.9.0"
+git push
+```
 
 ### Rollback
 
-There's no unpublish on PyPI (trusted-publisher or otherwise). If a
-release is bad, bump the patch version and cut a fixed release rather
-than trying to yank the old one.
+Homebrew rollback is straightforward: delete the bad GitHub release
+(or mark it draft), revert the formula bump in the tap. Users who
+already installed the bad version can `brew uninstall dlm && brew
+install dlm` to pick up the revert.
 
 Thanks again — reach out in issues if anything's unclear.
 

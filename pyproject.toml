@@ -1,6 +1,6 @@
 [project]
 name = "dlm"
-version = "0.1.0"
+version = "0.9.0"
 description = "A text file with a .dlm extension becomes a local, trainable LLM."
 readme = "README.md"
 requires-python = ">=3.11"

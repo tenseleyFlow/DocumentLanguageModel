@@ -7,10 +7,11 @@ on your machine. No telemetry, no uploads, no cloud. Built on PyTorch
 + HuggingFace with a hardware-aware planner that picks precision,
 attention, and batching for your box.
 
-**Status:** v1.0 release candidate. All Phase 3 sprints are complete;
-the CLI surface (`init`, `train`, `prompt`, `export`, `pack`, `unpack`,
-`doctor`, `show`, `migrate`) is wired end-to-end. A PyPI dry-run on
-`test.pypi.org` is the last box to tick before the `v1.0` tag.
+**Status:** pre-1.0 — the Phase 3 CLI surface (`init`, `train`,
+`prompt`, `export`, `pack`, `unpack`, `doctor`, `show`, `migrate`) is
+wired end-to-end but hasn't been battle-tested by a human running a
+full train-export-ollama-run cycle. Ship target is `v0.9.0` via the
+Homebrew tap below; `v1.0` waits on a real end-to-end train.
 
 ## Why
 
@@ -53,34 +54,40 @@ or Llama for production), deterministic retraining, Ollama export.
 
 ## Install
 
-### From source (current)
+### From the Homebrew tap (recommended)
 
 ```sh
-# Python 3.11+ and uv (https://github.com/astral-sh/uv)
+brew tap tenseleyFlow/tap
+brew install dlm
+
+# Ollama is required for `dlm export` smoke runs:
+brew install ollama
+```
+
+`brew install dlm` pulls in a vendored `llama.cpp` source tree for
+GGUF conversion and declares `depends_on "llama.cpp"` for the
+compiled `llama-quantize` / `llama-imatrix` binaries. On NVIDIA
+hardware, unlock QLoRA 4-bit after install:
+
+```sh
+$(brew --prefix dlm)/libexec/venv/bin/pip install 'dlm[cuda]'
+```
+
+### From source (contributors)
+
+```sh
+# Python 3.11+ and uv (https://github.com/astral-sh/uv).
 git clone https://github.com/tenseleyFlow/DocumentLanguageModel.git
 cd DocumentLanguageModel
 uv sync
+# One-time: build the vendored llama.cpp binaries for `dlm export`.
+scripts/bump-llama-cpp.sh build
 uv run dlm --help
 ```
 
-### From PyPI (v1.0 target)
-
-```sh
-# Portable install — torch, transformers, peft, trl, datasets included.
-pip install dlm
-
-# Add the CUDA extra for QLoRA 4-bit on Ampere+.
-pip install "dlm[cuda]"
-```
-
-For export: install [Ollama](https://ollama.com/) separately — minimum
-version is pinned in the CLI; `dlm doctor` reports it. For GGUF
-conversion, the repo vendors `llama.cpp` as a submodule; one-time
-build:
-
-```sh
-scripts/bump-llama-cpp.sh build
-```
+We deliberately don't publish to PyPI — too easy to ship unfinished
+work to a permanent-file-archive with 5 GB of transitive deps. See
+[CONTRIBUTING.md](./CONTRIBUTING.md) for the release flow.
 
 ## First run
 

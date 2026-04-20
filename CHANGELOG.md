@@ -6,27 +6,17 @@ the project targets [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
+## [0.9.0] — target
 
-- Sprint 16 (this entry) — MkDocs Material documentation site,
-  starter templates under `templates/`, release and docs deployment
-  workflows, `CHANGELOG.md` itself.
-
-### Pending v1.0
-
-- Manual verification of the README quickstart on a fresh Linux +
-  macOS box.
-- PyPI trusted-publisher configuration + dry-run to test.pypi.org
-  before tagging v1.0.
-
-## [1.0.0] — target
-
-First stable release. Covers Phase 0–3 of the sprint roadmap
-(scaffolding through MVP release).
+First tagged release. Ships via the
+[tenseleyFlow/homebrew-tap](https://github.com/tenseleyFlow/homebrew-tap)
+(`brew tap tenseleyFlow/tap && brew install dlm`). Below v1.0 on
+purpose — a human still needs to train + export + `ollama run` a real
+document end-to-end before we claim the stable number.
 
 ### Highlights
 
-- Full v1.0 CLI: `init`, `train`, `prompt`, `export`, `pack`,
+- CLI: `init`, `train`, `prompt`, `export`, `pack`,
   `unpack`, `doctor`, `show`, `migrate`.
 - Content-addressed store at `~/.dlm/store/<dlm_id>/` with atomic
   manifest updates and exclusive locking.
