@@ -150,6 +150,8 @@ def run_export(
     draft_override: str | None = None,
     draft_disabled: bool = False,
     adapter_name: str | None = None,
+    adapter_path_override: Path | None = None,
+    adapter_mix: list[tuple[str, float]] | None = None,
 ) -> ExportResult:
     """Execute one GGUF export end-to-end.
 
@@ -176,21 +178,36 @@ def run_export(
     """
     run = subprocess_runner if subprocess_runner is not None else run_checked
 
-    if adapter_name is None:
+    if adapter_path_override is not None:
+        # Weighted-merge path: the composite adapter has been written
+        # to an ephemeral dir by the caller; export uses it verbatim.
+        adapter_path = adapter_path_override
+        if not adapter_path.exists():
+            from dlm.export.errors import ExportError
+
+            raise ExportError(
+                f"adapter_path_override {adapter_path} does not exist"
+            )
+    elif adapter_name is None:
         adapter_path = store.resolve_current_adapter()
         pointer = store.adapter_current_pointer
+        if adapter_path is None or not adapter_path.exists():
+            from dlm.export.errors import ExportError
+
+            raise ExportError(
+                f"no current adapter under {pointer}; "
+                "run `dlm train` before exporting."
+            )
     else:
         adapter_path = store.resolve_current_adapter_for(adapter_name)
         pointer = store.adapter_current_pointer_for(adapter_name)
-    if adapter_path is None or not adapter_path.exists():
-        from dlm.export.errors import ExportError
+        if adapter_path is None or not adapter_path.exists():
+            from dlm.export.errors import ExportError
 
-        hint = (
-            f"no current adapter under {pointer}; "
-            f"run `dlm train` before exporting"
-            f"{f' for adapter {adapter_name!r}' if adapter_name else ''}."
-        )
-        raise ExportError(hint)
+            raise ExportError(
+                f"no current adapter under {pointer}; "
+                f"run `dlm train` before exporting for adapter {adapter_name!r}."
+            )
 
     # 1. Preflight.
     preflight.check_adapter_config(adapter_path, spec)
@@ -321,6 +338,7 @@ def run_export(
         ollama_version_str=ollama_ver_str,
         smoke_first_line=smoke_first_line,
         adapter_name=adapter_name,
+        adapter_mix=adapter_mix,
     )
 
     return ExportResult(
