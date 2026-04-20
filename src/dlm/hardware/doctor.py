@@ -48,6 +48,7 @@ def doctor(
     """
     caps = probe()
     config = training_config if training_config is not None else TrainingConfig()
+    num_adapters = len(config.adapters) if config.adapters is not None else 1
 
     try:
         plan = resolve(
@@ -56,6 +57,7 @@ def doctor(
             base_params=base_params,
             seq_len=seq_len,
             force=force,
+            num_adapters=num_adapters,
         )
         return DoctorResult(capabilities=caps, plan=plan, plan_error=None)
     except ResolutionError as exc:

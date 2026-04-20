@@ -69,6 +69,7 @@ def resolve(
     seq_len: int,
     force: bool = False,
     phase: Phase = "sft",
+    num_adapters: int = 1,
 ) -> TrainingPlan:
     """Produce a concrete plan from a frontmatter config + host caps.
 
@@ -77,8 +78,14 @@ def resolve(
     stays; the effective batch halves with the micro-batch. Memory
     and step-time estimates are recomputed against the adjusted
     micro-batch.
+
+    `num_adapters` lets multi-adapter callers surface the count so
+    F28 (multi-adapter QLoRA VRAM refusal) can fire before training
+    starts. Single-adapter docs keep the default.
     """
-    check_refusals(training, caps, base_params, force=force)
+    check_refusals(
+        training, caps, base_params, force=force, num_adapters=num_adapters
+    )
 
     use_qlora = _should_qlora(training, caps)
     precision = _pick_precision(caps)
