@@ -37,6 +37,7 @@ dependencies = [
     "trl>=0.12",
     "datasets>=3.0",
     "huggingface-hub>=0.25",
+    "accelerate>=1.0",        # dlm train --gpus launcher (Sprint 23; audit-08 M2)
     "safetensors>=0.4",       # GGUF conversion + adapter I/O (Sprint 11)
     "sentencepiece>=0.2",     # vendored llama.cpp convert_lora_to_gguf imports it (audit-08 P3)
 ]
