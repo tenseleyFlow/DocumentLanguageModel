@@ -64,3 +64,4 @@ def register(
 # Side-effect imports below run `@register` for each version module.
 # Keep imports at the bottom so `register` is defined before they load.
 from dlm.doc.migrations import v1  # noqa: E402, F401  (side-effect import)
+from dlm.doc.migrations import v2  # noqa: E402, F401  (side-effect import)
