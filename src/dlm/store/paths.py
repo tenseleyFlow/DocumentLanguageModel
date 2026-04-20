@@ -212,20 +212,7 @@ class StorePath:
 
     def resolve_current_adapter_for(self, name: str) -> Path | None:
         """Resolve `adapter/<name>/current.txt` to an absolute path, or None."""
-        pointer = self.adapter_current_pointer_for(name)
-        if not pointer.exists():
-            return None
-        rel = pointer.read_text(encoding="utf-8").strip()
-        if not rel:
-            return None
-        resolved = (self.root / rel).resolve()
-        try:
-            resolved.relative_to(self.root.resolve())
-        except ValueError as exc:
-            raise ValueError(
-                f"adapter pointer {pointer} escapes store root: {rel}",
-            ) from exc
-        return resolved
+        return self._resolve_pointer(self.adapter_current_pointer_for(name))
 
     def set_current_adapter_for(self, name: str, version_dir: Path) -> None:
         """Atomically point `adapter/<name>/current.txt` at a version directory."""
@@ -280,14 +267,23 @@ class StorePath:
         the store root) of the active adapter version directory. Missing
         or empty pointer files return `None`.
         """
-        pointer = self.adapter_current_pointer
+        return self._resolve_pointer(self.adapter_current_pointer)
+
+    def _resolve_pointer(self, pointer: Path) -> Path | None:
+        """Shared pointer-resolution helper (audit-08 N7).
+
+        Reads the pointer file, strips whitespace, joins to the store
+        root, and enforces that the resolved target stays inside the
+        store root. Missing or empty pointer files return `None`; a
+        pointer that escapes the root raises `ValueError` with the
+        offending content echoed back for debuggability.
+        """
         if not pointer.exists():
             return None
         rel = pointer.read_text(encoding="utf-8").strip()
         if not rel:
             return None
         resolved = (self.root / rel).resolve()
-        # Safety: the target must be inside the store root.
         try:
             resolved.relative_to(self.root.resolve())
         except ValueError as exc:
