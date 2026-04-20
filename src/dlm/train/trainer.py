@@ -104,6 +104,7 @@ def run(
     lock_mode: LockMode = "default",
     capabilities: Capabilities | None = None,
     trainer_factory: Callable[..., Any] | None = None,
+    adapter_name: str | None = None,
 ) -> TrainingRunResult:
     """Execute one training cycle end-to-end.
 
@@ -126,6 +127,12 @@ def run(
     `trainer_factory` is a test seam — pass a callable that returns
     an object with `.train()` + `.state` + `.save_model(dir)` to
     bypass HF loading.
+
+    `adapter_name`, when provided, targets the named multi-adapter
+    layout: reads/writes `adapter/<name>/versions/vNNNN/` and
+    `adapter/<name>/current.txt` rather than the flat paths. When
+    `None`, uses the flat single-adapter layout (backward-compatible
+    with `.dlm` files that don't declare `training.adapters`).
     """
     if seed is None:
         seed = parsed.frontmatter.training.seed
@@ -212,6 +219,7 @@ def run(
             change_set=change_set,
             replay=replay,
             adapter_version_for_rng=prior_manifest.adapter_version,
+            adapter_name=adapter_name,
         )
 
         # 6. Run the training loop.
@@ -262,6 +270,7 @@ def run(
                 versions=versions,
                 use_qlora=plan.use_qlora,
             ),
+            adapter_name=adapter_name,
         )
         adapter_version = int(adapter_path.name.lstrip("v"))
 
@@ -404,6 +413,7 @@ def _build_trainer(
     change_set: ChangeSet,
     replay: ReplayStore,
     adapter_version_for_rng: int,
+    adapter_name: str | None = None,
 ) -> Any:
     """Assemble model + tokenizer + dataset + SFTTrainer.
 
@@ -424,6 +434,7 @@ def _build_trainer(
             change_set=change_set,
             replay=replay,
             adapter_version_for_rng=adapter_version_for_rng,
+            adapter_name=adapter_name,
         )
 
     # Exercised by the slow-marked integration test
@@ -440,6 +451,7 @@ def _build_trainer(
         change_set=change_set,
         replay=replay,
         adapter_version_for_rng=adapter_version_for_rng,
+        adapter_name=adapter_name,
     )
 
 
@@ -455,6 +467,7 @@ def _build_real_trainer(  # pragma: no cover
     change_set: ChangeSet,
     replay: ReplayStore,
     adapter_version_for_rng: int,
+    adapter_name: str | None = None,
 ) -> Any:
     # Deferred imports — heavy ML stack only touched on the real path.
     from trl import SFTConfig, SFTTrainer  # type: ignore[attr-defined]
@@ -480,7 +493,15 @@ def _build_real_trainer(  # pragma: no cover
         replay_rows=replay_rows or None,
     )
 
-    resume_path = store.resolve_current_adapter() if mode == "resume" else None
+    resume_path = (
+        (
+            store.resolve_current_adapter_for(adapter_name)
+            if adapter_name is not None
+            else store.resolve_current_adapter()
+        )
+        if mode == "resume"
+        else None
+    )
     peft_model = build_or_resume_adapter(
         base_model,
         spec,
