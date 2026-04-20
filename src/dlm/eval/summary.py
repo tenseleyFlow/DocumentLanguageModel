@@ -10,6 +10,8 @@ on demand.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -41,11 +43,55 @@ class TrainingSummary(BaseModel):
     final_val_perplexity: float | None = None
     retention_loss: float | None = None
     retention_loss_delta: float | None = None
+    # Mixed-mode breakdown: when the training rows mix CPT prose and
+    # SFT instruction rows, the aggregate loss hides which side is
+    # driving movement. These fields split the final train/val and
+    # retention metrics by row mode. All optional — single-mode runs
+    # leave them None.
+    train_loss_cpt: float | None = None
+    train_loss_sft: float | None = None
+    val_loss_cpt: float | None = None
+    val_loss_sft: float | None = None
+    retention_cpt: float | None = None
+    retention_sft: float | None = None
     probes: list[ProbeOutput] = Field(default_factory=list)
     early_stopped: bool = False
     steps: int = Field(0, ge=0)
     duration_seconds: float = Field(0.0, ge=0.0)
     determinism_class: str = "best_effort"
+
+
+@dataclass(frozen=True)
+class LossByMode:
+    """Mean loss split by row mode (`cpt` prose vs `sft` instruction).
+
+    `None` where the corresponding row count was zero — the caller
+    stores that verbatim in the summary so ``None`` is honest "we had
+    no rows of that mode" rather than a zeroed-out number.
+    """
+
+    cpt: float | None
+    sft: float | None
+
+
+def split_loss_by_mode(rows: Iterable[tuple[float, str]]) -> LossByMode:
+    """Average `(loss, mode)` pairs grouped by mode.
+
+    `mode` is expected to be one of `"cpt"` or `"sft"`; other strings
+    are ignored so the caller can pass a single stream containing
+    preference/other rows without pre-filtering.
+    """
+    cpt_losses: list[float] = []
+    sft_losses: list[float] = []
+    for loss, mode in rows:
+        if mode == "cpt":
+            cpt_losses.append(loss)
+        elif mode == "sft":
+            sft_losses.append(loss)
+    return LossByMode(
+        cpt=sum(cpt_losses) / len(cpt_losses) if cpt_losses else None,
+        sft=sum(sft_losses) / len(sft_losses) if sft_losses else None,
+    )
 
 
 def save_summary(path: Path, summary: TrainingSummary) -> None:
