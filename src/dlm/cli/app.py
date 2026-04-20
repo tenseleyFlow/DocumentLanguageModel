@@ -123,3 +123,7 @@ def main() -> None:
     from dlm.cli.reporter import run_with_reporter
 
     sys.exit(run_with_reporter(app))
+
+
+if __name__ == "__main__":
+    main()
