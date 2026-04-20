@@ -91,6 +91,7 @@ def run_phases(
     max_steps: int | None = None,
     lock_mode: LockMode = "default",
     capabilities: Capabilities | None = None,
+    world_size: int | None = None,
     sft_runner: SftRunner | None = None,
     dpo_runner: PreferenceRunner | None = None,
 ) -> list[PhaseResult]:
@@ -124,17 +125,16 @@ def run_phases(
     pref_fn = dpo_runner or _method_runner(pref_cfg.method)
 
     if phase in ("sft", "all") and has_sft_content(sections):
-        sft_result = sft_fn(
-            store,
-            parsed,
-            spec,
-            plan,
-            mode=mode,
-            seed=seed,
-            max_steps=max_steps,
-            lock_mode=lock_mode,
-            capabilities=capabilities,
-        )
+        sft_kwargs: dict[str, object] = {
+            "mode": mode,
+            "seed": seed,
+            "max_steps": max_steps,
+            "lock_mode": lock_mode,
+            "capabilities": capabilities,
+        }
+        if world_size is not None:
+            sft_kwargs["world_size"] = world_size
+        sft_result = sft_fn(store, parsed, spec, plan, **sft_kwargs)
         results.append(PhaseResult(phase="sft", result=sft_result))
 
     should_run_pref = phase == "preference" or (

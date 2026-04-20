@@ -22,11 +22,15 @@ from __future__ import annotations
 
 from dlm.train.distributed.gpus import GpuSpec, UnsupportedGpuSpecError, parse_gpus
 from dlm.train.distributed.launcher import build_accelerate_cmd, launch_multi_gpu
+from dlm.train.distributed.rank_env import detect_rank, detect_world_size, is_rank_zero
 
 __all__ = [
     "GpuSpec",
     "UnsupportedGpuSpecError",
     "build_accelerate_cmd",
+    "detect_rank",
+    "detect_world_size",
+    "is_rank_zero",
     "launch_multi_gpu",
     "parse_gpus",
 ]

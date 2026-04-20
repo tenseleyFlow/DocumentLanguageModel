@@ -41,6 +41,34 @@ class TestDlmShaAlwaysAllowed:
         assert _severities(prior, current, strict=True) == {Severity.ALLOW}
 
 
+class TestWorldSize:
+    """Audit-08 B1: world_size drift must fire WARN."""
+
+    def test_world_size_match_is_allow(self) -> None:
+        prior = _lock(world_size=1)
+        current = _lock(world_size=1)
+        assert Severity.WARN not in _severities(prior, current)
+
+    def test_world_size_increase_is_warn(self) -> None:
+        prior = _lock(world_size=1)
+        current = _lock(world_size=4)
+        sevs = _severities(prior, current)
+        assert Severity.WARN in sevs
+        # Surface message mentions both numbers + the drift rationale.
+        msgs = [m for _s, m in classify_mismatches(prior, current)]
+        assert any("world_size changed (1 → 4)" in m for m in msgs)
+
+    def test_world_size_decrease_is_warn(self) -> None:
+        prior = _lock(world_size=8)
+        current = _lock(world_size=1)
+        assert Severity.WARN in _severities(prior, current)
+
+    def test_world_size_strict_upgrades_to_error(self) -> None:
+        prior = _lock(world_size=2)
+        current = _lock(world_size=4)
+        assert Severity.ERROR in _severities(prior, current, strict=True)
+
+
 class TestBaseRevision:
     def test_base_revision_change_is_error(self) -> None:
         prior = _lock()

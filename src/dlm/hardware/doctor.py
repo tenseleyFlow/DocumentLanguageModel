@@ -39,12 +39,20 @@ def doctor(
     base_params: int = DEFAULT_REFERENCE_BASE_PARAMS,
     seq_len: int = DEFAULT_REFERENCE_SEQ_LEN,
     force: bool = False,
+    world_size: int = 1,
 ) -> DoctorResult:
     """Probe capabilities, optionally resolve a reference plan.
 
     The CLI calls this without a `training_config` (`dlm doctor`); Sprint
     13 passes one through (`dlm doctor mydoc.dlm`). Either way, the
     capabilities are always reported; the plan is best-effort.
+
+    `world_size` (Sprint 23 / audit-08 M1) is threaded into
+    `resolve(...)` so `effective_batch_size = micro_batch × grad_accum
+    × world_size` reflects the multi-GPU reality in worker ranks.
+    The `dlm train` CLI detects the DDP world_size via
+    `dlm.train.distributed.detect_world_size()` and passes it here;
+    single-process callers default to 1.
     """
     caps = probe()
     config = training_config if training_config is not None else TrainingConfig()
@@ -58,6 +66,7 @@ def doctor(
             seq_len=seq_len,
             force=force,
             num_adapters=num_adapters,
+            world_size=world_size,
         )
         return DoctorResult(capabilities=caps, plan=plan, plan_error=None)
     except ResolutionError as exc:

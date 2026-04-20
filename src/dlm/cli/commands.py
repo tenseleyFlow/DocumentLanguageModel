@@ -352,7 +352,14 @@ def train_cmd(
             "(Sprint 12b will persist acceptance in the frontmatter.)"
         )
         raise typer.Exit(code=1) from exc
-    plan = doctor().plan
+    # Audit-08 M1: detect the DDP world_size set by `accelerate launch`
+    # (WORLD_SIZE env var) and thread it into the doctor so the plan's
+    # effective_batch_size reflects the rank count. Single-process
+    # runs read 1 and the plan math is unchanged.
+    from dlm.train.distributed import detect_world_size
+
+    ws = detect_world_size()
+    plan = doctor(training_config=parsed.frontmatter.training, world_size=ws).plan
     if plan is None:
         console.print(
             "[red]doctor:[/red] no viable training plan for this host. "
@@ -375,6 +382,7 @@ def train_cmd(
             max_steps=max_steps,
             lock_mode=lock_mode,
             capabilities=doctor().capabilities,
+            world_size=ws,
         )
     except LockValidationError as exc:
         console.print(f"[red]lock:[/red] {exc}")

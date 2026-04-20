@@ -105,6 +105,7 @@ def run(
     capabilities: Capabilities | None = None,
     trainer_factory: Callable[..., Any] | None = None,
     adapter_name: str | None = None,
+    world_size: int | None = None,
 ) -> TrainingRunResult:
     """Execute one training cycle end-to-end.
 
@@ -136,6 +137,15 @@ def run(
     """
     if seed is None:
         seed = parsed.frontmatter.training.seed
+
+    # World-size resolution (Sprint 23 / audit-08 B1). Prefer the
+    # caller-passed value (unit tests use this); otherwise read from
+    # the DDP env vars `accelerate launch` / `torchrun` set. Default 1
+    # in single-process.
+    if world_size is None:
+        from dlm.train.distributed.rank_env import detect_world_size
+
+        world_size = detect_world_size()
 
     # 1. Preflight — refuse to start if disk isn't there.
     preflight_disk(store.root, spec, plan)
@@ -180,6 +190,7 @@ def run(
             capabilities=capabilities,
             lock_mode=lock_mode,
             license_acceptance=prior_manifest.license_acceptance,
+            world_size=world_size,
         )
         if parsed.source_path is not None
         else None
@@ -371,6 +382,7 @@ def run(
                 determinism_class=determinism.class_,
                 capabilities=capabilities,
                 license_acceptance=prior_manifest.license_acceptance,
+                world_size=world_size,
             )
 
         log.log_event(
@@ -990,6 +1002,7 @@ def _build_candidate_lock(
     determinism_class: str,
     capabilities: Capabilities | None,
     license_acceptance: object | None = None,
+    world_size: int = 1,
 ) -> DlmLock:
     """Assemble the `DlmLock` describing this run.
 
@@ -997,6 +1010,11 @@ def _build_candidate_lock(
     `manifest.license_acceptance`. Audit-05 M1 wired this through so
     the lock's reproducibility contract actually carries the gated-base
     acceptance fingerprint.
+
+    `world_size` (Sprint 23 / audit-08 B1) records the DDP rank count
+    so a resume with a different world_size triggers the policy WARN
+    at `dlm.lock.policy._rule_world_size`. Default 1 for
+    single-process runs.
     """
     if parsed.source_path is None:
         raise ValueError("parsed.source_path is required to build a dlm.lock record")
@@ -1022,6 +1040,7 @@ def _build_candidate_lock(
         cuda_version=capabilities.cuda_version if capabilities is not None else None,
         rocm_version=capabilities.rocm_version if capabilities is not None else None,
         license_acceptance=license_acceptance,  # type: ignore[arg-type]
+        world_size=world_size,
     )
 
 
@@ -1037,6 +1056,7 @@ def _validate_or_abort_lock(
     capabilities: Capabilities | None,
     lock_mode: LockMode,
     license_acceptance: object | None = None,
+    world_size: int = 1,
 ) -> LockDecision:
     """Compare this run's candidate lock against the prior recorded one.
 
@@ -1052,6 +1072,7 @@ def _validate_or_abort_lock(
         determinism_class=determinism_class,
         capabilities=capabilities,
         license_acceptance=license_acceptance,
+        world_size=world_size,
     )
     try:
         prior = load_lock(store.root)
@@ -1088,6 +1109,7 @@ def _persist_lock(
     determinism_class: str,
     capabilities: Capabilities | None,
     license_acceptance: object | None = None,
+    world_size: int = 1,
 ) -> None:
     """Write the post-run lock. Separate from validation so a failed
     training doesn't leave a fresh lock behind.
@@ -1101,6 +1123,7 @@ def _persist_lock(
         determinism_class=determinism_class,
         capabilities=capabilities,
         license_acceptance=license_acceptance,
+        world_size=world_size,
     )
     write_lock(store.root, candidate)
 
