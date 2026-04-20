@@ -8,25 +8,38 @@ without hardcoding strings.
     manifest.json
     .lock                       # exclusive-lock file (PID-based)
     adapter/
+        # Flat single-adapter layout (default for documents without
+        # `training.adapters`):
         current.txt             # plain-text pointer to versions/vNNNN
         versions/
-            v0001/               # PEFT save_pretrained output (Sprint 09)
+            v0001/               # PEFT save_pretrained output
             v0002/
-    training_state.pt            # paired with adapter/current  (Sprint 09)
-    training_state.pt.sha256     # integrity check              (Sprint 09)
+        # Multi-adapter layout (documents with `training.adapters`):
+        <adapter_name>/
+            current.txt
+            versions/
+                v0001/
+                v0002/
+    training_state.pt            # paired with adapter/current
+    training_state.pt.sha256     # integrity check
     replay/
-        corpus.zst               # zstd-framed sections         (Sprint 08)
+        corpus.zst               # zstd-framed sections
         index.json
     exports/
         <quant>/
-            base.gguf            # Sprint 11
-            adapter.gguf         # Sprint 11
-            Modelfile            # Sprint 12
+            base.gguf
+            adapter.gguf
+            Modelfile
     cache/
-        <base_model_slug>/       # HF snapshot                  (Sprint 06)
+        <base_model_slug>/       # HF snapshot
     logs/
         train-YYYYMMDD-HHMMSS.log
 ```
+
+The two adapter layouts are mutually exclusive per store: a document is
+either flat or multi-adapter at parse time. The flat layout lives under
+`adapter/versions/` directly; the multi-adapter layout nests one level
+deeper under `adapter/<name>/versions/`.
 
 Subdirectories are created lazily on first write by the sprint that owns
 them — `ensure_layout()` only creates the top-level skeleton.
