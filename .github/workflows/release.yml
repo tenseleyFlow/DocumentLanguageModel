@@ -6,7 +6,8 @@ name: release
 # What this workflow does on a `v*` tag:
 #
 # 1. Gate on the full CI suite (ruff + format + mypy + non-slow pytest
-#    + mkdocs strict build).
+#    + mkdocs strict build — we still prove docs build, even though we
+#    don't host them).
 # 2. Build a "fat" source tarball that bundles `vendor/llama.cpp/`
 #    (source only, no build artifacts) so the Homebrew formula can
 #    drop the convert scripts into libexec without cloning submodules
@@ -14,7 +15,11 @@ name: release
 # 3. Create a GitHub release with the tarball + a computed sha256
 #    pasted into the release notes so the tap formula can bump in one
 #    edit.
-# 4. Deploy the docs site to gh-pages.
+#
+# Docs hosting is deferred — users read `docs/` in-repo and in the
+# brew-installed tarball. Wire up Pages / a custom domain as a separate
+# change when ready; the strict-build gate above ensures we never tag
+# a release whose docs don't compile.
 
 on:
   push:
@@ -23,8 +28,6 @@ on:
 
 permissions:
   contents: write      # create release + upload asset
-  id-token: write      # gh-pages OIDC deploy
-  pages: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -181,33 +184,3 @@ jobs:
               --notes-file release-notes.md \
               ${PRERELEASE_FLAG} \
               "${TARBALL}"
-
-  deploy-docs:
-    name: deploy docs to gh-pages
-    needs: publish-github-release
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: ${{ env.UV_VERSION }}
-
-      - name: Sync docs group
-        run: uv sync --group docs
-
-      - name: Build site
-        run: uv run mkdocs build --clean --site-dir site/
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site/
-
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4

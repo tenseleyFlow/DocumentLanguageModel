@@ -109,9 +109,12 @@ A few things we actively don't want:
 Tag-driven. Pushing `v*` triggers `.github/workflows/release.yml`,
 which runs the full CI gate, builds a "fat" source tarball (includes
 `vendor/llama.cpp/` so the Homebrew formula can drop the convert
-scripts into libexec without cloning submodules), creates a GitHub
-release with the tarball + computed sha256, and deploys the docs to
-gh-pages.
+scripts into libexec without cloning submodules), and creates a
+GitHub release with the tarball + computed sha256.
+
+Docs are built strict in CI but not hosted — read them in-repo or in
+the brew-installed tarball. Hosting (GitHub Pages or a custom
+subdomain) is a separate change, deferred post-v0.9.0.
 
 We publish via our Homebrew tap —
 [tenseleyFlow/homebrew-tap](https://github.com/tenseleyFlow/homebrew-tap).
