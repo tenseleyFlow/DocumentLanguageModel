@@ -58,6 +58,21 @@ def _train_once(home: Path) -> Path:
     assert plan is not None
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
+
+    # Audit-08 P1: run_training reads the manifest via load_manifest
+    # (for content-delta diff). Audit-05 moved the initial-manifest
+    # write to `dlm init`; this test bypasses init, so seed it here
+    # the same way trained_store + Sprint 20 fixtures do.
+    from dlm.store.manifest import Manifest, save_manifest
+
+    save_manifest(
+        store.manifest,
+        Manifest(
+            dlm_id=parsed.frontmatter.dlm_id,
+            base_model=parsed.frontmatter.base_model,
+        ),
+    )
+
     run_training(
         store,
         parsed,
