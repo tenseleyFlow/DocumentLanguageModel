@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Literal
 
 from dlm.doc.sections import Section, SectionType
+from dlm.train.preference.auto_enable import resolve_dpo_enabled
 from dlm.train.preference.errors import (
     NoPreferenceContentError,
     PriorAdapterRequiredError,
@@ -110,7 +111,7 @@ def run_phases(
       explicitly request DPO, skip with a warning instead of raising.
     """
     sections = list(parsed.sections)
-    dpo_cfg = parsed.frontmatter.training.dpo
+    dpo_cfg = resolve_dpo_enabled(parsed.frontmatter.training.dpo, sections)
     results: list[PhaseResult] = []
 
     sft_fn = sft_runner or _real_sft_runner()

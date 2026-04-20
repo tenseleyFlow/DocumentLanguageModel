@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dlm.doc.schema import DpoConfig
 from dlm.doc.sections import Section, SectionType
 from dlm.train.preference.errors import (
     NoPreferenceContentError,
@@ -53,13 +54,8 @@ def _pref() -> Section:
 
 
 @dataclass
-class _FakeDpoConfig:
-    enabled: bool = False
-
-
-@dataclass
 class _FakeTraining:
-    dpo: _FakeDpoConfig
+    dpo: DpoConfig
 
 
 @dataclass
@@ -78,12 +74,27 @@ class _FakeRunResult:
     adapter_version: int
 
 
-def _parsed(sections: list[Section], *, dpo_enabled: bool = False) -> Any:
+def _parsed(
+    sections: list[Section],
+    *,
+    dpo_enabled: bool | None = None,
+) -> Any:
+    """Build a fake ParsedDlm.
+
+    `dpo_enabled=None` leaves the `enabled` field unset so
+    `resolve_dpo_enabled` sees this as "user didn't specify" and
+    auto-enables when preference content is present.
+
+    `dpo_enabled=True/False` sets it explicitly — simulating a user
+    who wrote `training.dpo.enabled: true/false` in their frontmatter.
+    """
+    if dpo_enabled is None:
+        dpo = DpoConfig()
+    else:
+        dpo = DpoConfig(enabled=dpo_enabled)
     return _FakeParsed(
         sections=tuple(sections),
-        frontmatter=_FakeFrontmatter(
-            training=_FakeTraining(dpo=_FakeDpoConfig(enabled=dpo_enabled))
-        ),
+        frontmatter=_FakeFrontmatter(training=_FakeTraining(dpo=dpo)),
     )
 
 
@@ -298,3 +309,52 @@ class TestPhaseResult:
         pr = PhaseResult(phase="sft", result=_FakeRunResult(adapter_version=1))
         with pytest.raises(Exception):
             pr.phase = "dpo"  # type: ignore[misc]
+
+
+class TestAutoEnableIntegration:
+    """Auto-enable: when user didn't set `enabled` and preference
+    content is present, DPO runs under `--phase all`."""
+
+    def test_unset_enabled_with_preferences_auto_runs_dpo(self) -> None:
+        sft = MagicMock(return_value=_FakeRunResult(adapter_version=1))
+        dpo = MagicMock(return_value=_FakeRunResult(adapter_version=2))
+        results = run_phases(
+            store=MagicMock(),
+            parsed=_parsed([_prose(), _pref()], dpo_enabled=None),
+            spec=MagicMock(),
+            plan=MagicMock(),
+            phase="all",
+            sft_runner=sft,
+            dpo_runner=dpo,
+        )
+        assert [r.phase for r in results] == ["sft", "dpo"]
+
+    def test_explicit_false_blocks_auto_enable(self) -> None:
+        sft = MagicMock(return_value=_FakeRunResult(adapter_version=1))
+        dpo = MagicMock()
+        results = run_phases(
+            store=MagicMock(),
+            parsed=_parsed([_prose(), _pref()], dpo_enabled=False),
+            spec=MagicMock(),
+            plan=MagicMock(),
+            phase="all",
+            sft_runner=sft,
+            dpo_runner=dpo,
+        )
+        assert [r.phase for r in results] == ["sft"]
+        dpo.assert_not_called()
+
+    def test_unset_enabled_with_no_preferences_stays_off(self) -> None:
+        sft = MagicMock(return_value=_FakeRunResult(adapter_version=1))
+        dpo = MagicMock()
+        results = run_phases(
+            store=MagicMock(),
+            parsed=_parsed([_prose()], dpo_enabled=None),
+            spec=MagicMock(),
+            plan=MagicMock(),
+            phase="all",
+            sft_runner=sft,
+            dpo_runner=dpo,
+        )
+        assert [r.phase for r in results] == ["sft"]
+        dpo.assert_not_called()
