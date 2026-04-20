@@ -6,7 +6,7 @@ imports:
 1. `build_dpo_config_kwargs` — pure mapping from `DpoConfig` +
    `TrainingPlan` to the keyword args TRL's `DPOConfig` wants.
 2. `load_reference_model` — heavy: materializes the frozen reference
-   PEFT model for the `pre_dpo_adapter` mode. `# pragma: no cover` —
+   PEFT model for the `pre_adapter` mode. `# pragma: no cover` —
    exercised by the slow integration suite.
 3. `build_dpo_trainer` — heavy: instantiates TRL's DPOTrainer with the
    policy + reference + dataset + kwargs.
@@ -91,7 +91,7 @@ def load_reference_model(  # pragma: no cover
     - `mode="base"` — load the bare base at `plan.load_dtype`; no
       adapter attached. DPO learns to move the policy adapter away
       from the unmodified base.
-    - `mode="pre_dpo_adapter"` — load base, attach the SFT-trained
+    - `mode="pre_adapter"` — load base, attach the SFT-trained
       adapter as `PeftModel`, call `.eval()`, disable grads. DPO
       learns to nudge relative to already-doc-trained behavior.
 
@@ -104,11 +104,11 @@ def load_reference_model(  # pragma: no cover
         _freeze(model)
         return model
 
-    if mode == "pre_dpo_adapter":
+    if mode == "pre_adapter":
         if adapter_path is None:
             raise DpoReferenceLoadError(
                 adapter_path="<none>",
-                cause="reference=pre_dpo_adapter requires a prior adapter version",
+                cause="reference=pre_adapter requires a prior adapter version",
             )
         try:
             from peft import PeftModel
