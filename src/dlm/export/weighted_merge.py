@@ -218,15 +218,19 @@ def save_merged_to_tmp(  # pragma: no cover - heavy path
 ) -> Path:
     """Save the composite `_export_merged` adapter to `tmp_dir`.
 
-    Returns the path for consumption as `adapter_path_override` in
-    `run_export`. Uses PEFT's `save_pretrained` with the merged
-    adapter selected so the resulting dir mirrors a normal adapter
-    checkpoint (adapter_config.json + adapter_model.safetensors).
+    Returns the adapter directory path for consumption as
+    `adapter_path_override` in `run_export`. PEFT's `save_pretrained`
+    with `selected_adapters=[name]` writes the files into a
+    subdirectory named after the adapter (`tmp_dir/_export_merged/`),
+    so we return THAT subdirectory — not `tmp_dir` itself. Matches
+    the layout a normal `save_pretrained` produces for callers who
+    only load one adapter.
 
     Additionally copies tokenizer files from `tokenizer_source` (one
-    of the source adapter dirs) so the export preflight's
-    `check_tokenizer_vocab` finds `tokenizer_config.json`. Without
-    this, the merged export dies in preflight (audit-07 B2).
+    of the source adapter dirs) INTO the adapter subdirectory so the
+    export preflight's `check_tokenizer_vocab` finds
+    `tokenizer_config.json`. Without this, the merged export dies in
+    preflight (audit-07 B2).
 
     `training_run_source` — when set, copies `training_run.json` into
     the merged dir so `check_was_adapter_qlora` fires the merge-safety
@@ -239,15 +243,21 @@ def save_merged_to_tmp(  # pragma: no cover - heavy path
         str(tmp_dir), selected_adapters=[_MERGED_ADAPTER_NAME]
     )
 
+    # PEFT nests under the adapter name; that's where run_export
+    # expects to find adapter_config.json + safetensors.
+    adapter_dir = tmp_dir / _MERGED_ADAPTER_NAME
+    if not adapter_dir.is_dir():  # defensive — old PEFT versions may not nest
+        adapter_dir = tmp_dir
+
     if tokenizer_source is not None:
         for fname in _TOKENIZER_FILES:
             src = tokenizer_source / fname
             if src.exists():
-                shutil.copy2(src, tmp_dir / fname)
+                shutil.copy2(src, adapter_dir / fname)
 
     if training_run_source is not None:
         src = training_run_source / "training_run.json"
         if src.exists():
-            shutil.copy2(src, tmp_dir / "training_run.json")
+            shutil.copy2(src, adapter_dir / "training_run.json")
 
-    return tmp_dir
+    return adapter_dir
