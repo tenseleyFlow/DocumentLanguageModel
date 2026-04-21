@@ -40,7 +40,7 @@ def init_cmd(
     ] = None,
     i_accept_license: Annotated[
         bool,
-        typer.Option("--i-accept-license", help="Accept gated base-model license (Sprint 12b)."),
+        typer.Option("--i-accept-license", help="Accept gated base-model license."),
     ] = False,
     force: Annotated[
         bool,
@@ -318,10 +318,10 @@ def train_cmd(
         typer.Option(
             "--gpus",
             help=(
-                "Multi-GPU training (Sprint 23). `all` uses every visible "
-                "CUDA device; `N` uses the first N; `0,1` selects exact "
-                "device ids. Dispatches to `accelerate launch` when >1 "
-                "device is selected. Omit for single-process training."
+                "Multi-GPU training. `all` uses every visible CUDA device; "
+                "`N` uses the first N; `0,1` selects exact device ids. "
+                "Dispatches to `accelerate launch` when >1 device is "
+                "selected. Omit for single-process training."
             ),
         ),
     ] = None,
@@ -330,8 +330,8 @@ def train_cmd(
         typer.Option(
             "--watch",
             help=(
-                "Save-to-train mode (Sprint 25). After an initial train, "
-                "block on filesystem events and run incremental retrains "
+                "Save-to-train mode. After an initial train, block on "
+                "filesystem events and run incremental retrains "
                 "(mode=resume, step-capped) on each settled save. Ctrl-C "
                 "exits cleanly between cycles."
             ),
@@ -569,7 +569,7 @@ def train_cmd(
             console.print(f"  review the license at: {exc.license_url}")
         console.print(
             "  re-run with [bold]--i-accept-license[/bold] once you have accepted. "
-            "(Sprint 12b will persist acceptance in the frontmatter.)"
+            "Acceptance will be persisted in the store manifest."
         )
         raise typer.Exit(code=1) from exc
     # Audit-08 M1: detect the DDP world_size set by `accelerate launch`
@@ -696,8 +696,8 @@ def train_cmd(
         if watch_repl:
             console.print(
                 "[red]train:[/red] --watch --repl is scaffolded but not yet "
-                "implemented (Sprint 25 [~] per DoD). The threaded REPL "
-                "bridge needs a test harness we don't have in CI today."
+                "implemented. The threaded REPL bridge needs a test "
+                "harness we don't have in CI today."
             )
             raise typer.Exit(code=2)
 
@@ -941,7 +941,7 @@ def export_cmd(
             "--no-imatrix",
             help=(
                 "Skip importance-matrix calibration. Default uses the "
-                "replay corpus to calibrate k-quant quantization (Sprint 11.6)."
+                "replay corpus to calibrate k-quant quantization."
             ),
         ),
     ] = False,
@@ -1347,7 +1347,7 @@ def repl_cmd(
         ),
     ] = "auto",
 ) -> None:
-    """Interactive REPL against the trained adapter (Sprint 24)."""
+    """Interactive REPL against the trained adapter."""
     from rich.console import Console
 
     from dlm.base_models import GatedModelError
@@ -1448,7 +1448,7 @@ def metrics_cmd(
     ] = None,
     limit: Annotated[int, typer.Option("--limit")] = 20,
 ) -> None:
-    """Query the per-store metrics database (Sprint 26)."""
+    """Query the per-store metrics database."""
     import csv
     import json
     import sys
@@ -1551,7 +1551,7 @@ def metrics_watch_cmd(
         typer.Option("--poll-seconds", help="How often to re-read the metrics DB."),
     ] = 1.0,
 ) -> None:
-    """Tail the metrics DB: print new steps/evals as they land (Sprint 26)."""
+    """Tail the metrics DB: print new steps/evals as they land."""
     import time
 
     from rich.console import Console
@@ -2007,7 +2007,7 @@ def templates_list_cmd(
             "--refresh",
             help=(
                 "Refresh from the upstream template gallery. Currently a no-op — "
-                "upstream repo + signing key are pending (Sprint 27 deferred polish)."
+                "upstream repo + signing key are deferred."
             ),
         ),
     ] = False,

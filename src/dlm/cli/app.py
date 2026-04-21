@@ -117,7 +117,7 @@ app.command("migrate")(commands.migrate_cmd)
 # Sprint 26: `dlm metrics <path>` + `dlm metrics watch <path>` as a
 # subcommand group. Typer nests naturally via an Annotated sub-app.
 _metrics_app = typer.Typer(
-    help="Query the per-store metrics database (Sprint 26).",
+    help="Query the per-store metrics database.",
     no_args_is_help=True,
     invoke_without_command=True,
 )
@@ -127,7 +127,7 @@ app.add_typer(_metrics_app, name="metrics")
 
 # Sprint 27: `dlm templates list` (and, once upstream ships, `refresh`).
 _templates_app = typer.Typer(
-    help="Browse the starter template gallery (Sprint 27).",
+    help="Browse the starter template gallery.",
     no_args_is_help=True,
 )
 _templates_app.command("list")(commands.templates_list_cmd)
@@ -136,7 +136,7 @@ app.add_typer(_templates_app, name="templates")
 # Sprint 31: `dlm cache show|prune|clear` — per-store tokenized-section
 # cache maintenance.
 _cache_app = typer.Typer(
-    help="Inspect and manage the per-store tokenized-section cache (Sprint 31).",
+    help="Inspect and manage the per-store tokenized-section cache.",
     no_args_is_help=True,
 )
 _cache_app.command("show")(commands.cache_show_cmd)
