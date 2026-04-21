@@ -11,6 +11,7 @@ populate the subdirs and extend the manifest.
 
 from __future__ import annotations
 
+from dlm.store.blobs import BlobCorruptError, BlobHandle, BlobMissingError, BlobStore
 from dlm.store.errors import (
     LockHeldError,
     ManifestCorruptError,
@@ -36,6 +37,10 @@ from dlm.store.paths import StorePath, dlm_home, ensure_home, for_dlm
 
 __all__ = [
     "CURRENT_MANIFEST_SCHEMA_VERSION",
+    "BlobCorruptError",
+    "BlobHandle",
+    "BlobMissingError",
+    "BlobStore",
     "ExportSummary",
     "LockHeldError",
     "LockInfo",
