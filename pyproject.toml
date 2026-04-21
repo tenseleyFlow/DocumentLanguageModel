@@ -68,9 +68,13 @@ observability = [
 # Sprint 35.2 audio-language bases. `soundfile` is the only dep needed
 # to decode .wav / .flac / .ogg; MP3 support would require libsndfile
 # ≥1.1 and is deferred. Keep optional so text-only users don't pull
-# the libsndfile C library.
+# the libsndfile C library. `soxr` is the polyphase resampler used by
+# `training.audio.auto_resample=True`; without it (or scipy as a
+# fallback) the resample path raises `AudioResampleUnavailable`
+# rather than training on the wrong sample rate.
 audio = [
     "soundfile>=0.12",
+    "soxr>=0.3",
 ]
 
 [project.scripts]
