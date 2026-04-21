@@ -45,8 +45,8 @@ def _write_pixel(path: Path, color: tuple[int, int, int] = (64, 128, 255)) -> No
     Image.new("RGB", (4, 4), color=color).save(path, format="PNG")
 
 
-def _scaffold_multimodal_doc(tmp_home: Path, workdir: Path) -> Path:
-    """Run `dlm init --multimodal` into `workdir/doc.dlm`."""
+def _scaffold_multimodal_doc(tmp_home: Path, workdir: Path, base_key: str) -> Path:
+    """Run `dlm init --multimodal --base <key>` into `workdir/doc.dlm`."""
     from dlm.cli.app import app
 
     doc = workdir / "doc.dlm"
@@ -59,6 +59,8 @@ def _scaffold_multimodal_doc(tmp_home: Path, workdir: Path) -> Path:
             "init",
             str(doc),
             "--multimodal",
+            "--base",
+            base_key,
             "--i-accept-license",
         ],
     )
@@ -66,8 +68,14 @@ def _scaffold_multimodal_doc(tmp_home: Path, workdir: Path) -> Path:
     return doc
 
 
-def _host_has_vl_prerequisites() -> tuple[bool, str]:
-    """Return (ok, skip_reason) — only run when the host can host PaliGemma."""
+def _host_has_vl_prerequisites_for(base_key: str) -> tuple[bool, str]:
+    """Return (ok, skip_reason) — per-base cache check.
+
+    Sprint 35.3 parametrizes over 3 VL bases; each one is skipped
+    independently when its processor isn't cached locally. This keeps
+    CI runs useful on a host that cached PaliGemma but not Qwen2-VL,
+    for example.
+    """
     try:
         import torch
     except ImportError:
@@ -81,28 +89,49 @@ def _host_has_vl_prerequisites() -> tuple[bool, str]:
         from transformers import AutoProcessor
     except ImportError:
         return False, "transformers unavailable"
+    from dlm.base_models import BASE_MODELS
+
+    spec = BASE_MODELS[base_key]
     try:
         AutoProcessor.from_pretrained(
-            "google/paligemma-3b-mix-224",
+            spec.hf_id,
             local_files_only=True,
         )
     except Exception as exc:  # noqa: BLE001 — any local-cache miss skips cleanly
-        return False, f"paligemma not cached locally: {type(exc).__name__}"
+        return False, f"{base_key} not cached locally: {type(exc).__name__}"
     return True, ""
 
 
-@pytest.fixture
-def vl_prereqs() -> None:
-    ok, reason = _host_has_vl_prerequisites()
+# Parametrized across the 3 registered VL bases. Each one skips
+# independently when its weights aren't cached, so `pytest -m "slow and
+# vl"` runs whatever subset the host supports.
+_VL_BASE_KEYS: tuple[str, ...] = (
+    "paligemma-3b-mix-224",
+    "qwen2-vl-2b-instruct",
+    "internvl2-2b",
+)
+
+
+@pytest.fixture(params=_VL_BASE_KEYS, ids=_VL_BASE_KEYS)
+def vl_base_key(request: pytest.FixtureRequest) -> str:
+    key = str(request.param)
+    ok, reason = _host_has_vl_prerequisites_for(key)
     if not ok:
         pytest.skip(reason)
+    return key
 
 
-def test_paligemma_one_cycle_end_to_end(  # pragma: no cover — slow + vl
+def test_vl_one_cycle_end_to_end(  # pragma: no cover — slow + vl
     tmp_path: Path,
-    vl_prereqs: None,
+    vl_base_key: str,
 ) -> None:
-    """Full VL cycle: init → ingest image → train 1 step → verify adapter."""
+    """Full VL cycle: init → ingest image → train 1 step → verify adapter.
+
+    Parametrized across all 3 VL bases in the registry
+    (paligemma-3b-mix-224, qwen2-vl-2b-instruct, internvl2-2b).
+    Each parametrization is independently skipped when its weights
+    aren't locally cached.
+    """
     import dlm.train as dlm_train
     from dlm.doc.parser import parse_file
     from dlm.store.manifest import load_manifest
@@ -112,7 +141,7 @@ def test_paligemma_one_cycle_end_to_end(  # pragma: no cover — slow + vl
     workdir = tmp_path / "corpus"
     workdir.mkdir()
 
-    doc = _scaffold_multimodal_doc(tmp_home, workdir)
+    doc = _scaffold_multimodal_doc(tmp_home, workdir, vl_base_key)
 
     # The scaffold ships with `::image path="figures/your-image.png"::`.
     # Drop a real 4×4 PNG at that relative location so `dlm train`
