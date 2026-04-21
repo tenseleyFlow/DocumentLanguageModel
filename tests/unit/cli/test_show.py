@@ -172,6 +172,48 @@ class TestTrainingSources:
         assert sources[0]["path"] == "src"
         assert sources[0]["file_count"] == 2
 
+    def test_json_reports_discovered_training_configs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sprint 30: `.dlm/training.yaml` + `.dlm/ignore` under the source
+        tree surface as `discovered_training_configs` in the JSON output."""
+        monkeypatch.setenv("DLM_HOME", str(tmp_path / "fresh-home"))
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.py").write_text("print(1)\n")
+        # Drop a .dlm/training.yaml + .dlm/ignore in the source tree
+        (src / ".dlm").mkdir()
+        (src / ".dlm" / "training.yaml").write_text(
+            "dlm_training_version: 1\nmetadata:\n  language: python\n",
+            encoding="utf-8",
+        )
+        (src / ".dlm" / "ignore").write_text("*.log\n", encoding="utf-8")
+        doc = tmp_path / "doc.dlm"
+        doc.write_text(
+            "---\n"
+            "dlm_id: 01HRSHWE" + "0" * 18 + "\n"
+            "dlm_version: 6\n"
+            "base_model: smollm2-135m\n"
+            "training:\n"
+            "  sources:\n"
+            "    - path: src\n"
+            "      include: ['**/*.py']\n"
+            "---\n"
+            "body\n",
+            encoding="utf-8",
+        )
+        runner = CliRunner()
+        result = runner.invoke(app, ["show", str(doc), "--json"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert "discovered_training_configs" in payload
+        configs = payload["discovered_training_configs"]
+        assert len(configs) == 1
+        assert configs[0]["has_training_yaml"] is True
+        assert configs[0]["has_ignore"] is True
+        assert configs[0]["metadata"] == {"language": "python"}
+        assert configs[0]["ignore_rules"] == 1
+
     def test_human_output_lists_sources(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
