@@ -39,18 +39,26 @@ _FINGERPRINT_ATTR: Final[str] = "_dlm_audio_processor_sha256"
 
 @dataclass(frozen=True)
 class AudioCacheKey:
-    """Composite key for one preprocessed audio tensor."""
+    """Composite key for one preprocessed audio tensor.
+
+    `auto_resample` lands on the key (not just the preprocessor path)
+    so a cached entry built without resampling isn't served to a
+    caller that asked for auto-resample — the inputs to the processor
+    differ when the source rate disagreed with the target.
+    """
 
     blob_sha: str
     processor_sha: str
     sample_rate: int
     max_length_ms: int
+    auto_resample: bool = False
 
     def as_filename(self) -> str:
         """Stable per-entry filename under the shard."""
+        rs = ".rs" if self.auto_resample else ""
         return (
             f"{self.blob_sha}.{self.processor_sha[:12]}"
-            f".{self.sample_rate}.{self.max_length_ms}.npz"
+            f".{self.sample_rate}.{self.max_length_ms}{rs}.npz"
         )
 
     def shard(self) -> str:
@@ -119,14 +127,23 @@ class WaveformCacheKey:
     The feature-extractor still runs per batch; the cache skips
     soundfile decode + mono-mixing + truncation on repeat epochs
     (which dominate per-batch CPU time on a small audio corpus).
+
+    `auto_resample` lands on the key to separate native-rate entries
+    from resampled ones — a 48 kHz file cached without resampling is
+    not interchangeable with the same file resampled to 16 kHz.
     """
 
     blob_sha: str
     sample_rate: int
     max_length_ms: int
+    auto_resample: bool = False
 
     def as_filename(self) -> str:
-        return f"{self.blob_sha}.{self.sample_rate}.{self.max_length_ms}.wav.npz"
+        rs = ".rs" if self.auto_resample else ""
+        return (
+            f"{self.blob_sha}.{self.sample_rate}.{self.max_length_ms}"
+            f"{rs}.wav.npz"
+        )
 
     def shard(self) -> str:
         return self.blob_sha[:2]
