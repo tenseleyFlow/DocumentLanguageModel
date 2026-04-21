@@ -102,6 +102,28 @@ export:
 | `seed` | int | 42 | Determinism seed. Changing it invalidates the [determinism golden](../determinism.md). |
 | `sources` | list[SourceDirective] or null | null | Declarative file-tree ingestion. Each entry is walked at train time; matching files become synthetic PROSE sections on the CPT path. See below. |
 | `sources_policy` | `permissive` / `strict` | `permissive` | `strict` confines directive paths to the `.dlm`'s parent subtree; `permissive` allows absolute paths anywhere. Symlink escapes are refused under strict, warned under permissive. |
+| `gate` | GateConfig | defaults | Learned MoE-style adapter gate (schema v8). See below. |
+
+### `training.gate` — GateConfig
+
+Learned adapter routing. A small MLP trained post-SFT that maps a
+prompt embedding to per-adapter weights, replacing the hand-set
+`--adapter-mix` for the `dlm prompt` path.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | Opt-in. Requires `training.adapters` with ≥2 named adapters. |
+| `hidden_proj_dim` | int 8..2048 | `64` | Gate MLP internal width. Default is ~0.5MB for 4 adapters × 2048 hidden. |
+| `steps` | int 1..10000 | `200` | AdamW iterations for the post-SFT gate training pass. |
+| `lr` | float 0..1 | `3e-4` | AdamW learning rate. |
+| `cold_start_floor` | int 1..1024 | `4` | Per-adapter minimum supervising sections. Below this, gate training is skipped and a uniform-mode `gate_config.json` is written instead. |
+| `entropy_lambda` | float 0..1 | `0.01` | Shannon-entropy regularizer on the gate loss. Higher values discourage mode collapse; lower values let the gate commit harder. |
+
+Enabling `gate` on a document without `training.adapters` (or with
+only one adapter) is refused at parse time — a router over a single
+adapter has nothing to route between. See
+`docs/cookbook/learned-adapter-gate.md` for the full workflow +
+Ollama-export fallback semantics.
 
 ### `training.sources[]` — SourceDirective
 
