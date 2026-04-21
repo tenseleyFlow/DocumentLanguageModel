@@ -1493,6 +1493,72 @@ def _dispatch_vl_snapshot_export(
     )
 
 
+def _dispatch_audio_snapshot_export(
+    *,
+    console: Any,
+    store: Any,
+    spec: Any,
+    adapter_name: str | None,
+    quant: str | None,
+    merged: bool,
+    adapter_mix_raw: str | None,
+) -> None:
+    """Route an audio-language spec through the HF-snapshot export path.
+
+    Parallel to `_dispatch_vl_snapshot_export`. Emits a banner, warns
+    on GGUF-only flags, runs `run_audio_snapshot_export`, prints the
+    layout. Processor-load failure is a hard exit — a snapshot
+    without the feature extractor is unloadable.
+    """
+    import typer
+
+    from dlm.export.audio_snapshot import run_audio_snapshot_export
+    from dlm.export.errors import ExportError
+
+    console.print(
+        f"[yellow]export:[/yellow] base {spec.key!r} is audio-language; "
+        "emitting HF-snapshot (GGUF not supported for audio archs)."
+    )
+    if quant is not None or merged or adapter_mix_raw is not None:
+        console.print(
+            "[yellow]export:[/yellow] ignoring GGUF-only flags "
+            "(--quant / --merged / --adapter-mix) — they're not applicable "
+            "to the HF-snapshot path."
+        )
+
+    try:
+        from dlm.train.loader import load_processor  # pragma: no cover — heavy
+
+        processor = load_processor(spec)  # pragma: no cover
+    except Exception as exc:  # pragma: no cover — surfaced to CLI
+        console.print(
+            f"[red]export:[/red] could not load processor for "
+            f"{spec.key!r} ({type(exc).__name__}: {exc}). "
+            "The HF-snapshot export needs the processor to be "
+            "loadable — verify license acceptance + network + cache, "
+            "then re-run."
+        )
+        raise typer.Exit(code=1) from exc
+
+    try:
+        result = run_audio_snapshot_export(
+            store,
+            spec,
+            adapter_name=adapter_name,
+            processor=processor,
+        )
+    except ExportError as exc:
+        console.print(f"[red]export:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"[green]export:[/green] HF audio snapshot written to {result.export_dir}\n"
+        f"  manifest: {result.manifest_path.name}\n"
+        f"  adapter:  {result.adapter_dir}\n"
+        f"  artifacts: {len(result.artifacts)} file(s)"
+    )
+
+
 def export_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm file to export.")],
     quant: Annotated[
@@ -1693,13 +1759,25 @@ def export_cmd(
         console.print("  accept via `dlm train --i-accept-license` before exporting.")
         raise typer.Exit(code=1) from exc
 
-    # Vision-language bases take the HF-snapshot export path (Sprint 35
-    # v1). GGUF conversion for VL archs is Sprint 35.4's scope; until
-    # then the snapshot is the only viable format, and users who passed
-    # --quant / --merged / --adapter-mix get a pointer rather than a
+    # Media bases take the HF-snapshot export path. VL archs are in
+    # flux upstream (Sprint 35.4 adds GGUF when it stabilizes); audio
+    # archs aren't on llama.cpp's roadmap at all. Either way, GGUF-
+    # specific flags like --quant / --merged / --adapter-mix don't
+    # apply — the dispatcher surfaces a clear warning rather than a
     # silent drop.
     if spec.modality == "vision-language":
         _dispatch_vl_snapshot_export(
+            console=console,
+            store=store,
+            spec=spec,
+            adapter_name=adapter,
+            quant=quant,
+            merged=merged,
+            adapter_mix_raw=adapter_mix,
+        )
+        return
+    if spec.modality == "audio-language":
+        _dispatch_audio_snapshot_export(
             console=console,
             store=store,
             spec=spec,
