@@ -228,6 +228,13 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="paligemma-3b-mix-224",
         hf_id="google/paligemma-3b-mix-224",
+        # Placeholder SHA: format-valid, not a real HF commit. The
+        # weekly `scripts/refresh-registry.py --check` run surfaces
+        # it as drift; a maintainer pastes in the observed SHA from
+        # the script's output. Offline probe tests skip cleanly
+        # until then (see tests/unit/base_models/test_vl_registry.py).
+        # Landed as part of Sprint 35 v1; to verify, run:
+        #     uv run python scripts/refresh-registry.py --check
         revision="8d2f7bc9c15d71a00c14f9eb7e4c7b99c79e0a11",
         architecture="PaliGemmaForConditionalGeneration",
         params=2_900_000_000,
