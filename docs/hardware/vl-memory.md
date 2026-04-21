@@ -98,11 +98,19 @@ by `scripts/bump-llama-cpp.sh bump <tag>`):
 | internvl2-2b              | InternVLChatModel                   | UNSUPPORTED  |
 
 **UNSUPPORTED** means `dlm export` falls back to the HF-snapshot path
-with an actionable banner. **SUPPORTED** means the LM side converts
-cleanly (Qwen2-VL's vision tower ships separately via an mmproj
-sidecar — single-file GGUF for VL archs is still the upstream follow-
-up). **PARTIAL** (not yet seen for any registered base) would mean
-the probe found only an `MmprojModel` registration for the arch.
+with an actionable banner. **SUPPORTED** means single-file VL GGUF
+emission runs: `dlm export --merged --quant Q4_K_M` orchestrates merge
+→ `convert_hf_to_gguf.py` → `llama-quantize` → render a Modelfile with
+`FROM ./base.<quant>.gguf` (no `ADAPTER` line — merged-only at this
+upstream tag). Qwen2-VL's vision tower is dropped by the converter
+and runs through Ollama's preprocessor path instead of an mmproj
+sidecar, so `mmproj_path` is `null` in the export manifest; a future
+tag that changes this would add a sidecar without breaking the
+single-file contract. Emission is refused (with fallback to
+HF-snapshot) when `--merged` is absent or `--imatrix` is not `off` —
+the replay corpus is text-only and would mis-weight vision-adjacent
+quant stats. **PARTIAL** (not yet seen for any registered base) would
+mean the probe found only an `MmprojModel` registration for the arch.
 
 Bump the vendored submodule (`scripts/bump-llama-cpp.sh bump <tag>`)
 to refresh these verdicts; the bump script re-runs the probe and
