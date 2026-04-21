@@ -1210,6 +1210,71 @@ def _dispatch_vl_prompt(  # pragma: no cover
     sys.stdout.write(response + "\n")
 
 
+def _dispatch_vl_snapshot_export(
+    *,
+    console: Any,
+    store: Any,
+    spec: Any,
+    adapter_name: str | None,
+    quant: str | None,
+    merged: bool,
+    adapter_mix_raw: str | None,
+) -> None:
+    """Route a VL spec through the HF-snapshot export path.
+
+    Emits a banner explaining why GGUF is unavailable for the base's
+    modality, warns on GGUF-specific flags the user supplied, then
+    runs `run_vl_snapshot_export` and prints the resulting layout.
+    """
+    import typer
+
+    from dlm.export.errors import ExportError
+    from dlm.export.vl_snapshot import run_vl_snapshot_export
+
+    console.print(
+        f"[yellow]export:[/yellow] base {spec.key!r} is vision-language; "
+        "emitting HF-snapshot (GGUF deferred to Sprint 35.4)."
+    )
+    if quant is not None or merged or adapter_mix_raw is not None:
+        console.print(
+            "[yellow]export:[/yellow] ignoring GGUF-only flags "
+            "(--quant / --merged / --adapter-mix) — they're not applicable "
+            "to the HF-snapshot path."
+        )
+
+    # Loading the processor for save_pretrained is deferred to the
+    # real call site so this dispatcher stays testable without HF.
+    # The processor lives with the base weights, not the adapter.
+    processor: Any | None = None
+    try:
+        from dlm.train.loader import load_processor  # pragma: no cover — heavy
+
+        processor = load_processor(spec)  # pragma: no cover
+    except Exception as exc:  # pragma: no cover — fall through to no-processor
+        console.print(
+            f"[yellow]export:[/yellow] could not load processor ({type(exc).__name__}); "
+            "snapshot will ship without a processor/ dir."
+        )
+
+    try:
+        result = run_vl_snapshot_export(
+            store,
+            spec,
+            adapter_name=adapter_name,
+            processor=processor,
+        )
+    except ExportError as exc:
+        console.print(f"[red]export:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"[green]export:[/green] HF snapshot written to {result.export_dir}\n"
+        f"  manifest: {result.manifest_path.name}\n"
+        f"  adapter:  {result.adapter_dir}\n"
+        f"  artifacts: {len(result.artifacts)} file(s)"
+    )
+
+
 def export_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm file to export.")],
     quant: Annotated[
@@ -1409,6 +1474,23 @@ def export_cmd(
             console.print(f"  review the license at: {exc.license_url}")
         console.print("  accept via `dlm train --i-accept-license` before exporting.")
         raise typer.Exit(code=1) from exc
+
+    # Vision-language bases take the HF-snapshot export path (Sprint 35
+    # v1). GGUF conversion for VL archs is Sprint 35.4's scope; until
+    # then the snapshot is the only viable format, and users who passed
+    # --quant / --merged / --adapter-mix get a pointer rather than a
+    # silent drop.
+    if spec.modality == "vision-language":
+        _dispatch_vl_snapshot_export(
+            console=console,
+            store=store,
+            spec=spec,
+            adapter_name=adapter,
+            quant=quant,
+            merged=merged,
+            adapter_mix_raw=adapter_mix,
+        )
+        return
 
     try:
         plan = resolve_export_plan(
