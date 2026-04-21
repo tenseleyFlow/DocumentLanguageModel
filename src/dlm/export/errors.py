@@ -69,3 +69,16 @@ class SubprocessError(ExportError):
 
 class ExportManifestError(ExportError):
     """`export_manifest.json` is unreadable, mis-shaped, or checksum drift."""
+
+
+class VlGgufUnsupportedError(ExportError):
+    """VL GGUF emission refused before any subprocess launched.
+
+    Raised when the arch-probe verdict is not SUPPORTED, when
+    ``plan.merged`` is False (VL v1 is merged-only — see `vl_gguf.py`
+    module docstring), or when the adapter targets vision-tower
+    modules that upstream's converter silently drops. The dispatcher
+    catches this alongside :class:`VendoringError` and falls back to
+    HF-snapshot with a banner — the refusal is data-shaped, not a
+    subprocess failure.
+    """
