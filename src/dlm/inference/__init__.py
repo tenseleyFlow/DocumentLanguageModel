@@ -18,6 +18,8 @@ from dlm.inference.generate import (
 )
 from dlm.inference.loader import LoadedInference, build_load_kwargs, load_for_inference
 from dlm.inference.plan import AttnImpl, InferencePlan, PrecisionLit, resolve_inference
+from dlm.inference.vl_generate import format_vl_prompt, generate_vl, load_images
+from dlm.inference.vl_loader import LoadedVlInference, load_for_vl_inference
 
 __all__ = [
     "AdapterNotFoundError",
@@ -27,11 +29,16 @@ __all__ = [
     "InferencePlan",
     "InferencePlanError",
     "LoadedInference",
+    "LoadedVlInference",
     "PrecisionLit",
     "build_generate_kwargs",
     "build_load_kwargs",
     "format_chat_prompt",
+    "format_vl_prompt",
     "generate",
+    "generate_vl",
     "load_for_inference",
+    "load_for_vl_inference",
+    "load_images",
     "resolve_inference",
 ]
