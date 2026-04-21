@@ -6,8 +6,10 @@ from dlm.doc.parser import parse_text
 from dlm.doc.schema import CURRENT_SCHEMA_VERSION
 
 
-def test_current_schema_is_v9() -> None:
-    assert CURRENT_SCHEMA_VERSION == 9
+def test_current_schema_is_at_least_v9() -> None:
+    # v9 introduced the cache block; later schema bumps must remain
+    # additive so v9 documents continue to parse.
+    assert CURRENT_SCHEMA_VERSION >= 9
 
 
 def test_v8_document_parses_under_v9_with_cache_defaults() -> None:
