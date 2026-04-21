@@ -1234,12 +1234,12 @@ def _append_change_set_to_replay(
     # pydantic doesn't reject image/audio-typed rows at validate-time.
     from dlm.doc.sections import SectionType
 
-    _TEXTUAL_TYPES = (
+    textual_types = (
         SectionType.PROSE,
         SectionType.INSTRUCTION,
         SectionType.PREFERENCE,
     )
-    text_sections = [s for s in change_set.new if s.type in _TEXTUAL_TYPES]
+    text_sections = [s for s in change_set.new if s.type in textual_types]
     if not text_sections:
         return
     now = _utc_naive()
