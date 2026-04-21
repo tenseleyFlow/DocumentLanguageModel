@@ -783,6 +783,7 @@ def train_cmd(
         # the server accepts and buffers probes so sway sinks can be
         # wired + tested against a live endpoint.
         rpc_server = None
+        probe_queue = None
         if rpc_config is not None:
             from dlm.train.inject import InjectedProbeQueue
             from dlm.train.rpc import ProbeRpcServer
@@ -828,6 +829,7 @@ def train_cmd(
                 max_steps=watch_max_steps,
                 debounce_ms=watch_debounce_ms,
                 on_cycle=_log_cycle,
+                drain_probes=probe_queue.drain if probe_queue is not None else None,
             )
         except KeyboardInterrupt:
             if rpc_server is not None:
