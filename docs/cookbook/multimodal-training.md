@@ -200,21 +200,43 @@ text content needs an image to anchor the placeholder.
 
 PaliGemma + batch=1 fits on 16 GB but leaves little headroom for
 background processes. Close your browser, VS Code, etc. For
-persistent OOM, swap to CUDA or wait for Sprint 35.4's quantization
-support.
+persistent OOM, swap to CUDA (VL QLoRA is a planned follow-up).
 
-## What's not yet in Sprint 35 v1
+## Known limitations
 
-- **Other VL bases.** Qwen2-VL-2B-Instruct + InternVL2-2B landed in
-  Sprint 35.3 — use `--base qwen2-vl-2b-instruct` or `--base
-  internvl2-2b`. See the base-selection section above.
-- **Audio.** Sprint 35.2 ships `::audio path="..." transcript="..."::`.
-- **GGUF export.** Sprint 35.4 shipped the llama.cpp arch detection
-  + VL-aware Modelfile renderer. The final piece is the dlm-side
-  single-file GGUF emitter that actually invokes
-  `convert_hf_to_gguf.py` for a VL adapter; until that lands, even
-  SUPPORTED bases fall through to HF-snapshot. The dispatcher's
-  banner tells you which verdict your base hit.
 - **Multi-image in one section.** Each `::image::` fence carries one
   image; prompts can stack multiple `<image>` tokens by repeating
   `--image` on the CLI.
+- **Audio ingest.** Audio is a separate path —
+  `::audio path="..." transcript="..."::` on an audio-language base.
+  See [audio-training.md](audio-training.md).
+
+## VL GGUF emitter trajectory
+
+The VL export path today routes every verdict through HF-snapshot
+and prints a banner. Going from that to single-file VL GGUF needs
+three pieces to line up, in order:
+
+1. **Upstream llama.cpp** registers the VL arch class in
+   `convert_hf_to_gguf.py` (currently only Qwen2-VL; PaliGemma and
+   InternVL2 are UNSUPPORTED at the pinned tag). Our
+   `scripts/bump-llama-cpp.sh` re-runs the arch probe on every bump
+   and caches verdicts in `vendor/llama_cpp_vl_arch_support.json`,
+   so re-verdicting is mechanical once a new llama.cpp tag lands.
+2. **The dlm-side emitter** invokes the upstream converter on a
+   merged VL adapter, packages the resulting GGUF, and hands it to
+   `render_vl_modelfile` for the Ollama-compatible Modelfile. The
+   renderer, arch probe, version guard, and per-family stops are
+   already in place; only the emitter orchestration is missing.
+3. **An integration test** picks one SUPPORTED base, trains a
+   1-step adapter on the fixture, converts to GGUF, runs
+   `ollama create`, and smoke-tests inference. The test scaffold
+   (auto-skip while UNSUPPORTED) is already checked in; the body
+   fills in when step 2 lands.
+
+Until all three align, `dlm export` on a VL base writes an
+HF-snapshot tarball — the same artifact a downstream recipient loads
+via `AutoModelForImageTextToText.from_pretrained` +
+`PeftModel.from_pretrained`. See
+[docs/hardware/vl-memory.md](../hardware/vl-memory.md#llamacpp-gguf-support-matrix-sprint-354)
+for the current per-arch verdicts.

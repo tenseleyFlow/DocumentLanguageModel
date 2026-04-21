@@ -35,6 +35,22 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-extras --dev
 
+      - name: Install minisign (for share/signing coverage)
+        # The signing code path probes `shutil.which("minisign")` and
+        # refuses with a typed error when absent. CI installs it so the
+        # "available → sign/verify" branch runs alongside the "absent"
+        # refusal branch that's exercised on developer machines without
+        # it. Best-effort: if the install fails (e.g. Homebrew rate
+        # limit), tests still pass via the refusal path.
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y minisign || true
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            brew install minisign || true
+          fi
+          command -v minisign && minisign -v || echo "minisign not available; tests use the refusal path"
+
       - name: Ruff lint
         run: uv run ruff check .
 
