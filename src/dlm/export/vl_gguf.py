@@ -38,7 +38,6 @@ from dlm.export import base_gguf, merge, preflight
 from dlm.export.arch_probe import ArchProbeResult, SupportLevel
 from dlm.export.errors import ExportError, VlGgufUnsupportedError
 from dlm.export.manifest import (
-    EXPORT_MANIFEST_FILENAME,
     ExportManifest,
     build_artifact,
     compute_sha256,

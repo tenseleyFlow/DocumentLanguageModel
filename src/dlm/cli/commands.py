@@ -1499,7 +1499,7 @@ def _dispatch_audio_prompt(  # pragma: no cover
     sys.stdout.write(response + "\n")
 
 
-def _dispatch_vl_snapshot_export(
+def _emit_vl_snapshot(
     *,
     console: Any,
     store: Any,
@@ -1508,60 +1508,25 @@ def _dispatch_vl_snapshot_export(
     quant: str | None,
     merged: bool,
     adapter_mix_raw: str | None,
+    skip_gguf_flag_warning: bool = False,
 ) -> None:
-    """Route a VL spec through the HF-snapshot export path.
+    """Emit the HF-snapshot VL artifact and print its layout.
 
-    Probes the vendored llama.cpp for arch coverage; emits a banner
-    naming the verdict (SUPPORTED/PARTIAL/UNSUPPORTED) + the tag. On
-    SUPPORTED the GGUF path would emit today, but that emitter is a
-    follow-up (tracked by the sprint 35.4 doc) so all three verdicts
-    currently fall through to HF-snapshot with distinct messaging.
-
-    Warns on GGUF-specific flags the user supplied, runs
-    `run_vl_snapshot_export`, prints the resulting layout.
+    Kept separate from the probe logic so the dispatcher can reach
+    this both on the non-SUPPORTED verdicts and on a GGUF emission
+    fallback (VlGgufUnsupportedError / VendoringError / ExportError).
+    `skip_gguf_flag_warning` is True on the fallback path — the user
+    already saw a "GGUF emission refused" banner upstream, and
+    re-warning about --quant/--merged would be noisy.
     """
     import typer
 
-    from dlm.export.arch_probe import SupportLevel, probe_gguf_arch
-    from dlm.export.errors import ExportError, VendoringError
+    from dlm.export.errors import ExportError
     from dlm.export.vl_snapshot import run_vl_snapshot_export
 
-    try:
-        verdict = probe_gguf_arch(spec.architecture)
-    except VendoringError as exc:
-        # Vendored tree missing / unreadable — surface the vendoring
-        # message but don't block the snapshot path: it doesn't need
-        # llama.cpp at all.
-        console.print(
-            f"[yellow]export:[/yellow] llama.cpp probe unavailable ({exc}); "
-            "falling back to HF-snapshot without a GGUF verdict."
-        )
-        verdict = None
-
-    if verdict is None or verdict.support is SupportLevel.UNSUPPORTED:
-        tag_note = f"at tag={verdict.llama_cpp_tag or 'unknown'} " if verdict is not None else ""
-        console.print(
-            f"[yellow]export:[/yellow] base {spec.key!r} "
-            f"(arch={spec.architecture}) is not covered by the vendored "
-            f"llama.cpp {tag_note}— emitting HF-snapshot. Run "
-            "`scripts/bump-llama-cpp.sh` to pull a newer tag if upstream "
-            "has added support, or ship this adapter as a snapshot."
-        )
-    elif verdict.support is SupportLevel.PARTIAL:
-        console.print(
-            f"[yellow]export:[/yellow] base {spec.key!r} has PARTIAL "
-            f"llama.cpp coverage (vision tower ships as mmproj sidecar). "
-            "Emitting HF-snapshot for now — single-file GGUF emission "
-            "for split VL archs is tracked by sprint 35.4."
-        )
-    else:  # SUPPORTED
-        console.print(
-            f"[yellow]export:[/yellow] base {spec.key!r} is SUPPORTED by "
-            f"llama.cpp (tag={verdict.llama_cpp_tag or 'unknown'}); GGUF "
-            "emitter for VL adapters is tracked by sprint 35.4. Emitting "
-            "HF-snapshot today."
-        )
-    if quant is not None or merged or adapter_mix_raw is not None:
+    if not skip_gguf_flag_warning and (
+        quant is not None or merged or adapter_mix_raw is not None
+    ):
         console.print(
             "[yellow]export:[/yellow] ignoring GGUF-only flags "
             "(--quant / --merged / --adapter-mix) — they're not applicable "
@@ -1602,6 +1567,172 @@ def _dispatch_vl_snapshot_export(
         f"[green]export:[/green] HF snapshot written to {result.export_dir}\n"
         f"  manifest: {result.manifest_path.name}\n"
         f"  adapter:  {result.adapter_dir}\n"
+        f"  artifacts: {len(result.artifacts)} file(s)"
+    )
+
+
+def _dispatch_vl_snapshot_export(
+    *,
+    console: Any,
+    store: Any,
+    spec: Any,
+    adapter_name: str | None,
+    quant: str | None,
+    merged: bool,
+    adapter_mix_raw: str | None,
+    gguf_emission_context: dict[str, Any] | None = None,
+) -> None:
+    """Route a VL spec through the GGUF or HF-snapshot export path.
+
+    Probes the vendored llama.cpp for arch coverage and picks a path:
+
+    - **SUPPORTED** + `gguf_emission_context` present → try single-file
+      GGUF emission via `run_vl_gguf_export`. On `VlGgufUnsupportedError`
+      (plan shape refusal), `VendoringError` (missing/unbuilt vendor),
+      or `ExportError` (subprocess failure), emit a banner and fall back
+      to HF-snapshot.
+    - **PARTIAL** → HF-snapshot with a banner explaining the split-arch
+      caveat (vision tower would require an mmproj sidecar upstream
+      doesn't emit at our pinned tag).
+    - **UNSUPPORTED** (or probe failure) → HF-snapshot with a banner
+      pointing the user at `scripts/bump-llama-cpp.sh`.
+
+    `gguf_emission_context` carries everything the GGUF path needs
+    (plan, cached base dir, source dlm path, sequence len, dlm
+    version). It's optional because the caller may skip resolving the
+    plan when it knows the path can't be GGUF (e.g., arch probing
+    unavailable); passing `None` forces the snapshot path.
+    """
+    from dlm.export.arch_probe import SupportLevel, probe_gguf_arch
+    from dlm.export.errors import ExportError, VendoringError, VlGgufUnsupportedError
+    from dlm.export.vl_gguf import run_vl_gguf_export
+
+    try:
+        verdict = probe_gguf_arch(spec.architecture)
+    except VendoringError as exc:
+        # Vendored tree missing / unreadable — surface the vendoring
+        # message but don't block the snapshot path: it doesn't need
+        # llama.cpp at all.
+        console.print(
+            f"[yellow]export:[/yellow] llama.cpp probe unavailable ({exc}); "
+            "falling back to HF-snapshot without a GGUF verdict."
+        )
+        verdict = None
+
+    if verdict is None or verdict.support is SupportLevel.UNSUPPORTED:
+        tag_note = f"at tag={verdict.llama_cpp_tag or 'unknown'} " if verdict is not None else ""
+        console.print(
+            f"[yellow]export:[/yellow] base {spec.key!r} "
+            f"(arch={spec.architecture}) is not covered by the vendored "
+            f"llama.cpp {tag_note}— emitting HF-snapshot. Run "
+            "`scripts/bump-llama-cpp.sh` to pull a newer tag if upstream "
+            "has added support, or ship this adapter as a snapshot."
+        )
+        _emit_vl_snapshot(
+            console=console,
+            store=store,
+            spec=spec,
+            adapter_name=adapter_name,
+            quant=quant,
+            merged=merged,
+            adapter_mix_raw=adapter_mix_raw,
+        )
+        return
+
+    if verdict.support is SupportLevel.PARTIAL:
+        console.print(
+            f"[yellow]export:[/yellow] base {spec.key!r} has PARTIAL "
+            f"llama.cpp coverage (vision tower ships as mmproj sidecar). "
+            "Emitting HF-snapshot — single-file GGUF emission for "
+            "split VL archs is gated on upstream mmproj support."
+        )
+        _emit_vl_snapshot(
+            console=console,
+            store=store,
+            spec=spec,
+            adapter_name=adapter_name,
+            quant=quant,
+            merged=merged,
+            adapter_mix_raw=adapter_mix_raw,
+        )
+        return
+
+    # SUPPORTED.
+    if gguf_emission_context is None:
+        console.print(
+            f"[yellow]export:[/yellow] base {spec.key!r} is SUPPORTED by "
+            f"llama.cpp (tag={verdict.llama_cpp_tag or 'unknown'}), but "
+            "this dispatcher was invoked without GGUF plan context — "
+            "emitting HF-snapshot."
+        )
+        _emit_vl_snapshot(
+            console=console,
+            store=store,
+            spec=spec,
+            adapter_name=adapter_name,
+            quant=quant,
+            merged=merged,
+            adapter_mix_raw=adapter_mix_raw,
+        )
+        return
+
+    console.print(
+        f"[dim]export:[/dim] base {spec.key!r} is SUPPORTED by llama.cpp "
+        f"(tag={verdict.llama_cpp_tag or 'unknown'}); attempting single-file "
+        "VL GGUF emission."
+    )
+    try:
+        result = run_vl_gguf_export(
+            store,
+            spec,
+            gguf_emission_context["plan"],
+            verdict=verdict,
+            cached_base_dir=gguf_emission_context["cached_base_dir"],
+            adapter_name=adapter_name,
+            system_prompt=gguf_emission_context.get("system_prompt"),
+            source_dlm_path=gguf_emission_context.get("source_dlm_path"),
+            dlm_version=gguf_emission_context.get("dlm_version", "dev"),
+            training_sequence_len=gguf_emission_context.get("training_sequence_len"),
+        )
+    except VlGgufUnsupportedError as exc:
+        console.print(
+            f"[yellow]export:[/yellow] VL GGUF emission refused ({exc}); "
+            "falling back to HF-snapshot."
+        )
+        _emit_vl_snapshot(
+            console=console,
+            store=store,
+            spec=spec,
+            adapter_name=adapter_name,
+            quant=quant,
+            merged=merged,
+            adapter_mix_raw=adapter_mix_raw,
+            skip_gguf_flag_warning=True,
+        )
+        return
+    except (VendoringError, ExportError) as exc:
+        console.print(
+            f"[yellow]export:[/yellow] VL GGUF emission failed "
+            f"({type(exc).__name__}: {exc}); falling back to HF-snapshot."
+        )
+        _emit_vl_snapshot(
+            console=console,
+            store=store,
+            spec=spec,
+            adapter_name=adapter_name,
+            quant=quant,
+            merged=merged,
+            adapter_mix_raw=adapter_mix_raw,
+            skip_gguf_flag_warning=True,
+        )
+        return
+
+    console.print(
+        f"[green]export:[/green] VL GGUF written to {result.export_dir}\n"
+        f"  manifest:  {result.manifest_path.name}\n"
+        f"  gguf:      {result.gguf_path.name} ({result.quant})\n"
+        f"  Modelfile: {result.modelfile_path.name}\n"
+        f"  llama.cpp: {result.llama_cpp_tag or 'unknown'}\n"
         f"  artifacts: {len(result.artifacts)} file(s)"
     )
 
@@ -1872,23 +2003,9 @@ def export_cmd(
         console.print("  accept via `dlm train --i-accept-license` before exporting.")
         raise typer.Exit(code=1) from exc
 
-    # Media bases take the HF-snapshot export path. VL archs are in
-    # flux upstream (Sprint 35.4 adds GGUF when it stabilizes); audio
-    # archs aren't on llama.cpp's roadmap at all. Either way, GGUF-
-    # specific flags like --quant / --merged / --adapter-mix don't
-    # apply — the dispatcher surfaces a clear warning rather than a
-    # silent drop.
-    if spec.modality == "vision-language":
-        _dispatch_vl_snapshot_export(
-            console=console,
-            store=store,
-            spec=spec,
-            adapter_name=adapter,
-            quant=quant,
-            merged=merged,
-            adapter_mix_raw=adapter_mix,
-        )
-        return
+    # Audio bases take HF-snapshot unconditionally — llama.cpp has no
+    # audio-arch roadmap at our pinned tag — so branch early without
+    # resolving a GGUF plan.
     if spec.modality == "audio-language":
         _dispatch_audio_snapshot_export(
             console=console,
@@ -1916,6 +2033,38 @@ def export_cmd(
         raise typer.Exit(code=2) from exc
 
     store.ensure_layout()
+
+    # VL bases: arch-probe + try single-file GGUF on SUPPORTED (with
+    # fallback to HF-snapshot on refusal or subprocess failure). We
+    # still need the resolved plan + cached base dir for the GGUF
+    # path, so resolve those first, then let the dispatcher decide
+    # whether to use them.
+    if spec.modality == "vision-language":
+        try:
+            cached_vl = download_spec(spec, local_files_only=True)
+        except RuntimeError as exc:
+            console.print(
+                f"[red]export:[/red] base model not in local cache "
+                f"— run `dlm train` first.\n  {exc}"
+            )
+            raise typer.Exit(code=1) from exc
+        _dispatch_vl_snapshot_export(
+            console=console,
+            store=store,
+            spec=spec,
+            adapter_name=adapter,
+            quant=quant,
+            merged=merged,
+            adapter_mix_raw=adapter_mix,
+            gguf_emission_context={
+                "plan": plan,
+                "cached_base_dir": cached_vl.path,
+                "source_dlm_path": path.resolve(),
+                "training_sequence_len": parsed.frontmatter.training.sequence_len,
+                "dlm_version": f"v{parsed.frontmatter.dlm_version}",
+            },
+        )
+        return
 
     try:
         cached = download_spec(spec, local_files_only=True)
