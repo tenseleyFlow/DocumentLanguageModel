@@ -65,6 +65,13 @@ observability = [
     "tensorboard>=2.15",
     "wandb>=0.17",
 ]
+# Sprint 35.2 audio-language bases. `soundfile` is the only dep needed
+# to decode .wav / .flac / .ogg; MP3 support would require libsndfile
+# ≥1.1 and is deferred. Keep optional so text-only users don't pull
+# the libsndfile C library.
+audio = [
+    "soundfile>=0.12",
+]
 
 [project.scripts]
 dlm = "dlm.cli.app:main"
@@ -186,11 +193,12 @@ disable_error_code = ["no-untyped-call"]
 testpaths = ["tests"]
 addopts = [
     "-ra",
-    "-m", "not slow and not gpu and not online and not vl",
+    "-m", "not slow and not gpu and not online and not vl and not audio",
 ]
 markers = [
     "slow: expensive; deselected by default",
     "gpu: requires CUDA; skipped on CPU/MPS runners",
     "online: touches the network; skipped in offline CI",
     "vl: vision-language; requires a GPU + VL HF weights; deselected by default",
+    "audio: audio-language; requires a GPU + audio HF weights; deselected by default",
 ]
