@@ -36,14 +36,25 @@ _LOG = logging.getLogger(__name__)
 _HF_PREFIX: Final = "hf:"
 
 
-def resolve(spec: str, *, accept_license: bool = False) -> BaseModelSpec:
+def resolve(
+    spec: str,
+    *,
+    accept_license: bool = False,
+    skip_export_probes: bool = False,
+) -> BaseModelSpec:
     """Return the `BaseModelSpec` for `spec`.
 
     Registry lookup first; `hf:`-prefix falls through to `resolve_hf()`.
-    Gating is enforced here regardless of path.
+    Gating is enforced here regardless of path. `skip_export_probes`
+    only applies to the `hf:` path — registry entries are curated and
+    always pass all probes by construction.
     """
     if spec.startswith(_HF_PREFIX):
-        return resolve_hf(spec[len(_HF_PREFIX) :], accept_license=accept_license)
+        return resolve_hf(
+            spec[len(_HF_PREFIX) :],
+            accept_license=accept_license,
+            skip_export_probes=skip_export_probes,
+        )
 
     entry = BASE_MODELS.get(spec)
     if entry is None:
@@ -53,12 +64,39 @@ def resolve(spec: str, *, accept_license: bool = False) -> BaseModelSpec:
     return entry
 
 
-def resolve_hf(hf_id: str, *, accept_license: bool = False) -> BaseModelSpec:
+def _env_skip_export_probes() -> bool:
+    """Read `DLM_SKIP_EXPORT_PROBES` — set by power users whose base isn't
+    yet in vendored llama.cpp but who only need training + HF inference.
+
+    Checked by every `resolve` path so `dlm train/prompt/export` inherits
+    the decision the user made at `dlm init --skip-export-probes` time
+    without persisting extra state on the per-store manifest.
+    """
+    import os
+
+    return os.environ.get("DLM_SKIP_EXPORT_PROBES", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def resolve_hf(
+    hf_id: str,
+    *,
+    accept_license: bool = False,
+    skip_export_probes: bool = False,
+) -> BaseModelSpec:
     """Synthesize a `BaseModelSpec` for an arbitrary HF model id.
 
     Runs the probe suite; raises `ProbeFailedError` with a full report
     if any hard probe fails. This is the gate that prevents users from
     pinning a model our export pipeline can't actually convert.
+
+    `skip_export_probes=True` drops the llama.cpp / GGUF-conversion
+    probes so brand-new architectures (not yet in the vendored
+    llama.cpp) can still train + HF-infer. Users opting in forfeit
+    `dlm export` until the vendored copy catches up.
     """
     # Deferred import: probes pull transformers, which is expensive.
     from dlm.base_models import probes
@@ -66,7 +104,8 @@ def resolve_hf(hf_id: str, *, accept_license: bool = False) -> BaseModelSpec:
     spec = _synthesize_spec(hf_id)
     _enforce_gate(spec, accept_license=accept_license)
 
-    report = probes.run_all(spec)
+    skip = skip_export_probes or _env_skip_export_probes()
+    report = probes.run_all(spec, skip_export_probes=skip)
     if not report.passed:
         raise ProbeFailedError(spec.hf_id, list(report.results))
     return spec

@@ -46,6 +46,18 @@ def init_cmd(
         bool,
         typer.Option("--force", help="Overwrite an existing .dlm at path."),
     ] = False,
+    skip_export_probes: Annotated[
+        bool,
+        typer.Option(
+            "--skip-export-probes",
+            help=(
+                "Skip the llama.cpp / GGUF-conversion probes so brand-new "
+                "architectures (not yet in our vendored llama.cpp) can still "
+                "be used for training + HF inference. Forfeits `dlm export` "
+                "to Ollama until the vendored copy catches up."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Bootstrap a new .dlm file with sensible defaults."""
 
@@ -93,7 +105,11 @@ def init_cmd(
         resolved_base = base
 
     try:
-        spec = resolve_base_model(resolved_base, accept_license=i_accept_license)
+        spec = resolve_base_model(
+            resolved_base,
+            accept_license=i_accept_license,
+            skip_export_probes=skip_export_probes,
+        )
     except UnknownBaseModelError as exc:
         console.print(f"[red]init:[/red] {exc}")
         raise typer.Exit(code=1) from exc
@@ -107,7 +123,11 @@ def init_cmd(
                 "[bold]--i-accept-license[/bold] to accept non-interactively."
             )
             raise typer.Exit(code=1) from exc
-        spec = resolve_base_model(resolved_base, accept_license=True)
+        spec = resolve_base_model(
+            resolved_base,
+            accept_license=True,
+            skip_export_probes=skip_export_probes,
+        )
 
     # Record the license acceptance (or None for non-gated specs). We
     # know `resolve_base_model` already validated the flag/prompt chain

@@ -378,16 +378,31 @@ def probe_pretokenizer_hash(
 # --- aggregate ---------------------------------------------------------------
 
 
-def run_all(spec: BaseModelSpec) -> ProbeReport:
+def run_all(
+    spec: BaseModelSpec, *, skip_export_probes: bool = False
+) -> ProbeReport:
     """Run every probe; aggregate into a `ProbeReport`.
 
     `GatedModelError` from an individual probe propagates immediately —
     it's not a "probe failure" in the registry-drift sense; it's an
     acceptance-flow signal.
+
+    `skip_export_probes=True` drops the three llama.cpp / GGUF-conversion
+    checks (`gguf_arch_supported`, `pretokenizer_label`,
+    `pretokenizer_hash`). Users opt into this when they want training
+    + HF inference on a base whose architecture ships faster than our
+    vendored llama.cpp can absorb (e.g. brand-new Qwen3 on a llama.cpp
+    pin from last month). They forfeit `dlm export` to Ollama until
+    the vendored copy catches up.
     """
-    results = (
+    core = (
         probe_architecture(spec),
         probe_chat_template(spec),
+    )
+    if skip_export_probes:
+        return ProbeReport(hf_id=spec.hf_id, results=core)
+    results = (
+        *core,
         probe_gguf_arch_supported(spec),
         probe_pretokenizer_label(spec),
         probe_pretokenizer_hash(spec),
