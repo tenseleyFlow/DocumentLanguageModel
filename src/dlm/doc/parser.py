@@ -105,6 +105,10 @@ _CODE_FENCE_RE: Final[re.Pattern[str]] = re.compile(r"^```")
 _FENCE_ATTR_SPEC: Final[dict[str, tuple[frozenset[str], frozenset[str]]]] = {
     # IMAGE: `path` required, `alt` optional.
     "image": (frozenset({"path"}), frozenset({"path", "alt"})),
+    # AUDIO: `path` + `transcript` both required. Transcript carries
+    # the text-side supervision at train time; audio without text has
+    # no training signal, so the attribute is mandatory.
+    "audio": (frozenset({"path", "transcript"}), frozenset({"path", "transcript"})),
 }
 
 
@@ -207,6 +211,7 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
     current_adapter: str | None = None
     current_media_path: str | None = None
     current_media_alt: str | None = None
+    current_media_transcript: str | None = None
     current_lines: list[str] = []
     current_start_line = body_start_line
 
@@ -219,7 +224,8 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
         lines_for_content = list(current_lines)
         auto_harvest = False
         harvest_source: str | None = None
-        if current_type not in (SectionType.PROSE, SectionType.IMAGE) and lines_for_content:
+        media_types = (SectionType.PROSE, SectionType.IMAGE, SectionType.AUDIO)
+        if current_type not in media_types and lines_for_content:
             marker_match = _HARVEST_MARKER_RE.match(lines_for_content[0])
             if marker_match:
                 auto_harvest = True
@@ -242,6 +248,7 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
                 harvest_source=harvest_source,
                 media_path=current_media_path,
                 media_alt=current_media_alt,
+                media_transcript=current_media_transcript,
             ),
         )
 
@@ -263,6 +270,7 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
                 current_adapter = None
                 current_media_path = attrs.get("path")
                 current_media_alt = attrs.get("alt")
+                current_media_transcript = attrs.get("transcript")
                 current_lines = []
                 current_start_line = source_line
                 continue
@@ -283,6 +291,7 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
                 current_adapter = fence_adapter
                 current_media_path = None
                 current_media_alt = None
+                current_media_transcript = None
                 current_lines = []
                 current_start_line = source_line
                 continue

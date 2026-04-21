@@ -259,6 +259,30 @@ def _serialize_section(section: Section) -> str:
         if body and not body.endswith("\n"):
             body += "\n"
         return fence + body
+    if section.type == SectionType.AUDIO:
+        attrs = []
+        if section.media_path is not None:
+            attrs.append(f'path="{section.media_path}"')
+        if section.media_transcript is not None:
+            transcript = section.media_transcript
+            # Fence attribute grammar rejects `"` and `\n` at parse
+            # time (the `_ATTR_KV_RE` character class is `[^"\n]*`).
+            # Refuse to emit unparseable output rather than producing
+            # something that survives serialization but fails re-read.
+            if '"' in transcript or "\n" in transcript:
+                raise ValueError(
+                    "AUDIO transcript cannot contain double-quotes or "
+                    "newlines — the fence attribute grammar disallows them. "
+                    "Use curly quotes ('“'/'”') or rephrase. "
+                    f"Offending transcript: {transcript!r}"
+                )
+            attrs.append(f'transcript="{transcript}"')
+        attr_blob = (" " + " ".join(attrs)) if attrs else ""
+        fence = f"::{section.type.value}{attr_blob}::\n"
+        body = section.content
+        if body and not body.endswith("\n"):
+            body += "\n"
+        return fence + body
     suffix = f"#{section.adapter}" if section.adapter else ""
     fence = f"::{section.type.value}{suffix}::\n"
     body = section.content
