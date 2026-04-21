@@ -818,13 +818,21 @@ def _build_real_trainer(  # pragma: no cover
         "args": sft_config,
     }
     if is_audio and media_processor is not None and spec.audio_preprocessor_plan is not None:
+        from dlm.data.audio_cache import WaveformCache
         from dlm.data.audio_collator import AudioLmCollator
 
+        # Waveform cache memoizes soundfile-decode + mono-mix + truncate
+        # across training epochs. Separate from `audio_cache_dir` (which
+        # holds processor-specific feature tensors used by the standalone
+        # preprocess_audio path); the training collator skips the
+        # decode/mix/truncate step but re-runs feature extraction every
+        # batch so the processor's text-expansion logic stays intact.
         trainer_kwargs["data_collator"] = AudioLmCollator(
             processor=media_processor,
             sample_rate=spec.audio_preprocessor_plan.sample_rate,
             max_length_seconds=spec.audio_preprocessor_plan.max_length_seconds,
             max_length=parsed.frontmatter.training.sequence_len,
+            waveform_cache=WaveformCache(store.audio_waveform_cache_dir),
         )
     if use_formatting_func:
         trainer_kwargs["formatting_func"] = make_formatting_func(tok_bringup.tokenizer)

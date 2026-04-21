@@ -65,6 +65,7 @@ CONTROLS_DIR: Final = "controls"
 BLOBS_DIR: Final = "blobs"
 VL_CACHE_DIR: Final = "vl-cache"
 AUDIO_CACHE_DIR: Final = "audio-cache"
+AUDIO_WAVEFORM_CACHE_DIR: Final = "audio-waveform-cache"
 LOGS_DIR: Final = "logs"
 
 # Under adapter/

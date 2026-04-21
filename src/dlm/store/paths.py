@@ -29,6 +29,7 @@ from dlm.store.layout import (
     ADAPTER_VERSIONS_DIR,
     ALWAYS_CREATE_DIRS,
     AUDIO_CACHE_DIR,
+    AUDIO_WAVEFORM_CACHE_DIR,
     BLOBS_DIR,
     CACHE_DIR,
     CONTROLS_DIR,
@@ -209,6 +210,19 @@ class StorePath:
         on first `AudioCache.put`.
         """
         return self.root / AUDIO_CACHE_DIR
+
+    @property
+    def audio_waveform_cache_dir(self) -> Path:
+        """Per-store audio *waveform* cache (35.2 deferred-item follow-up).
+
+        Distinct from `audio_cache_dir` (feature-level, processor-
+        dependent): this cache stores pre-processor waveforms keyed on
+        `(blob_sha, sample_rate, max_length_ms)`. Populated by
+        `AudioLmCollator` during training to skip `soundfile` decode
+        + mono-mix + truncate on repeat epochs. Lazy; created on
+        first `WaveformCache.put`.
+        """
+        return self.root / AUDIO_WAVEFORM_CACHE_DIR
 
     @property
     def controls_dir(self) -> Path:
