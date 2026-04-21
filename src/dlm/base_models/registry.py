@@ -303,15 +303,15 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     # 448×448 input (32×32 patch grid with 2×2 pixel-shuffle → 256
     # vision tokens per image).
     #
-    # **Loader caveat**: InternVL2's HF integration is `InternVLChatModel`
-    # (a custom remote-code class), which `AutoModelForImageTextToText`
-    # may not resolve on older transformers. Sprint 35.3 ships the
-    # registry entry + preprocessing plan; callers who hit a
-    # `ValueError: Unrecognized configuration class` on `dlm train`
-    # may need a transformers bump or `trust_remote_code=True` (not
-    # enabled by default — tracked as a Sprint 35.3 follow-up). The
-    # doctor + probe paths work regardless since they read spec
-    # metadata, not the model class.
+    # **Security surface: trust_remote_code=True**. InternVL2's HF
+    # integration is `InternVLChatModel`, a custom class defined in
+    # `modeling_internvl_chat.py` inside the model repo — not in
+    # transformers. Loading it requires executing that repo's code.
+    # The loader sets `trust_remote_code=True` when this spec is
+    # picked (`trust_remote_code` field below), so picking this base
+    # as `base_model: internvl2-2b` in a .dlm is the user's
+    # informed acknowledgment that remote code runs at load time.
+    # The cookbook + vl-memory.md flag this too.
     BaseModelSpec(
         key="internvl2-2b",
         hf_id="OpenGVLab/InternVL2-2B",
@@ -327,6 +327,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         license_url="https://huggingface.co/OpenGVLab/InternVL2-2B/blob/main/LICENSE",
         requires_acceptance=False,
         redistributable=True,
+        trust_remote_code=True,
         size_gb_fp16=4.4,
         context_length=8_192,
         recommended_seq_len=2048,
