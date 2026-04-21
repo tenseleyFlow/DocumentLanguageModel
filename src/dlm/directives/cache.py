@@ -4,6 +4,24 @@ Avoid re-tokenizing unchanged directive-sourced files on every
 `dlm train` run. At 50K+ files this is the difference between an
 hour of retokenization and seconds of cache warm-up.
 
+**Integration status (audit-09 M1/M2):** the cache module is
+production-ready — atomic writes, LRU eviction, tokenizer-version
+invalidation, 15 unit tests. But **no trainer-side code currently
+consults it.** `src/dlm/train/**` imports nothing from this module;
+`dlm cache show` on any real store will always report 0 entries
+until the wiring lands.
+
+The right insertion seam is a pre-tokenization pass that runs
+between `build_dataset` and SFTTrainer: rows get tokenized to
+`input_ids`/`attention_mask`, cached by `(section_id,
+tokenizer_sha256, sequence_len)`, and handed to SFTTrainer via
+`dataset_text_field=None` with a custom collator that preserves
+label-masking for instruction rows. The sprint doc honestly marks
+this `[~]`; the task tracker did not (reopened under task #461).
+Audit-09 recommends this for a future sprint rather than rushed
+remediation — landing it without bit-exact label preservation would
+degrade training dynamics silently.
+
 Layout (per store):
 
     ~/.dlm/store/<dlm_id>/tokenized-cache/
