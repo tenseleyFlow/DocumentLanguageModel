@@ -7,6 +7,22 @@ can have either, both, or neither.
 Use `.dlm/ignore` when you want drive-by exclusions without writing
 YAML. A three-line file is legal and common.
 
+!!! info "`.dlm` (file) vs `.dlm/` (directory) — two different things"
+    Both `.dlm` shapes live in this project and it's worth naming the
+    distinction once:
+
+    - `mydoc.dlm` — **a file** with a `.dlm` extension. The document
+      itself, with YAML frontmatter + markdown body. Plural: users own
+      many `mydoc.dlm` files, one per trainable corpus.
+    - `.dlm/` — **a directory** named literally `.dlm`. Lives inside a
+      codebase or data tree and holds `training.yaml` + `ignore` +
+      (when auto-scaffolded by `dlm train <dir>`) a `corpus.dlm` file.
+
+    The two share a name but not a namespace. When `dlm train <dir>`
+    auto-scaffolds, it creates a `.dlm/` directory inside `<dir>` and
+    places `corpus.dlm` inside it — so a single tree can end up with
+    `<dir>/.dlm/corpus.dlm`.
+
 ## Example
 
 ```
