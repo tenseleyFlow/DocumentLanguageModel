@@ -61,11 +61,12 @@ def sections_to_rows(sections: list[Section]) -> list[Row]:
 
 def _section_to_rows(section: Section) -> list[Row]:
     sid = section.section_id
+    tags = dict(section.tags)
     if section.type is SectionType.PROSE:
         text = section.content.strip()
         if not text:
             return []
-        return [{"text": text, "_dlm_section_id": sid}]
+        return [{"text": text, "_dlm_section_id": sid, "_dlm_row_tags": tags}]
 
     if section.type is SectionType.INSTRUCTION:
         body = _normalize_probe_markers(section.content)
@@ -77,6 +78,7 @@ def _section_to_rows(section: Section) -> list[Row]:
                     {"role": "assistant", "content": p.answer},
                 ],
                 "_dlm_section_id": sid,
+                "_dlm_row_tags": tags,
             }
             for p in pairs
         ]
@@ -89,6 +91,7 @@ def _section_to_rows(section: Section) -> list[Row]:
                 "chosen": t.chosen,
                 "rejected": t.rejected,
                 "_dlm_section_id": sid,
+                "_dlm_row_tags": tags,
             }
             for t in triples
         ]
