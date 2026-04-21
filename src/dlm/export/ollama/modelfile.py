@@ -5,11 +5,14 @@ Assembles a complete Modelfile from:
 - The `ExportPlan` (quant, merged flag)
 - The `BaseModelSpec` (for license + registry metadata in header)
 - The adapter directory (source of truth for stops + chat template
-  per Sprint 12b's tokenizer contract — audit F06)
+  per the tokenizer contract — audit F06)
 - The user's system prompt from frontmatter, if any
 
-Output shape is fixed (see Sprint 12 spec). Stops are always emitted
-— missing stops cause runaway generation (findings §9).
+Output shape is fixed. Stops are always emitted — missing stops
+cause runaway generation (findings §9).
+
+Directive builders live in `modelfile_shared.py` so the VL variant
+can reuse them without reaching across `_`-prefixed names.
 
 Security: `SYSTEM "..."` content is JSON-escaped via `json.dumps`
 to defend against `"` / newline injection in user-supplied prompts.
@@ -21,13 +24,18 @@ escapes (`\"`, `\n`, `\\`) round-trip cleanly.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from dlm.export.ollama.errors import ModelfileError
+from dlm.export.ollama.modelfile_shared import (
+    build_header,
+    build_license_line,
+    build_param_lines,
+    build_system_line,
+    resolve_num_ctx,
+    resolve_stops,
+)
 from dlm.export.ollama.template_registry import DialectTemplate, get_template
 
 if TYPE_CHECKING:
@@ -49,11 +57,11 @@ class ModelfileContext:
     system_prompt: str | None = None
     source_dlm_path: Path | None = None
     dlm_version: str = "dev"
-    # `sequence_len` from the document's training config (Sprint 03
-    # schema). When set, we emit `PARAMETER num_ctx <min(seq_len,
-    # spec.context_length)>` so Ollama respects the window the adapter
-    # was trained for — otherwise it defaults to 2048 and a document
-    # trained at 8192 effectively loses 75% of its context. Audit-04 Q1.
+    # `sequence_len` from the document's training config. When set, we
+    # emit `PARAMETER num_ctx <min(seq_len, spec.context_length)>` so
+    # Ollama respects the window the adapter was trained for —
+    # otherwise it defaults to 2048 and a document trained at 8192
+    # effectively loses 75% of its context. Audit-04 Q1.
     training_sequence_len: int | None = None
     # Per-document sampling overrides from frontmatter's `export:`
     # block. When set, they replace the dialect's defaults in the
@@ -61,7 +69,7 @@ class ModelfileContext:
     # (audit-04 Q5).
     override_temperature: float | None = None
     override_top_p: float | None = None
-    # Sprint 12.5: speculative-decoding draft. When set, emit
+    # Speculative-decoding draft. When set, emit
     # `PARAMETER draft_model <tag>` so Ollama ≥ 0.5 runs this small
     # model as a speculative drafter. Tag is an Ollama community
     # reference (e.g. `qwen2.5:0.5b`); users `ollama pull` it once.
@@ -77,27 +85,36 @@ def render_modelfile(ctx: ModelfileContext) -> str:
     dialect = ctx.spec.template
     template_row = get_template(dialect)
 
-    stops = _resolve_stops(ctx.adapter_dir, template_row)
-    header = _build_header(ctx)
+    stops = resolve_stops(ctx.adapter_dir, template_row)
+    header = build_header(
+        dlm_version=ctx.dlm_version,
+        dlm_id=ctx.dlm_id,
+        adapter_version=ctx.adapter_version,
+        base_key=ctx.spec.key,
+        base_revision=ctx.spec.revision,
+        quant=ctx.plan.quant,
+        merged=ctx.plan.merged,
+        source_dlm_path=ctx.source_dlm_path,
+    )
     from_line = f"FROM ./{ctx.base_gguf_name}"
     adapter_line = f"ADAPTER ./{ctx.adapter_gguf_name}" if ctx.adapter_gguf_name else None
     template_block = _build_template_block(template_row)
-    num_ctx = _resolve_num_ctx(ctx)
+    num_ctx = resolve_num_ctx(ctx.training_sequence_len, ctx.spec.context_length)
     temperature = (
         ctx.override_temperature
         if ctx.override_temperature is not None
         else template_row.default_temperature
     )
     top_p = ctx.override_top_p if ctx.override_top_p is not None else template_row.default_top_p
-    param_lines = _build_param_lines(
+    param_lines = build_param_lines(
         stops=stops,
         temperature=temperature,
         top_p=top_p,
         num_ctx=num_ctx,
         draft_model=ctx.draft_model_ollama_name,
     )
-    system_line = _build_system_line(ctx.system_prompt)
-    license_line = _build_license_line(ctx.spec)
+    system_line = build_system_line(ctx.system_prompt)
+    license_line = build_license_line(ctx.spec)
 
     # Assemble with blank-line separators for readability; the Ollama
     # parser doesn't care about whitespace between directives.
@@ -114,94 +131,6 @@ def render_modelfile(ctx: ModelfileContext) -> str:
     return "\n".join(parts) + "\n"
 
 
-# --- header ---------------------------------------------------------------
-
-
-def _build_header(ctx: ModelfileContext) -> str:
-    now = datetime.now(UTC).replace(tzinfo=None, microsecond=0).isoformat()
-    lines = [
-        f"# Generated by dlm {ctx.dlm_version} on {now}",
-    ]
-    if ctx.source_dlm_path is not None:
-        lines.append(f"# Source: {ctx.source_dlm_path}")
-    lines.extend(
-        [
-            f"# dlm_id: {ctx.dlm_id}",
-            f"# adapter_version: {ctx.adapter_version}",
-            f"# base_model: {ctx.spec.key} (revision {ctx.spec.revision})",
-            f"# quant: {ctx.plan.quant}",
-            f"# merged: {ctx.plan.merged}",
-        ]
-    )
-    return "\n".join(lines)
-
-
-# --- stops ----------------------------------------------------------------
-
-
-def _resolve_stops(adapter_dir: Path, template_row: DialectTemplate) -> tuple[str, ...]:
-    """Union of dialect defaults + EOS/pad from the adapter tokenizer.
-
-    Per Sprint 12b tokenizer contract (audit F06): added special tokens
-    from the adapter tokenizer become additional stops. Without this,
-    a pad-token-grown model emits `<|pad|>` indefinitely.
-    """
-    merged: list[str] = list(template_row.default_stops)
-    merged.extend(template_row.extra_stop_hints)
-
-    adapter_stops = _read_adapter_stops(adapter_dir)
-    for tok in adapter_stops:
-        if tok and tok not in merged:
-            merged.append(tok)
-
-    # De-dupe while preserving order.
-    seen: set[str] = set()
-    unique: list[str] = []
-    for tok in merged:
-        if tok not in seen:
-            seen.add(tok)
-            unique.append(tok)
-    return tuple(unique)
-
-
-def _read_adapter_stops(adapter_dir: Path) -> list[str]:
-    """Pull `eos_token` + added-tokens from the adapter tokenizer config.
-
-    Missing files return `[]` — the caller combines with dialect
-    defaults. Malformed JSON raises `ModelfileError`.
-    """
-    cfg_path = adapter_dir / "tokenizer_config.json"
-    if not cfg_path.exists():
-        return []
-    try:
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ModelfileError(
-            f"adapter tokenizer_config.json at {cfg_path} is unreadable: {exc}"
-        ) from exc
-
-    stops: list[str] = []
-    eos = cfg.get("eos_token")
-    if isinstance(eos, str) and eos:
-        stops.append(eos)
-    elif isinstance(eos, dict) and isinstance(eos.get("content"), str):
-        stops.append(eos["content"])
-
-    # Sprint 07 added-tokens (the `<|pad|>` fallback path): walk
-    # `added_tokens_decoder` for content strings flagged as special.
-    added = cfg.get("added_tokens_decoder") or {}
-    if isinstance(added, dict):
-        for entry in added.values():
-            if isinstance(entry, dict) and entry.get("special") is True:
-                content = entry.get("content")
-                if isinstance(content, str):
-                    stops.append(content)
-    return stops
-
-
-# --- template block -------------------------------------------------------
-
-
 def _build_template_block(template_row: DialectTemplate) -> str:
     """Emit the Modelfile TEMPLATE directive with the Go template body.
 
@@ -211,71 +140,3 @@ def _build_template_block(template_row: DialectTemplate) -> str:
     """
     body = template_row.read_template()
     return f'TEMPLATE """{body}"""'
-
-
-# --- parameters -----------------------------------------------------------
-
-
-def _build_param_lines(
-    *,
-    stops: tuple[str, ...],
-    temperature: float,
-    top_p: float,
-    num_ctx: int | None,
-    draft_model: str | None,
-) -> list[str]:
-    """Emit the `PARAMETER stop ...` + defaults block."""
-    lines: list[str] = []
-    for stop in stops:
-        lines.append(f"PARAMETER stop {json.dumps(stop)}")
-    lines.append(f"PARAMETER temperature {temperature}")
-    lines.append(f"PARAMETER top_p {top_p}")
-    if num_ctx is not None:
-        lines.append(f"PARAMETER num_ctx {num_ctx}")
-    if draft_model is not None:
-        # Sprint 12.5. The precede-with-comment pattern reminds users
-        # at `ollama show` time that they need to pull the draft
-        # separately; Ollama warns-not-errors on missing drafts.
-        lines.append(f"# Speculative decoding: `ollama pull {draft_model}` first.")
-        lines.append(f"PARAMETER draft_model {draft_model}")
-    return lines
-
-
-def _resolve_num_ctx(ctx: ModelfileContext) -> int | None:
-    """Cap `training_sequence_len` at the base spec's `context_length` (audit Q1).
-
-    Returns `None` when the document didn't pin a length — the default
-    behavior is Ollama's built-in default (2048), unchanged. Returns
-    the capped length otherwise so a user writing `sequence_len: 8192`
-    in frontmatter gets the 8k window they trained for — without
-    exceeding the base model's positional-embedding table.
-    """
-    if ctx.training_sequence_len is None:
-        return None
-    return min(ctx.training_sequence_len, ctx.spec.context_length)
-
-
-# --- system + license -----------------------------------------------------
-
-
-def _build_system_line(system_prompt: str | None) -> str | None:
-    """JSON-escaped `SYSTEM "..."` directive, or `None` when no prompt.
-
-    Ollama treats SYSTEM as a quoted string; an embedded `"` in the
-    user's prompt would close the literal and inject directives.
-    `json.dumps` escapes `"`, `\\n`, and `\\\\` to the exact escapes
-    Modelfile's string-literal grammar accepts, so a hostile prompt
-    surfaces as content instead of metaparse.
-    """
-    if system_prompt is None:
-        return None
-    stripped = system_prompt.strip()
-    if not stripped:
-        return None
-    return f"SYSTEM {json.dumps(stripped)}"
-
-
-def _build_license_line(spec: BaseModelSpec) -> str | None:
-    if not spec.license_spdx:
-        return None
-    return f"LICENSE {json.dumps(spec.license_spdx)}"
