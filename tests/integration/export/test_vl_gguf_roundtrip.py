@@ -24,6 +24,7 @@ via `pytest -m "slow and vl"` on a provisioned host.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -113,6 +114,7 @@ def test_vl_gguf_roundtrip(
     arch: str,
     hf_id: str,
     tmp_path: Path,
+    run_heavy_vl: bool,
 ) -> None:
     """GGUF emission for a VL arch — filled body on SUPPORTED, skip otherwise.
 
@@ -156,23 +158,109 @@ def test_vl_gguf_roundtrip(
             "provisioned host."
         )
 
-    # With the cache + SUPPORTED gate both satisfied, the full
-    # train→merge→convert→quantize chain can land here. That chain
-    # writes ~4-8 GB of intermediate fp16 GGUFs and takes several
-    # minutes even on a provisioned host, so the assertion list stays
-    # tight and focused: what we actually want to pin is that the
-    # emitter produces a quantized GGUF + a Modelfile with `FROM
-    # ./base.Q4_K_M.gguf` and no ADAPTER line (merged path), plus a
-    # vl_gguf.json sidecar capturing the arch verdict.
-    #
-    # The body below is the skeleton; a CI environment with enough
-    # resources + matching tokenizer fingerprint fills it in.
-    # (See docs/cookbook/vl-base.md for the manual priming recipe.)
     assert cached_base.exists(), cached_base
-    pytest.skip(
-        "VL GGUF round-trip body requires ~8 GB intermediate storage + "
-        "several minutes of training; run manually via "
-        "`pytest -m 'slow and vl' --run-heavy-vl` once that opt-in "
-        "flag lands. The emitter itself is covered by "
-        "tests/unit/export/test_vl_gguf.py."
+
+    if not run_heavy_vl:
+        pytest.skip(
+            "VL GGUF round-trip body requires ~8 GB intermediate storage + "
+            "several minutes of training. Opt in with "
+            "`pytest -m 'slow and vl' --run-heavy-vl` to execute. "
+            "The emitter itself is covered by tests/unit/export/test_vl_gguf.py."
+        )
+
+    # Heavy body: train a 1-step LoRA → export --merged --quant Q4_K_M →
+    # verify the GGUF + Modelfile + manifest land. Any subprocess failure
+    # surfaces here as a test error, which is the desired signal for
+    # "upstream flipped support on this arch and our emitter broke."
+    from typer.testing import CliRunner
+
+    from dlm.base_models import BASE_MODELS
+    from dlm.cli.app import app
+    from dlm.doc.parser import parse_file
+    from dlm.export.vl_gguf import run_vl_gguf_export
+    from dlm.store.paths import for_dlm
+
+    # Find the registered base-model key whose hf_id matches the arch;
+    # the test parametrization carries the hf_id, and `dlm init --base`
+    # wants a registry key.
+    base_key = next(
+        (key for key, spec in BASE_MODELS.items() if spec.hf_id == hf_id),
+        None,
     )
+    if base_key is None:
+        pytest.skip(f"{hf_id} is not in the registry; add a BaseModelSpec for it")
+
+    tmp_home = tmp_path / "home"
+    doc_path = tmp_path / "doc.dlm"
+    runner = CliRunner()
+
+    # Scaffold a multimodal doc at the target base, then train one step
+    # so an adapter version exists. We intentionally use --max-steps 1
+    # (cap training cost) + --i-accept-license (gated bases).
+    init_result = runner.invoke(
+        app,
+        [
+            "--home",
+            str(tmp_home),
+            "init",
+            str(doc_path),
+            "--multimodal",
+            "--base",
+            base_key,
+            "--i-accept-license",
+        ],
+    )
+    assert init_result.exit_code == 0, init_result.output
+
+    train_result = runner.invoke(
+        app,
+        [
+            "--home",
+            str(tmp_home),
+            "train",
+            str(doc_path),
+            "--max-steps",
+            "1",
+            "--seed",
+            "42",
+        ],
+    )
+    assert train_result.exit_code == 0, train_result.output
+
+    # Now drive the emitter directly — we control plan + verdict this
+    # way and avoid routing through the CLI dispatcher's fallback on
+    # any unrelated refusal.
+    parsed = parse_file(doc_path)
+    store = for_dlm(parsed.frontmatter.dlm_id, home=tmp_home)
+    spec = BASE_MODELS[base_key]
+
+    from dlm.export.plan import ExportPlan
+
+    plan = ExportPlan(merged=True, imatrix="off", quant="Q4_K_M")
+    emit_result = run_vl_gguf_export(
+        store,
+        spec,
+        plan,
+        verdict=verdict,
+        cached_base_dir=cached_base,
+        source_dlm_path=doc_path,
+        dlm_version="test",
+    )
+
+    # Contract checks — the module's docstring + Sprint 35.4 spec pin these.
+    assert emit_result.gguf_path.exists()
+    assert emit_result.gguf_path.stat().st_size > 0
+    assert emit_result.modelfile_path.exists()
+    modelfile_body = emit_result.modelfile_path.read_text(encoding="utf-8")
+    assert f"FROM ./{emit_result.gguf_path.name}" in modelfile_body
+    assert "ADAPTER" not in modelfile_body  # merged-only at this upstream tag
+    assert emit_result.mmproj_path is None  # single-file contract
+    assert emit_result.quant == "Q4_K_M"
+    assert emit_result.llama_cpp_tag == verdict.llama_cpp_tag
+    assert emit_result.manifest_path.exists()
+
+    sidecar_path = emit_result.export_dir / "vl_gguf.json"
+    assert sidecar_path.exists()
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["arch_verdict"]["support"] == "SUPPORTED"
+    assert sidecar["arch_verdict"]["architecture"] == arch

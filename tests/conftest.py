@@ -25,12 +25,35 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Regenerate golden-output fixtures instead of asserting against them.",
     )
+    parser.addoption(
+        "--run-heavy-vl",
+        action="store_true",
+        default=False,
+        help=(
+            "Opt into heavy VL integration-test bodies that need ~8 GB "
+            "intermediate storage + several minutes of training (e.g., "
+            "VL GGUF round-trip). Without this flag, gated heavy bodies "
+            "skip with a clear message even when all other prereqs are met."
+        ),
+    )
 
 
 @pytest.fixture
 def update_goldens(request: pytest.FixtureRequest) -> bool:
     """Expose --update-goldens to tests (golden.py reads this)."""
     return bool(request.config.getoption("--update-goldens"))
+
+
+@pytest.fixture
+def run_heavy_vl(request: pytest.FixtureRequest) -> bool:
+    """Expose --run-heavy-vl to tests.
+
+    The VL round-trip test gates its train→merge→convert→quantize body
+    on this flag so CI doesn't accidentally burn 8 GB of scratch space
+    on every pass. Heavy VL tests consult this fixture and skip when
+    it's False.
+    """
+    return bool(request.config.getoption("--run-heavy-vl"))
 
 
 @pytest.fixture
