@@ -2848,15 +2848,37 @@ def _summarize_gate(store: object) -> dict[str, object] | None:
 
     assert isinstance(store, StorePath)
     cfg_path = gate_config_path(store)
-    if not cfg_path.exists():
-        return None
 
     from dlm.metrics import queries as _queries
     from dlm.train.gate.module import GateMetadata
 
+    events = _queries.latest_gate_events(store.root)
+    # Divergence path: training raised before writing a config, but we
+    # still emit one GateEvent per adapter with mode="diverged" so
+    # operators can see the failure. Surface it even when the config
+    # file is absent.
+    if not cfg_path.exists():
+        if events and events[0].mode == "diverged":
+            return {
+                "mode": "diverged",
+                "adapter_names": [e.adapter_name for e in events],
+                "input_dim": None,
+                "hidden_proj_dim": None,
+                "last_run_id": events[0].run_id,
+                "per_adapter": [
+                    {
+                        "adapter_name": e.adapter_name,
+                        "mean_weight": e.mean_weight,
+                        "sample_count": e.sample_count,
+                        "mode": e.mode,
+                    }
+                    for e in events
+                ],
+            }
+        return None
+
     raw = _json.loads(cfg_path.read_text(encoding="utf-8"))
     meta = GateMetadata.from_json(raw)
-    events = _queries.latest_gate_events(store.root)
     per_adapter: list[dict[str, object]] = []
     run_id: int | None = None
     if events:
@@ -2889,7 +2911,14 @@ def _render_gate_text(console: object, snap: dict[str, object]) -> None:
 
     assert isinstance(console, Console)
     mode = snap.get("mode", "?")
-    console.print(f"  adapter gate ({mode}):")
+    if mode == "diverged":
+        console.print("  adapter gate ([red]diverged[/red]):")
+        console.print(
+            "    [yellow]gate training produced a non-finite loss; "
+            "store fell back to gate-less routing[/yellow]"
+        )
+    else:
+        console.print(f"  adapter gate ({mode}):")
     per_adapter = snap.get("per_adapter", [])
     if isinstance(per_adapter, list):
         for entry in per_adapter:
