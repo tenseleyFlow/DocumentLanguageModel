@@ -13,9 +13,12 @@ _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 class TestLaunchTen:
-    def test_ten_entries_exactly(self) -> None:
-        assert len(BASE_MODELS) == 10
-        assert len(_ENTRIES) == 10
+    def test_minimum_launch_entries(self) -> None:
+        # The original launch ten + PaliGemma (Sprint 35 v1). Additional
+        # VL bases land in Sprint 35.3; this floor only enforces "don't
+        # regress below what we've shipped".
+        assert len(BASE_MODELS) >= 11
+        assert len(_ENTRIES) >= 11
 
     def test_entries_keyed_by_key(self) -> None:
         for entry in _ENTRIES:
