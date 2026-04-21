@@ -2617,6 +2617,7 @@ def show_cmd(
 
     training_cache = _summarize_training_cache(store.tokenized_cache_dir, store.root)
     gate = _summarize_gate(store)
+    base_security = _summarize_base_security(parsed.frontmatter.base_model)
 
     if json_out:
         payload_full = _inspection_to_dict(inspection)
@@ -2629,6 +2630,8 @@ def show_cmd(
         payload_full["training_cache_config"] = training_cache_config
         if gate is not None:
             payload_full["gate"] = gate
+        if base_security is not None:
+            payload_full["base_security"] = base_security
         # Write JSON to raw stdout — Rich's Console wraps lines at the
         # terminal width and would corrupt the JSON.
         sys.stdout.write(_json.dumps(payload_full, indent=2, default=str) + "\n")
@@ -2641,6 +2644,8 @@ def show_cmd(
         _render_training_cache_text(out_console, training_cache)
     if gate is not None:
         _render_gate_text(out_console, gate)
+    if base_security is not None and base_security.get("trust_remote_code"):
+        _render_base_security_text(out_console, base_security)
 
 
 def _inspection_to_dict(inspection: object) -> dict[str, object]:
@@ -2904,6 +2909,42 @@ def _summarize_gate(store: object) -> dict[str, object] | None:
         "last_run_id": run_id,
         "per_adapter": per_adapter,
     }
+
+
+def _summarize_base_security(base_model_key: str) -> dict[str, object] | None:
+    """Surface security-sensitive base-model flags for `dlm show`.
+
+    Today that's just `trust_remote_code` — a flag that causes the HF
+    loader to execute Python from the model repo. We resolve the spec
+    out of the in-process registry (no network: the resolver reads a
+    frozen Python dict) so users can see which bases opt in without
+    grepping source. Returns None when the key doesn't resolve (an
+    `hf:...` escape hatch that isn't in the registry); the caller
+    silently skips in that case.
+    """
+    from dlm.base_models import resolve as resolve_base_model
+    from dlm.base_models.errors import BaseModelError
+
+    try:
+        spec = resolve_base_model(base_model_key, accept_license=True)
+    except BaseModelError:
+        return None
+    return {
+        "base_model": spec.key,
+        "architecture": spec.architecture,
+        "trust_remote_code": bool(spec.trust_remote_code),
+    }
+
+
+def _render_base_security_text(console: object, snap: dict[str, object]) -> None:
+    from rich.console import Console
+
+    assert isinstance(console, Console)
+    arch = snap.get("architecture", "?")
+    console.print(
+        f"  [yellow]security:[/yellow] base uses [red]trust_remote_code=True[/red] "
+        f"(arch={arch}) — HF loader will execute Python from the model repo"
+    )
 
 
 def _render_gate_text(console: object, snap: dict[str, object]) -> None:
