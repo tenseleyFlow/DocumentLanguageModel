@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "bases": {
+    "paligemma-3b-mix-224": {
+      "architecture": "PaliGemmaForConditionalGeneration",
+      "support": "UNSUPPORTED",
+      "llama_cpp_tag": "b8816",
+      "reason": "'PaliGemmaForConditionalGeneration' not found in any @ModelBase.register(...) decorator \u2014 vendored llama.cpp (tag=b8816) does not know this architecture. GGUF conversion would fail."
+    },
+    "qwen2-vl-2b-instruct": {
+      "architecture": "Qwen2VLForConditionalGeneration",
+      "support": "SUPPORTED",
+      "llama_cpp_tag": "b8816",
+      "reason": "'Qwen2VLForConditionalGeneration' registered on Qwen2VLModel in llama.cpp tag=b8816; LM converts cleanly via convert_hf_to_gguf.py."
+    },
+    "internvl2-2b": {
+      "architecture": "InternVLChatModel",
+      "support": "UNSUPPORTED",
+      "llama_cpp_tag": "b8816",
+      "reason": "'InternVLChatModel' not found in any @ModelBase.register(...) decorator \u2014 vendored llama.cpp (tag=b8816) does not know this architecture. GGUF conversion would fail."
+    }
+  }
+}
