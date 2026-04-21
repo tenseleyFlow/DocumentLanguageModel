@@ -144,7 +144,7 @@ def run_vl_snapshot_export(
         # config itself — everything a recipient needs to re-hydrate.
         save = getattr(processor, "save_pretrained", None)
         if callable(save):
-            save(str(processor_out))  # type: ignore[misc]
+            save(str(processor_out))
 
     artifacts: list[Path] = []
     for path in sorted(export_dir.rglob("*")):

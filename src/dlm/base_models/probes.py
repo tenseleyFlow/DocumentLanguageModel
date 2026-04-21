@@ -414,7 +414,8 @@ def probe_vl_image_token(spec: BaseModelSpec) -> ProbeResult:
 
     try:
         from huggingface_hub.errors import GatedRepoError
-        from transformers import AutoProcessor
+
+        from dlm.base_models._typed_shims import load_auto_processor
     except ImportError as exc:  # pragma: no cover
         return ProbeResult(
             name="vl_image_token",
@@ -424,7 +425,7 @@ def probe_vl_image_token(spec: BaseModelSpec) -> ProbeResult:
         )
 
     try:
-        processor = AutoProcessor.from_pretrained(spec.hf_id, revision=spec.revision)
+        processor = load_auto_processor(spec.hf_id, revision=spec.revision)
     except GatedRepoError as exc:
         raise GatedModelError(spec.hf_id, spec.license_url) from exc
     except Exception as exc:
@@ -491,7 +492,8 @@ def probe_audio_token(spec: BaseModelSpec) -> ProbeResult:
 
     try:
         from huggingface_hub.errors import GatedRepoError
-        from transformers import AutoProcessor
+
+        from dlm.base_models._typed_shims import load_auto_processor
     except ImportError as exc:  # pragma: no cover
         return ProbeResult(
             name="audio_token",
@@ -501,7 +503,7 @@ def probe_audio_token(spec: BaseModelSpec) -> ProbeResult:
         )
 
     try:
-        processor = AutoProcessor.from_pretrained(spec.hf_id, revision=spec.revision)
+        processor = load_auto_processor(spec.hf_id, revision=spec.revision)
     except GatedRepoError as exc:
         raise GatedModelError(spec.hf_id, spec.license_url) from exc
     except Exception as exc:

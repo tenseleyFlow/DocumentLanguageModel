@@ -61,8 +61,8 @@ def load_for_audio_inference(  # pragma: no cover
     adapter_path = resolve_adapter_path(store, adapter_name=adapter_name)
 
     import transformers
-    from transformers import AutoProcessor
 
+    from dlm.base_models._typed_shims import load_auto_processor
     from dlm.inference.plan import resolve_inference
 
     plan = resolve_inference(adapter_path, caps)
@@ -82,7 +82,7 @@ def load_for_audio_inference(  # pragma: no cover
     model.eval()
 
     # Processor is pinned on the base revision — same rationale as VL.
-    processor = AutoProcessor.from_pretrained(spec.hf_id, revision=spec.revision)
+    processor = load_auto_processor(spec.hf_id, revision=spec.revision)
 
     return LoadedAudioInference(
         model=model,

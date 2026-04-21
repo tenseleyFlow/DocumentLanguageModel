@@ -103,4 +103,5 @@ def _run_processor(processor: Any, blob_path: Path) -> np.ndarray:
         # Defensive: processor honored return_tensors but wrapped as
         # a torch tensor anyway (some versions of some processors).
         pixel_values = np.asarray(pixel_values, dtype=np.float32)
-    return pixel_values.astype(np.float32, copy=False)
+    result: np.ndarray = pixel_values.astype(np.float32, copy=False)
+    return result

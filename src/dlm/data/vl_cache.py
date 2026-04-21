@@ -81,7 +81,8 @@ class VlCache:
             return None
         try:
             with np.load(path) as npz:
-                return npz["pixel_values"].copy()
+                arr: np.ndarray = npz["pixel_values"].copy()
+                return arr
         except (OSError, KeyError, ValueError):
             # Corrupt cache entry — treat as miss so the trainer can
             # re-tokenize. The stale file stays on disk for `dlm cache

@@ -54,7 +54,9 @@ def load_for_vl_inference(  # pragma: no cover
 
     adapter_path = resolve_adapter_path(store, adapter_name=adapter_name)
 
-    from transformers import AutoModelForImageTextToText, AutoProcessor
+    from transformers import AutoModelForImageTextToText
+
+    from dlm.base_models._typed_shims import load_auto_processor
 
     from dlm.inference.plan import resolve_inference
 
@@ -76,7 +78,7 @@ def load_for_vl_inference(  # pragma: no cover
     # Processor comes from the pinned base (not the adapter dir) because
     # VL adapters don't snapshot the processor — pixel-path config is
     # deterministic per base revision.
-    processor = AutoProcessor.from_pretrained(spec.hf_id, revision=spec.revision)
+    processor = load_auto_processor(spec.hf_id, revision=spec.revision)
 
     return LoadedVlInference(
         model=model,

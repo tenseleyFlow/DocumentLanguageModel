@@ -30,7 +30,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from dlm.lock import (
     DlmLock,
@@ -1227,17 +1227,35 @@ def _append_change_set_to_replay(
     """
     if not change_set.new:
         return
+    # Media sections (IMAGE/AUDIO) are handled by BlobStore + directive
+    # ingestion; the replay corpus is text-only (zstd-compressed body
+    # content), and SectionSnapshot's section_type Literal covers prose
+    # / instruction / preference only. Filter before instantiation so
+    # pydantic doesn't reject image/audio-typed rows at validate-time.
+    from dlm.doc.sections import SectionType
+
+    _TEXTUAL_TYPES = (
+        SectionType.PROSE,
+        SectionType.INSTRUCTION,
+        SectionType.PREFERENCE,
+    )
+    text_sections = [s for s in change_set.new if s.type in _TEXTUAL_TYPES]
+    if not text_sections:
+        return
     now = _utc_naive()
     snapshots = [
         SectionSnapshot(
             section_id=section.section_id,
-            section_type=section.type.value,
+            section_type=cast(
+                Literal["prose", "instruction", "preference"],
+                section.type.value,
+            ),
             content=section.content,
             first_seen_at=now,
             last_seen_at=now,
             training_runs_seen=[run_id],
         )
-        for section in change_set.new
+        for section in text_sections
     ]
     replay.append_many(snapshots)
 

@@ -97,12 +97,12 @@ def load_processor(spec: BaseModelSpec) -> Any:  # pragma: no cover
             f"load_processor: {spec.key!r} is modality='{spec.modality}'; "
             "processors are only loaded for media bases (vision-language / audio-language)"
         )
-    from transformers import AutoProcessor
+    from dlm.base_models._typed_shims import load_auto_processor
 
     kwargs: dict[str, Any] = {"revision": spec.revision}
     if spec.trust_remote_code:
         kwargs["trust_remote_code"] = True
-    return AutoProcessor.from_pretrained(spec.hf_id, **kwargs)
+    return load_auto_processor(spec.hf_id, **kwargs)
 
 
 _AUDIO_MODEL_CLASSES: dict[str, str] = {
