@@ -203,6 +203,85 @@ class TestLoadGateErrors:
         assert meta.adapter_names == ("a", "b")
 
 
+class TestDeterminism:
+    """Two runs with the same seed + samples produce bit-identical output.
+
+    The gate trainer seeds `torch.manual_seed(seed)` for init,
+    `torch.Generator().manual_seed(seed)` for batch sampling, and
+    never touches non-deterministic ops. This test is the
+    regression anchor: any future change that introduces
+    non-determinism (dropout-without-seed, torch.rand without a
+    generator, CUDA non-deterministic kernels) surfaces here.
+    """
+
+    def test_same_seed_same_weights_and_ewma_loss(self, tmp_path: Path) -> None:
+        import torch
+        from safetensors.torch import load_file
+
+        samples = _synthetic_samples(per_class=32, input_dim=16, seed=1)
+
+        store_a = _store(tmp_path / "a")
+        store_b = _store(tmp_path / "b")
+        kwargs: dict[str, object] = {
+            "adapter_names": ["a", "b"],
+            "input_dim": 16,
+            "hidden_proj_dim": 16,
+            "steps": 50,
+            "lr": 3e-3,
+            "cold_start_floor": 1,
+            "batch_size": 16,
+            "seed": 7,
+        }
+        result_a = train_gate(store_a, samples, **kwargs)  # type: ignore[arg-type]
+        result_b = train_gate(store_b, samples, **kwargs)  # type: ignore[arg-type]
+
+        assert result_a.mode == "trained"
+        assert result_a.final_loss == result_b.final_loss
+        assert result_a.final_entropy == result_b.final_entropy
+        assert result_a.per_adapter_mean_weight == result_b.per_adapter_mean_weight
+
+        weights_a = load_file(str(gate_save_path(store_a)))  # type: ignore[arg-type]
+        weights_b = load_file(str(gate_save_path(store_b)))  # type: ignore[arg-type]
+        assert set(weights_a.keys()) == set(weights_b.keys())
+        for name, tensor_a in weights_a.items():
+            assert torch.equal(tensor_a, weights_b[name]), (
+                f"gate weight {name!r} differs between identical-seed runs"
+            )
+
+    def test_different_seed_different_weights(self, tmp_path: Path) -> None:
+        """Sanity check: different seeds must not produce identical weights.
+
+        Guards against a scenario where the seed parameter gets silently
+        ignored (e.g., replaced by `torch.seed()`) and every run drifts
+        off the same RNG state. If this test passes trivially with any
+        seed, `test_same_seed_same_weights_and_ewma_loss` above would be
+        vacuous.
+        """
+        import torch
+        from safetensors.torch import load_file
+
+        samples = _synthetic_samples(per_class=32, input_dim=16, seed=1)
+        store_a = _store(tmp_path / "seed7")
+        store_b = _store(tmp_path / "seed42")
+        kwargs: dict[str, object] = {
+            "adapter_names": ["a", "b"],
+            "input_dim": 16,
+            "hidden_proj_dim": 16,
+            "steps": 50,
+            "lr": 3e-3,
+            "cold_start_floor": 1,
+            "batch_size": 16,
+        }
+        train_gate(store_a, samples, seed=7, **kwargs)  # type: ignore[arg-type]
+        train_gate(store_b, samples, seed=42, **kwargs)  # type: ignore[arg-type]
+        weights_a = load_file(str(gate_save_path(store_a)))  # type: ignore[arg-type]
+        weights_b = load_file(str(gate_save_path(store_b)))  # type: ignore[arg-type]
+        any_differs = any(
+            not torch.equal(weights_a[name], weights_b[name]) for name in weights_a
+        )
+        assert any_differs, "different seeds produced identical weights — seed is being ignored"
+
+
 def _tensor(values: list[float]) -> object:
     import torch
 
