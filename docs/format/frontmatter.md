@@ -126,6 +126,21 @@ adapter has nothing to route between. See
 `docs/cookbook/learned-adapter-gate.md` for the full workflow +
 Ollama-export fallback semantics.
 
+### `training.audio` — AudioConfig
+
+Opt-in knobs for audio-language training. Only consulted when the
+`base_model` is audio-language (e.g. `qwen2-audio-7b-instruct`).
+Defaults preserve the pre-v12 contract.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `auto_resample` | bool | `false` | When `true`, audio files whose native sample rate disagrees with the base's pinned rate resample on-the-fly via `dlm.data.audio_resample` (soxr preferred, scipy.signal.resample_poly fallback). Default `false` preserves the v11 refuse-on-mismatch contract. Cache keys carry the flag so resampled and native-rate entries never collide. |
+
+Requires either `soxr` (`pip install dlm[audio]` pulls it in) or
+`scipy` to be importable when `auto_resample: true`; otherwise the
+preprocessor/collator raises `AudioResampleUnavailable` at first
+mismatched decode rather than training on the wrong rate.
+
 ### `training.cache` — CacheConfig
 
 Per-document knobs on the tokenized-section cache at

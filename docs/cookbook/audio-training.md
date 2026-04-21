@@ -94,15 +94,33 @@ The trainer:
    and emits `{input_ids, attention_mask, input_features, labels}`.
 5. Commits the adapter under `adapter/versions/v0001/`.
 
-**Sample-rate policy.** Sprint 35.2 v1 refuses audio whose native
-rate doesn't match the base's pinned `sample_rate` (Qwen2-Audio:
-16 kHz). Re-encode with ffmpeg:
+**Sample-rate policy.** By default the trainer refuses audio whose
+native rate doesn't match the base's pinned `sample_rate`
+(Qwen2-Audio: 16 kHz). Two ways to reconcile:
+
+**(1) Manual re-encode** — preferred for archive-stable corpora:
 
 ```bash
 ffmpeg -i in.mp3 -ar 16000 out.wav
 ```
 
-Resampling as an automatic step lands in a 35.2 follow-up.
+**(2) Opt into automatic resampling** — flip the frontmatter knob:
+
+```yaml
+training:
+  audio:
+    auto_resample: true
+```
+
+With `auto_resample: true`, any clip whose native rate disagrees
+resamples on-the-fly via `dlm.data.audio_resample` (soxr if
+installed, else scipy.signal.resample_poly). Resampled waveforms
+cache separately from native-rate ones — toggling the flag on an
+existing corpus doesn't serve stale entries. Install soxr for best
+quality + speed (`pip install dlm[audio]` pulls it in), or
+`pip install scipy` as a fallback. Without either, the trainer
+raises `AudioResampleUnavailable` at first mismatched decode
+rather than training on the wrong rate.
 
 **Wall-clock expectations.** A 5-clip (30 s each) corpus + 3 epochs
 on an RTX 4090 at `micro_batch_size=1` + `grad_accum=4` takes about
@@ -166,11 +184,22 @@ that path or edit the `::audio path="..."::` fence.
 ### "native sample_rate=44100 Hz does not match pinned 16000 Hz"
 
 Your clip is at 44.1 kHz (CD rate) but Qwen2-Audio expects 16 kHz.
-Re-encode:
+Either re-encode manually:
 
 ```bash
 ffmpeg -i in.wav -ar 16000 out.wav
 ```
+
+Or opt into on-the-fly resampling by setting
+`training.audio.auto_resample: true` in the frontmatter. The error
+message from the trainer now names this knob directly.
+
+### "AudioResampleUnavailable: requires either soxr or scipy"
+
+You set `auto_resample: true` but neither resampler is importable.
+Install one: `pip install soxr` (recommended, ships with the
+`dlm[audio]` extra) or `pip install scipy` as a pure-Python
+fallback.
 
 ### "audio-language base requires at least one --audio PATH"
 
@@ -193,9 +222,11 @@ wait for the audio-QLoRA path (deferred).
 
 ## What's not yet in Sprint 35.2
 
-- **Resampling.** v1 refuses sample-rate mismatches. Automatic
-  resampling (probably via `soxr` or the HF feature extractor's own
-  support) lands in a follow-up.
+- **Resampling.** ~~v1 refuses sample-rate mismatches.~~ Opt-in
+  automatic resampling via `training.audio.auto_resample: true`
+  landed as a deferred-item follow-up (soxr preferred,
+  scipy.signal.resample_poly fallback). Defaults to off so the
+  refuse-on-mismatch contract stays backward-compatible.
 - **MP3 support.** `soundfile` needs libsndfile ≥ 1.1 for MP3;
   we lock to `.wav` / `.flac` / `.ogg` in v1 to avoid shipping a
   libsndfile hard-pin.
