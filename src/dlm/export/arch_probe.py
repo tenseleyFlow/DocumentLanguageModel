@@ -36,7 +36,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from dlm.export.errors import VendoringError
 from dlm.export.vendoring import convert_hf_to_gguf_py, pinned_tag
 
 
