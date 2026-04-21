@@ -109,10 +109,12 @@ picking it for quality: pick `adamw_torch` instead.
 
 ## Deferred
 
-- **DoRA + QLoRA combination.** Would require a separate schema
-  shape (DoRA is currently mutually exclusive with QLoRA in the
-  enum). The bnb 0.42 incompatibility refusal sits behind this
-  future change.
+- **DoRA + QLoRA combination.** The `adapter` field is a single-value
+  enum (`lora`/`qlora`/`dora`), so the combination is schema-unreachable
+  today — no runtime refusal is needed because Pydantic rejects any
+  attempt before it reaches the doctor. Allowing the combination
+  requires splitting DoRA into a separate `use_dora: bool` field; the
+  bnb≥0.42 compatibility check lands with that change, not before.
 - **GaLore rank + update_proj_gap knobs.** The `SFTConfig.optim`
   path uses transformers' defaults. Surfacing `galore_rank` and
   `galore_update_proj_gap` as frontmatter fields is a follow-up
