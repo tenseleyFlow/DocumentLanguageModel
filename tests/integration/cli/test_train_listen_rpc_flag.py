@@ -68,9 +68,7 @@ class TestListenRpcValidation:
         assert result.exit_code == 2, result.output
         assert "requires --watch or --max-cycles" in _joined(result)
 
-    def test_requires_bearer_token(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_requires_bearer_token(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Missing DLM_PROBE_TOKEN refuses with exit 2 (server can't open unauth)."""
         doc = _scaffold_doc(tmp_path)
         monkeypatch.delenv("DLM_PROBE_TOKEN", raising=False)

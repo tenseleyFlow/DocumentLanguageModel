@@ -136,9 +136,7 @@ class TestVlExportDispatcher:
         )
         assert len(calls) == 1, "run_vl_snapshot_export should have been invoked once"
 
-    def test_vl_export_warns_on_gguf_only_flags(
-        self, tmp_path: Path, monkeypatch: Any
-    ) -> None:
+    def test_vl_export_warns_on_gguf_only_flags(self, tmp_path: Path, monkeypatch: Any) -> None:
         doc = _scaffold_vl_doc(tmp_path)
         _stub_snapshot_export(monkeypatch, "dlm.export.vl_snapshot")
         runner = CliRunner()

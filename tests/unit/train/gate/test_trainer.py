@@ -276,9 +276,7 @@ class TestDeterminism:
         train_gate(store_b, samples, seed=42, **kwargs)  # type: ignore[arg-type]
         weights_a = load_file(str(gate_save_path(store_a)))  # type: ignore[arg-type]
         weights_b = load_file(str(gate_save_path(store_b)))  # type: ignore[arg-type]
-        any_differs = any(
-            not torch.equal(weights_a[name], weights_b[name]) for name in weights_a
-        )
+        any_differs = any(not torch.equal(weights_a[name], weights_b[name]) for name in weights_a)
         assert any_differs, "different seeds produced identical weights — seed is being ignored"
 
 

@@ -267,7 +267,9 @@ def train_gate(  # noqa: PLR0913 — cycle driver has many deps by design
         step_loss = float(loss.item())
         step_entropy = float(entropy.item())
         ewma_loss = (
-            step_loss if ewma_loss is None else ewma_alpha * ewma_loss + (1 - ewma_alpha) * step_loss
+            step_loss
+            if ewma_loss is None
+            else ewma_alpha * ewma_loss + (1 - ewma_alpha) * step_loss
         )
         ewma_entropy = (
             step_entropy
