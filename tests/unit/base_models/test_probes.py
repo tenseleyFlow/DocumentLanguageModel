@@ -134,6 +134,37 @@ class TestProbeGgufArch:
         assert result.passed is False
         assert "demo" in result.detail
 
+    def test_matches_modelbase_register_post_rename(self, tmp_path: Path) -> None:
+        """Upstream llama.cpp renamed ``@Model.register`` → ``@ModelBase.register``
+        mid-2024. The probe must accept both forms so brand-new
+        architectures (Qwen3, Phi4, etc.) register against the vendored
+        converter without a false negative.
+        """
+        vendor = tmp_path / "llama.cpp"
+        vendor.mkdir()
+        (vendor / "convert_hf_to_gguf.py").write_text(
+            '@ModelBase.register("Qwen3ForCausalLM", "Qwen3Model")\n'
+            '@ModelBase.register("demo")\n'
+            "class DemoModel: ...\n",
+            encoding="utf-8",
+        )
+        result = probe_gguf_arch_supported(_spec(), vendor_path=vendor)
+        assert result.passed is True
+        assert "demo" in result.detail
+
+    def test_mixed_register_forms_both_matched(self, tmp_path: Path) -> None:
+        """If a hypothetical vendor pin mixes the two forms (unlikely but
+        defensible), the probe sees architectures from both decorators.
+        """
+        vendor = tmp_path / "llama.cpp"
+        vendor.mkdir()
+        (vendor / "convert_hf_to_gguf.py").write_text(
+            '@Model.register("qwen2")\n@ModelBase.register("demo")\n',
+            encoding="utf-8",
+        )
+        result = probe_gguf_arch_supported(_spec(), vendor_path=vendor)
+        assert result.passed is True
+
 
 class TestProbePretokenizerLabel:
     def test_skips_when_table_missing(self, tmp_path: Path) -> None:
