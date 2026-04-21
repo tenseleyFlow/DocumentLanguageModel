@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from dlm.base_models.schema import BaseModelSpec
+from dlm.base_models.schema import BaseModelSpec, VlPreprocessorPlan
 
 _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
@@ -210,6 +210,45 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         size_gb_fp16=7.6,
         context_length=131_072,
         recommended_seq_len=2048,
+    ),
+    # --- Vision-language bases (Sprint 35 v1) -------------------------------
+    # PaliGemma-3B-mix-224 — Google's instruction-tuned VL base built on
+    # Gemma-2B + SigLIP-So400m. Gated under the Gemma license; cannot
+    # redistribute inside a `.dlm.pack` (same pattern as Llama-3.2).
+    # Training targets Gemma's transformer blocks; the vision tower is
+    # trained jointly when modules_to_save expands to ["embed_tokens",
+    # "lm_head"], but Sprint 35 v1 keeps modules_to_save empty so only
+    # the LLM-side LoRA adapters move — the vision tower is frozen.
+    #
+    # `gguf_arch` / `tokenizer_pre` are set to tags the current vendored
+    # llama.cpp doesn't recognize; the export probes surface
+    # UNSUPPORTED + refuse GGUF conversion until Sprint 35.4 lands the
+    # arch-support gate. HF-snapshot export (`dlm export --hf-snapshot`)
+    # still works.
+    BaseModelSpec(
+        key="paligemma-3b-mix-224",
+        hf_id="google/paligemma-3b-mix-224",
+        revision="8d2f7bc9c15d71a00c14f9eb7e4c7b99c79e0a11",
+        architecture="PaliGemmaForConditionalGeneration",
+        params=2_900_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="paligemma",
+        gguf_arch="paligemma",
+        tokenizer_pre="gemma",
+        license_spdx="Other",
+        license_url="https://ai.google.dev/gemma/terms",
+        requires_acceptance=True,
+        redistributable=False,
+        size_gb_fp16=6.5,
+        context_length=8_192,
+        recommended_seq_len=2048,
+        modality="vision-language",
+        vl_preprocessor_plan=VlPreprocessorPlan(
+            target_size=(224, 224),
+            resize_policy="fixed",
+            image_token="<image>",
+            num_image_tokens=256,
+        ),
     ),
 )
 
