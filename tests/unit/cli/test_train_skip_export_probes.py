@@ -31,7 +31,7 @@ def _write_minimal_dlm(path: Path) -> None:
     )
 
 
-class _ResolveCapture(Exception):
+class _ResolveCaptureError(Exception):
     """Sentinel raised after capturing the kwargs of resolve_base_model.
 
     Bubbles out of train_cmd and short-circuits the rest of the training
@@ -50,7 +50,7 @@ def _patch_resolve(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     def fake_resolve(base_model: str, **kwargs: Any) -> Any:
         captured["base_model"] = base_model
         captured.update(kwargs)
-        raise _ResolveCapture(captured)
+        raise _ResolveCaptureError(captured)
 
     import dlm.base_models
 
