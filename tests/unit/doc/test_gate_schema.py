@@ -67,10 +67,13 @@ class TestGateRequiresMultipleAdapters:
 
 
 class TestV7ToV8IdentityMigration:
-    def test_current_schema_is_v8(self) -> None:
-        assert CURRENT_SCHEMA_VERSION == 8
+    def test_current_schema_is_at_least_v8(self) -> None:
+        # Gate schema landed at v8 and stays parseable across future
+        # additive bumps. Pinning strict equality here would make every
+        # later schema bump touch this test; assert the lower bound.
+        assert CURRENT_SCHEMA_VERSION >= 8
 
-    def test_v7_document_parses_under_v8(self) -> None:
+    def test_v7_document_parses_under_current(self) -> None:
         body = (
             "---\n"
             "dlm_id: 01KPQ8GATETEST000000000000\n"
@@ -81,7 +84,7 @@ class TestV7ToV8IdentityMigration:
         )
         parsed = parse_text(body)
         # Migrator upgrades the version to CURRENT; gate picks up defaults.
-        assert parsed.frontmatter.dlm_version == 8
+        assert parsed.frontmatter.dlm_version == CURRENT_SCHEMA_VERSION
         assert parsed.frontmatter.training.gate.enabled is False
 
     def test_v8_document_with_gate_block_parses(self) -> None:

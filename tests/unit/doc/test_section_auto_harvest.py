@@ -99,8 +99,10 @@ class TestHarvestIdentity:
 
 class TestSchemaVersionBump:
     def test_parser_accepts_current(self) -> None:
+        from dlm.doc.schema import CURRENT_SCHEMA_VERSION
+
         parsed = _parsed("::instruction::\n### Q\nhi?\n### A\nhello.\n")
-        assert parsed.frontmatter.dlm_version == 8
+        assert parsed.frontmatter.dlm_version == CURRENT_SCHEMA_VERSION
 
     def test_v6_document_still_parses(self) -> None:
         """A v6 document without the new fields parses cleanly under v7
