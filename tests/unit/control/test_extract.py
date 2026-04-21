@@ -20,7 +20,13 @@ class TestShape:
 
     def test_explained_variance_in_unit_interval(self) -> None:
         rng = np.random.default_rng(1)
-        chosen = rng.normal(size=(50, 8))
+        # Inject a coherent signal so the mean-pull is non-orthogonal to
+        # the principal direction — otherwise the sign-alignment floor
+        # (which guards against near-orthogonal ambiguity) rejects pure
+        # Gaussian noise, which is the correct behavior for callers but
+        # the wrong fixture for an explained-variance shape assertion.
+        signal = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        chosen = rng.normal(size=(50, 8)) + signal
         rejected = rng.normal(size=(50, 8))
         out = extract_control_vector(chosen, rejected)
         assert 0.0 <= out.explained_variance <= 1.0
@@ -99,6 +105,23 @@ class TestEdgeCases:
         hidden = np.zeros((1, 4))
         with pytest.raises(ControlExtractError, match="zero chosen/rejected"):
             extract_control_vector(hidden, hidden)
+
+    def test_near_orthogonal_mean_raises(self) -> None:
+        # Contradictory pairs: spread in the +x direction, mean orthogonal
+        # to it (zero mean in x, nonzero in y). Principal SVD direction is
+        # +x but mean_pull is +y → cos_align ≈ 0, the sign decision is
+        # noise. Reject rather than ship a coin-flip vector.
+        chosen = np.array(
+            [
+                [5.0, 0.01, 0.0],
+                [-5.0, 0.01, 0.0],
+                [5.0, 0.01, 0.0],
+                [-5.0, 0.01, 0.0],
+            ]
+        )
+        rejected = np.zeros_like(chosen)
+        with pytest.raises(ControlExtractError, match="near-orthogonal"):
+            extract_control_vector(chosen, rejected)
 
 
 class TestReproducibility:
