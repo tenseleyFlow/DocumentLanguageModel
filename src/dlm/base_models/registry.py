@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from dlm.base_models.schema import BaseModelSpec, VlPreprocessorPlan
+from dlm.base_models.schema import AudioPreprocessorPlan, BaseModelSpec, VlPreprocessorPlan
 
 _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
@@ -255,6 +255,51 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
             resize_policy="fixed",
             image_token="<image>",
             num_image_tokens=256,
+        ),
+    ),
+    # --- Audio-language bases (Sprint 35.2) ---------------------------------
+    # Qwen2-Audio-7B-Instruct — Alibaba's open audio-text model. Uses
+    # the Qwen2 LLM backbone + a dedicated audio encoder. Apache-2.0
+    # but the 7B checkpoint is gated on HF via license acceptance, so
+    # `requires_acceptance=True` flows through the same pattern the
+    # Llama-3.2 / PaliGemma entries use. Redistributable under
+    # Apache-2.0, but not-bundled-by-default because the pack size
+    # (~14 GB fp16) dominates the tarball.
+    #
+    # The 16 kHz pin + 30 s max-length match the training-time defaults
+    # documented in the Qwen2-Audio card. Resampling support lands as a
+    # 35.2 follow-up; v1 refuses mismatched sample rates with an
+    # actionable error at preprocess time.
+    #
+    # Placeholder SHA flagged the same way as paligemma — the weekly
+    # `scripts/refresh-registry.py --check` run surfaces drift and a
+    # maintainer pastes in the real SHA.
+    BaseModelSpec(
+        key="qwen2-audio-7b-instruct",
+        hf_id="Qwen/Qwen2-Audio-7B-Instruct",
+        # Placeholder SHA (format-valid, not a real commit). See the
+        # paligemma entry for the self-healing workflow via
+        # `scripts/refresh-registry.py --check`.
+        revision="a1b2c3d4e5f678901234567890abcdef01234567",
+        architecture="Qwen2AudioForConditionalGeneration",
+        params=8_400_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="qwen2-audio",
+        gguf_arch="qwen2-audio",
+        tokenizer_pre="qwen2",
+        license_spdx="Apache-2.0",
+        license_url="https://huggingface.co/Qwen/Qwen2-Audio-7B-Instruct",
+        requires_acceptance=True,
+        redistributable=False,
+        size_gb_fp16=15.5,
+        context_length=8_192,
+        recommended_seq_len=2048,
+        modality="audio-language",
+        audio_preprocessor_plan=AudioPreprocessorPlan(
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            audio_token="<|AUDIO|>",
+            num_audio_tokens=750,
         ),
     ),
 )
