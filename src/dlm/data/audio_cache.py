@@ -108,6 +108,82 @@ class AudioCache:
             shutil.rmtree(self._root)
 
 
+@dataclass(frozen=True)
+class WaveformCacheKey:
+    """Key for the training-hot-path waveform cache.
+
+    Distinct from `AudioCacheKey` (feature-level, processor-dependent):
+    waveforms are pre-processor, so the key has no `processor_sha` —
+    any Qwen2-Audio / Whisper / Wav2Vec2 processor at the same pinned
+    sample_rate + duration sees the same decoded + truncated waveform.
+    The feature-extractor still runs per batch; the cache skips
+    soundfile decode + mono-mixing + truncation on repeat epochs
+    (which dominate per-batch CPU time on a small audio corpus).
+    """
+
+    blob_sha: str
+    sample_rate: int
+    max_length_ms: int
+
+    def as_filename(self) -> str:
+        return f"{self.blob_sha}.{self.sample_rate}.{self.max_length_ms}.wav.npz"
+
+    def shard(self) -> str:
+        return self.blob_sha[:2]
+
+
+class WaveformCache:
+    """On-disk cache for decoded + mono-mixed + truncated waveforms.
+
+    Parallel to `AudioCache` but keyed without `processor_sha` — the
+    cached value is the pre-processor waveform (1-D float32 mono).
+    Training's per-batch audio work is dominated by this decode step
+    on a small corpus; caching turns a multi-epoch training run into
+    a read-once + extract-each-epoch pattern.
+
+    Stored as npz under key `waveform` so the on-disk layout stays
+    distinct from `AudioCache`'s `input_features`.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    @property
+    def root(self) -> Path:
+        return self._root
+
+    def path_for(self, key: WaveformCacheKey) -> Path:
+        return self._root / key.shard() / key.as_filename()
+
+    def get(self, key: WaveformCacheKey) -> np.ndarray | None:
+        path = self.path_for(key)
+        if not path.exists():
+            return None
+        try:
+            with np.load(path) as npz:
+                arr: np.ndarray = npz["waveform"].copy()
+                return arr
+        except (OSError, KeyError, ValueError):
+            return None
+
+    def put(self, key: WaveformCacheKey, waveform: np.ndarray) -> Path:
+        path = self.path_for(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        buffer = io.BytesIO()
+        np.savez(buffer, waveform=waveform)
+        write_bytes(path, buffer.getvalue())
+        return path
+
+    def exists(self, key: WaveformCacheKey) -> bool:
+        return self.path_for(key).exists()
+
+    def clear(self) -> None:
+        if self._root.exists():
+            import shutil
+
+            shutil.rmtree(self._root)
+
+
 def processor_sha256(processor: Any) -> str:
     """Canonical sha256 of the identity-bearing subset of an audio processor.
 
