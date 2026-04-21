@@ -37,7 +37,22 @@ from dlm.store.errors import StoreError
 
 _BLOB_SHA_PREFIX_LEN: Final[int] = 2
 _KNOWN_EXTENSIONS: Final[frozenset[str]] = frozenset(
-    {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
+    {
+        # Images (Sprint 35 v1).
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+        ".gif",
+        ".bmp",
+        ".tiff",
+        # Audio (Sprint 35.2). `.mp3` / `.m4a` deferred to 35.2
+        # follow-up — soundfile can't decode them without ffmpeg/
+        # libsndfile MP3 support, which we don't require in v1.
+        ".wav",
+        ".flac",
+        ".ogg",
+    }
 )
 _FALLBACK_EXT: Final[str] = ".bin"
 _HASH_CHUNK: Final[int] = 65_536

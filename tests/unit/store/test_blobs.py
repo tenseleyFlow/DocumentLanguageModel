@@ -154,11 +154,20 @@ class TestBlobStoreExtensions:
     @pytest.mark.parametrize(
         "suffix,expected",
         [
+            # Images.
             (".png", ".png"),
             (".PNG", ".png"),
             (".jpg", ".jpg"),
             (".jpeg", ".jpeg"),
             (".webp", ".webp"),
+            # Audio (Sprint 35.2).
+            (".wav", ".wav"),
+            (".WAV", ".wav"),
+            (".flac", ".flac"),
+            (".ogg", ".ogg"),
+            # Unknown / deferred. mp3 lands with libsndfile MP3 support.
+            (".mp3", ".bin"),
+            (".m4a", ".bin"),
             (".unknown", ".bin"),
             ("", ".bin"),
         ],
