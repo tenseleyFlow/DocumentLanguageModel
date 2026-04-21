@@ -132,9 +132,7 @@ class TokenizedCache:
     # ---- Open / construct --------------------------------------------
 
     @classmethod
-    def open(
-        cls, root: Path, *, max_bytes: int = _DEFAULT_MAX_BYTES
-    ) -> TokenizedCache:
+    def open(cls, root: Path, *, max_bytes: int = _DEFAULT_MAX_BYTES) -> TokenizedCache:
         """Open (or create) a cache at `root`.
 
         Creates the directory layout idempotently. Missing manifest →
@@ -343,17 +341,15 @@ class TokenizedCache:
         mid-put fallback.
         """
         cutoff = time.time() - older_than_seconds
-        stale_keys = [
-            e.key_str
-            for e in self._manifest.values()
-            if e.last_access_ts < cutoff
-        ]
+        stale_keys = [e.key_str for e in self._manifest.values() if e.last_access_ts < cutoff]
         for key_str in stale_keys:
             entry = self._manifest[key_str]
             self._entry_path(entry).unlink(missing_ok=True)
             del self._manifest[key_str]
         if stale_keys:
-            _LOG.info("cache: pruned %d entries older than %ds", len(stale_keys), older_than_seconds)
+            _LOG.info(
+                "cache: pruned %d entries older than %ds", len(stale_keys), older_than_seconds
+            )
         return len(stale_keys)
 
     def clear(self) -> int:

@@ -202,7 +202,7 @@ def _max_version(versions_dir: Path) -> int:
         if not name.startswith(_VERSION_DIR_PREFIX):
             continue
         try:
-            n = int(name[len(_VERSION_DIR_PREFIX):])
+            n = int(name[len(_VERSION_DIR_PREFIX) :])
         except ValueError:
             continue
         highest = max(highest, n)

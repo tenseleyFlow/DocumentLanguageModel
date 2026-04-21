@@ -95,8 +95,7 @@ def apply_template(
         ) from exc
     if is_gated(spec) and not accept_license:
         raise TemplateApplyError(
-            f"template {name!r} uses gated base {spec.key!r}; "
-            "pass accept_license=True"
+            f"template {name!r} uses gated base {spec.key!r}; pass accept_license=True"
         )
 
     parsed = parse_text(template.dlm_text)

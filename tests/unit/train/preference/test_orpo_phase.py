@@ -34,9 +34,7 @@ def _parsed_with_preferences() -> ParsedDlm:
                 preference=PreferenceConfig(enabled=True, method="orpo"),
             ),
         ),
-        sections=(
-            Section(type=SectionType.PREFERENCE, content=pref_body),
-        ),
+        sections=(Section(type=SectionType.PREFERENCE, content=pref_body),),
     )
 
 
@@ -85,9 +83,7 @@ def _seed_prior_sft(store, dlm_id: str = "01ORPOTEST") -> None:  # type: ignore[
     store.ensure_layout()
     save_manifest(
         store.manifest,
-        Manifest(
-            dlm_id=dlm_id, base_model="smollm2-135m", adapter_version=1
-        ),
+        Manifest(dlm_id=dlm_id, base_model="smollm2-135m", adapter_version=1),
     )
     v0001 = store.adapter_version(1)
     v0001.mkdir(parents=True, exist_ok=True)
@@ -172,9 +168,7 @@ class TestRunHappyPath:
 
 
 class TestRunSteps:
-    def test_factory_receives_reference_adapter_version(
-        self, tmp_path: Path
-    ) -> None:
+    def test_factory_receives_reference_adapter_version(self, tmp_path: Path) -> None:
         captured: dict[str, Any] = {}
 
         def _capturing_factory(**kwargs: Any) -> MagicMock:

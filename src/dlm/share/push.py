@@ -140,9 +140,7 @@ def _sign_pack(pack_path: Path) -> None:
     _LOG.info("push: signed %s → %s", pack_path, sig_path)
 
 
-def _dispatch_push(
-    pack_path: Path, spec: SinkSpec, *, progress: ProgressCallback
-) -> PushResult:
+def _dispatch_push(pack_path: Path, spec: SinkSpec, *, progress: ProgressCallback) -> PushResult:
     if spec.kind == SinkKind.HF:
         from dlm.share.hf_sink import push_hf
 
@@ -198,7 +196,11 @@ def _collect_readme_fields(pack_path: Path) -> dict[str, str]:
         import zstandard as zstd
 
         fields: dict[str, str] = {}
-        with pack_path.open("rb") as f, zstd.ZstdDecompressor().stream_reader(f) as r, tarfile.open(fileobj=r, mode="r|") as tar:
+        with (
+            pack_path.open("rb") as f,
+            zstd.ZstdDecompressor().stream_reader(f) as r,
+            tarfile.open(fileobj=r, mode="r|") as tar,
+        ):
             for member in tar:
                 if member.name.endswith("header.json"):
                     import json
@@ -208,9 +210,7 @@ def _collect_readme_fields(pack_path: Path) -> dict[str, str]:
                         header = json.loads(data.read().decode("utf-8"))
                         fields["dlm_id"] = str(header.get("dlm_id", ""))
                         fields["base_model"] = str(header.get("base_model", ""))
-                        fields["adapter_version"] = str(
-                            header.get("adapter_version", "")
-                        )
+                        fields["adapter_version"] = str(header.get("adapter_version", ""))
                     break
         return fields
     except (OSError, ValueError, ImportError) as exc:

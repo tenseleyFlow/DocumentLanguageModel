@@ -67,9 +67,17 @@ def _five_terse_preference_triples() -> str:
     the rejected one — the direction DPO should push completions."""
     pairs = [
         ("What is 2 + 2?", "4.", "The sum of two and two is four, a basic arithmetic fact."),
-        ("What color is grass?", "Green.", "Grass is typically a vibrant shade of green most of the year."),
+        (
+            "What color is grass?",
+            "Green.",
+            "Grass is typically a vibrant shade of green most of the year.",
+        ),
         ("Is water wet?", "Yes.", "Water is generally considered wet in most everyday contexts."),
-        ("Do birds fly?", "Most do.", "The majority of bird species can indeed fly, though a few cannot."),
+        (
+            "Do birds fly?",
+            "Most do.",
+            "The majority of bird species can indeed fly, though a few cannot.",
+        ),
         ("What's 10 - 3?", "7.", "Ten minus three equals seven in standard arithmetic."),
     ]
     parts: list[str] = []

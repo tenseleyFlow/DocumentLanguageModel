@@ -104,9 +104,7 @@ def resolve(
         raise ValueError(f"world_size must be >= 1, got {world_size}")
     if world_size > 1:
         check_multi_gpu_refusals(caps, world_size)
-    check_refusals(
-        training, caps, base_params, force=force, num_adapters=num_adapters
-    )
+    check_refusals(training, caps, base_params, force=force, num_adapters=num_adapters)
 
     use_qlora = _should_qlora(training, caps)
     precision = _pick_precision(caps, override=training.precision)

@@ -50,13 +50,9 @@ def cosine_with_floor_lr(
     if warmup_steps < 0:
         raise ValueError(f"warmup_steps must be non-negative, got {warmup_steps}")
     if warmup_steps >= total_steps:
-        raise ValueError(
-            f"warmup_steps ({warmup_steps}) must be < total_steps ({total_steps})"
-        )
+        raise ValueError(f"warmup_steps ({warmup_steps}) must be < total_steps ({total_steps})")
     if not 0.0 <= floor_ratio <= 1.0:
-        raise ValueError(
-            f"floor_ratio must be in [0.0, 1.0], got {floor_ratio}"
-        )
+        raise ValueError(f"floor_ratio must be in [0.0, 1.0], got {floor_ratio}")
     if step < 0:
         raise ValueError(f"step must be non-negative, got {step}")
 

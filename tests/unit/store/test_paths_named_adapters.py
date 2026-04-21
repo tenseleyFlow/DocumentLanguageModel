@@ -26,17 +26,11 @@ class TestNamedAdapterPaths:
 
     def test_adapter_version_for_name_pads_four_digits(self, tmp_path: Path) -> None:
         s = _store(tmp_path)
-        assert (
-            s.adapter_version_for("tone", 7)
-            == s.adapter / "tone" / "versions" / "v0007"
-        )
+        assert s.adapter_version_for("tone", 7) == s.adapter / "tone" / "versions" / "v0007"
 
     def test_pointer_path_for_name(self, tmp_path: Path) -> None:
         s = _store(tmp_path)
-        assert (
-            s.adapter_current_pointer_for("knowledge")
-            == s.adapter / "knowledge" / "current.txt"
-        )
+        assert s.adapter_current_pointer_for("knowledge") == s.adapter / "knowledge" / "current.txt"
 
 
 class TestNamedAdapterValidation:

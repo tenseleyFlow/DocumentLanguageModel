@@ -192,9 +192,7 @@ class TestTrainingConfigPreferenceSubfield:
 
     def test_rejects_unknown_field_inside_preference(self) -> None:
         with pytest.raises(ValidationError):
-            TrainingConfig.model_validate(
-                {"preference": {"enabled": True, "rubbish": 1}}
-            )
+            TrainingConfig.model_validate({"preference": {"enabled": True, "rubbish": 1}})
 
 
 class TestCptConfig:
@@ -233,17 +231,13 @@ class TestTrainingConfigCptSubfield:
         assert t.cpt.embed_warmup_steps == 0
 
     def test_accepts_nested_dict_for_cpt(self) -> None:
-        t = TrainingConfig.model_validate(
-            {"cpt": {"schedule": "dapt", "embed_warmup_steps": 200}}
-        )
+        t = TrainingConfig.model_validate({"cpt": {"schedule": "dapt", "embed_warmup_steps": 200}})
         assert t.cpt.schedule == "dapt"
         assert t.cpt.embed_warmup_steps == 200
 
     def test_rejects_unknown_field_inside_cpt(self) -> None:
         with pytest.raises(ValidationError):
-            TrainingConfig.model_validate(
-                {"cpt": {"schedule": "dapt", "rubbish": 1}}
-            )
+            TrainingConfig.model_validate({"cpt": {"schedule": "dapt", "rubbish": 1}})
 
 
 class TestAdapterConfig:
@@ -317,15 +311,11 @@ class TestNamedAdapters:
 
     def test_flat_lora_r_with_block_rejected(self) -> None:
         with pytest.raises(ValidationError, match="flat per-adapter fields"):
-            TrainingConfig.model_validate(
-                {"lora_r": 32, "adapters": {"knowledge": {}}}
-            )
+            TrainingConfig.model_validate({"lora_r": 32, "adapters": {"knowledge": {}}})
 
     def test_flat_learning_rate_with_block_rejected(self) -> None:
         with pytest.raises(ValidationError, match="flat per-adapter fields"):
-            TrainingConfig.model_validate(
-                {"learning_rate": 1e-3, "adapters": {"tone": {}}}
-            )
+            TrainingConfig.model_validate({"learning_rate": 1e-3, "adapters": {"tone": {}}})
 
     def test_top_level_shared_knobs_allowed_alongside_block(self) -> None:
         # seed, num_epochs, sequence_len, etc. are explicitly shared

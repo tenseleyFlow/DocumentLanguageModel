@@ -90,9 +90,7 @@ def _seed_store(tmp_path: Path, dlm_id: str) -> Any:
 
 
 class TestDpoSeedsRngBeforeTraining:
-    def test_explicit_seed_flows_through_to_seed_everything(
-        self, tmp_path: Path
-    ) -> None:
+    def test_explicit_seed_flows_through_to_seed_everything(self, tmp_path: Path) -> None:
         from dlm.train.preference.dpo_phase import run
 
         store = _seed_store(tmp_path, "01KDPOSEED" + "0" * 16)
@@ -100,9 +98,7 @@ class TestDpoSeedsRngBeforeTraining:
 
         with patch(
             "dlm.train.preference.dpo_phase.seed_everything",
-            wraps=__import__(
-                "dlm.train.determinism", fromlist=["seed_everything"]
-            ).seed_everything,
+            wraps=__import__("dlm.train.determinism", fromlist=["seed_everything"]).seed_everything,
         ) as spy:
             run(
                 store,
@@ -123,9 +119,7 @@ class TestDpoSeedsRngBeforeTraining:
 
         with patch(
             "dlm.train.preference.dpo_phase.seed_everything",
-            wraps=__import__(
-                "dlm.train.determinism", fromlist=["seed_everything"]
-            ).seed_everything,
+            wraps=__import__("dlm.train.determinism", fromlist=["seed_everything"]).seed_everything,
         ) as spy:
             run(
                 store,
@@ -148,9 +142,7 @@ class TestOrpoSeedsRngBeforeTraining:
 
         with patch(
             "dlm.train.preference.orpo_phase.seed_everything",
-            wraps=__import__(
-                "dlm.train.determinism", fromlist=["seed_everything"]
-            ).seed_everything,
+            wraps=__import__("dlm.train.determinism", fromlist=["seed_everything"]).seed_everything,
         ) as spy:
             run(
                 store,

@@ -71,9 +71,7 @@ class TestBindResolution:
         assert "refusing" in messages.lower()
 
     def test_public_with_ack_binds_all(self) -> None:
-        bind = resolve_bind(
-            ServeOptions(public=True, i_know_this_is_public=True)
-        )
+        bind = resolve_bind(ServeOptions(public=True, i_know_this_is_public=True))
         assert bind == "0.0.0.0"
 
 

@@ -57,7 +57,11 @@ def make_formatting_func(tokenizer: PreTrainedTokenizerBase) -> FormattingFunc:
             if not isinstance(text, str):
                 raise DataFormatError(f"`text` field must be str, got {type(text).__name__}")
             return text
-        if row.get("prompt") is not None and row.get("chosen") is not None and row.get("rejected") is not None:
+        if (
+            row.get("prompt") is not None
+            and row.get("chosen") is not None
+            and row.get("rejected") is not None
+        ):
             raise DataFormatError(
                 "preference rows (prompt/chosen/rejected) must be routed to DPOTrainer, "
                 "not SFTTrainer's formatting_func"

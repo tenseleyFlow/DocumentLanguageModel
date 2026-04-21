@@ -20,10 +20,7 @@ class TestConnect:
     def test_creates_schema(self, tmp_path: Path) -> None:
         with connect(tmp_path) as conn:
             tables = {
-                row[0]
-                for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                )
+                row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             }
         assert tables == {"runs", "steps", "evals", "exports", "tokenization"}
 
@@ -65,14 +62,10 @@ class TestEnsureSchema:
             conn.execute(
                 "INSERT INTO runs (run_id, started_at, status) VALUES (1, 'now', 'running')"
             )
-            conn.execute(
-                "INSERT INTO steps (run_id, step, loss, at) VALUES (1, 1, 0.5, 'now')"
-            )
+            conn.execute("INSERT INTO steps (run_id, step, loss, at) VALUES (1, 1, 0.5, 'now')")
             # Duplicate (1, 1) should violate PK unless we upsert.
             try:
-                conn.execute(
-                    "INSERT INTO steps (run_id, step, loss, at) VALUES (1, 1, 0.4, 'now')"
-                )
+                conn.execute("INSERT INTO steps (run_id, step, loss, at) VALUES (1, 1, 0.4, 'now')")
                 raise AssertionError("duplicate PK accepted")
             except sqlite3.IntegrityError:
                 pass

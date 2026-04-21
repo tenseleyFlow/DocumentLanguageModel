@@ -48,9 +48,7 @@ def _scaffold_multi_doc(tmp_path: Path) -> Path:
 
 
 class TestFlatDocRejectsAdapter:
-    def test_single_adapter_doc_with_adapter_flag_exits_2(
-        self, tmp_path: Path
-    ) -> None:
+    def test_single_adapter_doc_with_adapter_flag_exits_2(self, tmp_path: Path) -> None:
         doc = _scaffold_flat_doc(tmp_path)
         runner = CliRunner()
         result = runner.invoke(

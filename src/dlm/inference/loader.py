@@ -105,9 +105,7 @@ def _torch_dtype_for(precision: str) -> Any:
     return lookup.get(precision, torch.float16)
 
 
-def resolve_adapter_path(
-    store: StorePath, *, adapter_name: str | None
-) -> Path:
+def resolve_adapter_path(store: StorePath, *, adapter_name: str | None) -> Path:
     """Return the on-disk adapter version dir for inference.
 
     Single entry point for both the flat (unnamed) and named-adapter

@@ -36,8 +36,6 @@ class DpoReferenceLoadError(DpoPhaseError):
     adapter-version path that couldn't be opened."""
 
     def __init__(self, *, adapter_path: str, cause: str) -> None:
-        super().__init__(
-            f"could not load DPO reference model from {adapter_path}: {cause}"
-        )
+        super().__init__(f"could not load DPO reference model from {adapter_path}: {cause}")
         self.adapter_path = adapter_path
         self.cause = cause

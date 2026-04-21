@@ -69,9 +69,7 @@ class PreferenceConfig(BaseModel):
 
     enabled: bool = False
     method: Literal["dpo", "orpo"] = "dpo"
-    hyperparams: PreferenceHyperparams = Field(
-        default_factory=lambda: PreferenceHyperparams()
-    )
+    hyperparams: PreferenceHyperparams = Field(default_factory=lambda: PreferenceHyperparams())
     # DPO-only fields — ignored for ORPO but kept on the config so a
     # user switching methods doesn't have to delete them.
     loss_type: Literal["sigmoid", "hinge", "ipo"] = "sigmoid"
@@ -247,11 +245,7 @@ class TrainingConfig(BaseModel):
             "target_modules": "auto",
             "learning_rate": 2e-4,
         }
-        drift = [
-            key
-            for key, default in flat_defaults.items()
-            if getattr(self, key) != default
-        ]
+        drift = [key for key, default in flat_defaults.items() if getattr(self, key) != default]
         if drift:
             raise ValueError(
                 "training.adapters is declared; flat per-adapter fields "

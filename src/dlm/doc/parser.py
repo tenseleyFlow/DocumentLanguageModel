@@ -210,9 +210,7 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
             match = _FENCE_RE.match(line)
             if match:
                 fence_name = match.group(1)
-                fence_type, fence_adapter = _resolve_fence_type(
-                    fence_name, source_line, path
-                )
+                fence_type, fence_adapter = _resolve_fence_type(fence_name, source_line, path)
                 flush()
                 current_type = fence_type
                 current_adapter = fence_adapter
@@ -233,9 +231,7 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
     return sections
 
 
-def _resolve_fence_type(
-    name: str, line: int, path: Path | None
-) -> tuple[SectionType, str | None]:
+def _resolve_fence_type(name: str, line: int, path: Path | None) -> tuple[SectionType, str | None]:
     """Map a fence name to `(SectionType, adapter_name|None)` or raise.
 
     Multi-adapter fences carry a `#<adapter>` suffix; the adapter part is
@@ -267,8 +263,7 @@ def _resolve_fence_type(
         section_type = SectionType(base)
     except ValueError as exc:
         raise FenceError(
-            f"unknown section fence '::{name}::'; valid types are "
-            f"{[t.value for t in SectionType]}",
+            f"unknown section fence '::{name}::'; valid types are {[t.value for t in SectionType]}",
             path=path,
             line=line,
             col=1,

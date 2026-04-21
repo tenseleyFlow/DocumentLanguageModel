@@ -32,9 +32,7 @@ def _captured() -> dict[str, Any]:
     return {}
 
 
-def _install_capturing_fake(
-    monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any]
-) -> None:
+def _install_capturing_fake(monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any]) -> None:
     """Replace `run_phases` with a stub that records call args and
     returns `[]` (triggering the CLI's "no-op: nothing to train" path
     with exit code 0). The scaffold + manifest + expand_sources pipeline
@@ -80,10 +78,14 @@ class TestDlmTrainDirScaffold:
             result = runner.invoke(
                 app,
                 [
-                    "--home", str(tmp_path / "home"),
-                    "train", str(corpus),
-                    "--base", "smollm2-135m",
-                    "--include", "**/*.md",
+                    "--home",
+                    str(tmp_path / "home"),
+                    "train",
+                    str(corpus),
+                    "--base",
+                    "smollm2-135m",
+                    "--include",
+                    "**/*.md",
                 ],
             )
 
@@ -105,12 +107,8 @@ class TestDlmTrainDirScaffold:
         always 0."""
         corpus = tmp_path / "corpus"
         corpus.mkdir()
-        (corpus / "alpha.md").write_text(
-            "# Alpha\nalpha-unique-token\n", encoding="utf-8"
-        )
-        (corpus / "beta.md").write_text(
-            "# Beta\nbeta-unique-token\n", encoding="utf-8"
-        )
+        (corpus / "alpha.md").write_text("# Alpha\nalpha-unique-token\n", encoding="utf-8")
+        (corpus / "beta.md").write_text("# Beta\nbeta-unique-token\n", encoding="utf-8")
 
         captured = _captured()
         _install_capturing_fake(monkeypatch, captured)
@@ -120,10 +118,14 @@ class TestDlmTrainDirScaffold:
             result = runner.invoke(
                 app,
                 [
-                    "--home", str(tmp_path / "home"),
-                    "train", str(corpus),
-                    "--base", "smollm2-135m",
-                    "--include", "**/*.md",
+                    "--home",
+                    str(tmp_path / "home"),
+                    "train",
+                    str(corpus),
+                    "--base",
+                    "smollm2-135m",
+                    "--include",
+                    "**/*.md",
                 ],
             )
 
@@ -146,12 +148,8 @@ class TestDlmTrainDirScaffold:
         )
         combined = _section_texts(expanded.sections)
         rendered = "\n".join(f"  {s.content[:80]!r}" for s in expanded.sections)
-        assert "alpha-unique-token" in combined, (
-            "B2: alpha.md not ingested. got:\n" + rendered
-        )
-        assert "beta-unique-token" in combined, (
-            "B2: beta.md not ingested. got:\n" + rendered
-        )
+        assert "alpha-unique-token" in combined, "B2: alpha.md not ingested. got:\n" + rendered
+        assert "beta-unique-token" in combined, "B2: beta.md not ingested. got:\n" + rendered
         assert expanded.provenance[0].file_count == 2
         assert expanded.provenance[0].total_bytes > 0
 
@@ -173,10 +171,14 @@ class TestDlmTrainDirScaffold:
             result = runner.invoke(
                 app,
                 [
-                    "--home", str(tmp_path / "home"),
-                    "train", str(corpus),
-                    "--base", "smollm2-135m",
-                    "--include", "**/*.md",
+                    "--home",
+                    str(tmp_path / "home"),
+                    "train",
+                    str(corpus),
+                    "--base",
+                    "smollm2-135m",
+                    "--include",
+                    "**/*.md",
                 ],
             )
 
@@ -217,10 +219,14 @@ class TestDlmTrainDirScaffold:
             r1 = runner.invoke(
                 app,
                 [
-                    "--home", str(tmp_path / "home"),
-                    "train", str(corpus),
-                    "--base", "smollm2-135m",
-                    "--include", "**/*.md",
+                    "--home",
+                    str(tmp_path / "home"),
+                    "train",
+                    str(corpus),
+                    "--base",
+                    "smollm2-135m",
+                    "--include",
+                    "**/*.md",
                 ],
             )
             assert r1.exit_code == 0, r1.output
@@ -235,13 +241,14 @@ class TestDlmTrainDirScaffold:
             r2 = runner.invoke(
                 app,
                 [
-                    "--home", str(tmp_path / "home"),
-                    "train", str(corpus),
+                    "--home",
+                    str(tmp_path / "home"),
+                    "train",
+                    str(corpus),
                 ],
             )
 
         assert r2.exit_code == 0, r2.output
         assert manifest_path.stat().st_mtime_ns == first_mtime, (
-            "manifest was rewritten on the resume path; "
-            "training history could be lost"
+            "manifest was rewritten on the resume path; training history could be lost"
         )

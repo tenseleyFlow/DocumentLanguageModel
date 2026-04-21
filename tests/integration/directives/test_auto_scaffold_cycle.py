@@ -96,9 +96,7 @@ def test_auto_scaffold_train_resume_cycle(
             ),
         )
 
-        run1 = run_training(
-            store, parsed, spec, plan, mode="fresh", seed=42, max_steps=6
-        )
+        run1 = run_training(store, parsed, spec, plan, mode="fresh", seed=42, max_steps=6)
         assert run1.adapter_version == 1
 
         # --- Second invocation: reuse scaffolded .dlm ---------------------
@@ -118,9 +116,7 @@ def test_auto_scaffold_train_resume_cycle(
 
         # Train again — should produce adapter v0002 in the same store.
         parsed2 = parse_file(result2.dlm_path)
-        run2 = run_training(
-            store, parsed2, spec, plan, mode="fresh", seed=42, max_steps=6
-        )
+        run2 = run_training(store, parsed2, spec, plan, mode="fresh", seed=42, max_steps=6)
         assert run2.adapter_version == 2
 
         manifest = load_manifest(store.manifest)

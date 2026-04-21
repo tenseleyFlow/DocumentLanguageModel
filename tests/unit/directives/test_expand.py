@@ -81,12 +81,7 @@ def test_max_files_truncates_deterministically(tmp_path: Path) -> None:
     src.mkdir()
     for i in range(5):
         (src / f"{i}.py").write_text(f"# {i}\n")
-    body = (
-        "  sources:\n"
-        "    - path: src\n"
-        "      include: ['**/*.py']\n"
-        "      max_files: 2\n"
-    )
+    body = "  sources:\n    - path: src\n      include: ['**/*.py']\n      max_files: 2\n"
     parsed, _ = _make_parsed(body, tmp_path)
     result = expand_sources(parsed, base_path=tmp_path)  # type: ignore[arg-type]
     # Sorted: 0.py, 1.py land; 2/3/4 get dropped
@@ -101,12 +96,7 @@ def test_max_bytes_per_file_skips_oversize(tmp_path: Path) -> None:
     src.mkdir()
     (src / "small.py").write_text("x\n")  # 2 bytes
     (src / "big.py").write_text("x" * 100)
-    body = (
-        "  sources:\n"
-        "    - path: src\n"
-        "      include: ['**/*.py']\n"
-        "      max_bytes_per_file: 10\n"
-    )
+    body = "  sources:\n    - path: src\n      include: ['**/*.py']\n      max_bytes_per_file: 10\n"
     parsed, _ = _make_parsed(body, tmp_path)
     result = expand_sources(parsed, base_path=tmp_path)  # type: ignore[arg-type]
     assert len(result.sections) == 1
@@ -157,11 +147,7 @@ def test_strict_policy_refuses_external_path(tmp_path: Path) -> None:
     outside.mkdir(exist_ok=True)
     try:
         (outside / "a.py").write_text("x")
-        body = (
-            "  sources_policy: strict\n"
-            "  sources:\n"
-            f"    - path: {outside}\n"
-        )
+        body = f"  sources_policy: strict\n  sources:\n    - path: {outside}\n"
         parsed, _ = _make_parsed(body, tmp_path)
         with pytest.raises(DirectivePolicyError):
             expand_sources(parsed, base_path=tmp_path)  # type: ignore[arg-type]
@@ -176,7 +162,7 @@ def test_permissive_policy_allows_external_path(tmp_path: Path) -> None:
     outside.mkdir(exist_ok=True)
     try:
         (outside / "a.py").write_text("ok\n")
-        body = "  sources:\n" f"    - path: {outside}\n      include: ['**/*.py']\n"
+        body = f"  sources:\n    - path: {outside}\n      include: ['**/*.py']\n"
         parsed, _ = _make_parsed(body, tmp_path)
         result = expand_sources(parsed, base_path=tmp_path)  # type: ignore[arg-type]
         assert len(result.sections) == 1

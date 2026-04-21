@@ -17,9 +17,7 @@ from dlm.train.cpt.vocab_gap import (
 
 class TestComputeVocabGap:
     def test_empty_inputs(self) -> None:
-        r = compute_vocab_gap(
-            [], text="", unk_token_id=None, decoded_tokens=[]
-        )
+        r = compute_vocab_gap([], text="", unk_token_id=None, decoded_tokens=[])
         assert r.total_tokens == 0
         assert r.total_words == 0
         assert r.tokens_per_word == 0.0
@@ -113,9 +111,7 @@ class TestComputeVocabGapValidation:
 
     def test_negative_top_n_rejected(self) -> None:
         with pytest.raises(ValueError, match="top_n must be non-negative"):
-            compute_vocab_gap(
-                [], text="", unk_token_id=None, decoded_tokens=[], top_n=-1
-            )
+            compute_vocab_gap([], text="", unk_token_id=None, decoded_tokens=[], top_n=-1)
 
 
 class TestRenderReport:

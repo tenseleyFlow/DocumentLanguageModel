@@ -73,9 +73,7 @@ class TestLlamaQuantizeBin:
         assert path.is_file()
         assert path.name == "llama-quantize"
 
-    def test_missing_binary_raises(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_missing_binary_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Clear PATH so the `shutil.which` fallback can't find a
         # brew-installed llama-quantize on the developer's machine.
         monkeypatch.setenv("PATH", str(tmp_path / "empty"))

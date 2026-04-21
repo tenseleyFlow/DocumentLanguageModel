@@ -60,8 +60,7 @@ def test_directive_tree_trains_and_summarizes(
         tree = home / "src"
         tree.mkdir()
         (tree / "a.py").write_text(
-            "def add(x, y):\n    return x + y\n\n"
-            "def sub(x, y):\n    return x - y\n",
+            "def add(x, y):\n    return x + y\n\ndef sub(x, y):\n    return x - y\n",
             encoding="utf-8",
         )
         (tree / "b.py").write_text(

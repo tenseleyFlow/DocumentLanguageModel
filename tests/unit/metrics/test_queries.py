@@ -22,9 +22,7 @@ def _seed(store_root: Path) -> None:
     """Populate a DB with three runs and a handful of steps/evals."""
     rec = MetricsRecorder(store_root)
     for run_id in (1, 2, 3):
-        rec.record_run_start(
-            RunStart(run_id=run_id, adapter_version=run_id, phase="sft", seed=42)
-        )
+        rec.record_run_start(RunStart(run_id=run_id, adapter_version=run_id, phase="sft", seed=42))
         for step in (10, 20, 30):
             rec.record_step(StepEvent(run_id=run_id, step=step, loss=2.0 - 0.1 * step))
         rec.record_eval(EvalEvent(run_id=run_id, step=30, val_loss=1.5))

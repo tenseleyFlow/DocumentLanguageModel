@@ -351,9 +351,7 @@ def _build_real_dpo_trainer(  # pragma: no cover
     # Policy: base + the SFT-trained adapter as trainable.
     base_model = load_base_model(spec, plan)
     adapter_dir = store.adapter_version(reference_adapter_version)
-    policy_model = PeftModel.from_pretrained(
-        base_model, str(adapter_dir), is_trainable=True
-    )
+    policy_model = PeftModel.from_pretrained(base_model, str(adapter_dir), is_trainable=True)
 
     # Reference: frozen per preference.reference mode. We reload a
     # clean base for the reference rather than sharing `base_model` so
@@ -376,9 +374,7 @@ def _build_real_dpo_trainer(  # pragma: no cover
     doc_ds = build_dpo_dataset(list(parsed.sections))
     rng = _random.Random(seed + reference_adapter_version)
     now = datetime.now(UTC).replace(tzinfo=None, microsecond=0)
-    replay_rows = replay.sample_preference_rows(
-        k=max(8, 2 * len(doc_ds)), now=now, rng=rng
-    )
+    replay_rows = replay.sample_preference_rows(k=max(8, 2 * len(doc_ds)), now=now, rng=rng)
     if replay_rows:
         replay_ds = Dataset.from_list(replay_rows)
         train_ds = concatenate_datasets([doc_ds, replay_ds])

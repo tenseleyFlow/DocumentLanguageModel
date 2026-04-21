@@ -14,17 +14,13 @@ from tests.fixtures.hardware_mocks import force_cuda
 
 def _qlora_multi_doc(num: int) -> TrainingConfig:
     """TrainingConfig with `num` QLoRA adapters declared."""
-    adapters = {
-        f"a{i}": AdapterConfig(adapter="qlora") for i in range(num)
-    }
+    adapters = {f"a{i}": AdapterConfig(adapter="qlora") for i in range(num)}
     return TrainingConfig.model_validate({"adapters": adapters})
 
 
 def _qlora_multi_doc_with_rank(num: int, lora_r: int) -> TrainingConfig:
     """Multi-adapter doc with `num` QLoRA adapters at the given lora_r."""
-    adapters = {
-        f"a{i}": AdapterConfig(adapter="qlora", lora_r=lora_r) for i in range(num)
-    }
+    adapters = {f"a{i}": AdapterConfig(adapter="qlora", lora_r=lora_r) for i in range(num)}
     return TrainingConfig.model_validate({"adapters": adapters})
 
 
@@ -85,9 +81,7 @@ class TestF28MultiAdapterQLoraRefusal:
         adapters = {"a0": AdapterConfig(), "a1": AdapterConfig()}
         lora_multi = TrainingConfig.model_validate({"adapters": adapters})
         # LoRA bypasses QLoRA refusals entirely.
-        check_refusals(
-            lora_multi, caps, base_params=1_500_000_000, num_adapters=2
-        )
+        check_refusals(lora_multi, caps, base_params=1_500_000_000, num_adapters=2)
 
     def test_small_base_low_rank_multi_qlora_passes(self) -> None:
         """The old formula falsely refused small-base multi-QLoRA.
@@ -136,9 +130,7 @@ class TestEffectiveAdapter:
             }
         )
         with pytest.raises(ResolutionError, match="Multi-adapter QLoRA"):
-            check_refusals(
-                mixed, caps, base_params=7_000_000_000, num_adapters=3
-            )
+            check_refusals(mixed, caps, base_params=7_000_000_000, num_adapters=3)
 
     def test_mixed_adapter_error_names_only_qlora_offenders(self) -> None:
         with force_cuda(vram_gb=12.0):
@@ -153,9 +145,7 @@ class TestEffectiveAdapter:
             }
         )
         with pytest.raises(ResolutionError) as exc_info:
-            check_refusals(
-                mixed, caps, base_params=7_000_000_000, num_adapters=3
-            )
+            check_refusals(mixed, caps, base_params=7_000_000_000, num_adapters=3)
         message = str(exc_info.value)
         assert "qlora_one" in message
         assert "lora_a" not in message

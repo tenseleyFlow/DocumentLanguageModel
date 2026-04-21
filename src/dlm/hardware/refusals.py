@@ -83,15 +83,11 @@ def check_refusals(
         per_adapter_gb = max(0.1, base_params * avg_lora_r / (1e9 * 64))
         activations_gb = base_params * 2.0 / 1e9 * 0.25
         qlora_adapter_count = _qlora_adapter_count(training, num_adapters)
-        est_peak = (
-            base_gb + per_adapter_gb * qlora_adapter_count + activations_gb
-        )
+        est_peak = base_gb + per_adapter_gb * qlora_adapter_count + activations_gb
         budget = caps.vram_gb * 0.85
         if est_peak > budget:
             offenders = _qlora_adapter_names(training)
-            offender_note = (
-                f" (offending adapters: {sorted(offenders)})" if offenders else ""
-            )
+            offender_note = f" (offending adapters: {sorted(offenders)})" if offenders else ""
             raise ResolutionError(
                 "Multi-adapter QLoRA would exceed VRAM "
                 f"(~{est_peak:.1f} GB estimated vs {budget:.1f} GB budget "
@@ -130,8 +126,7 @@ def check_multi_gpu_refusals(caps: Capabilities, world_size: int) -> None:
         )
     if caps.backend == Backend.CPU:
         raise ResolutionError(
-            "Multi-GPU training on CPU is not supported. "
-            "Drop `--gpus` or run single-process.",
+            "Multi-GPU training on CPU is not supported. Drop `--gpus` or run single-process.",
         )
     if caps.backend == Backend.ROCM:
         raise ResolutionError(
@@ -181,9 +176,7 @@ def _avg_lora_r(training: TrainingConfig) -> float:
     """Average LoRA rank across declared adapters (fallback: flat lora_r)."""
     if training.adapters is None or not training.adapters:
         return float(training.lora_r)
-    return sum(a.lora_r for a in training.adapters.values()) / len(
-        training.adapters
-    )
+    return sum(a.lora_r for a in training.adapters.values()) / len(training.adapters)
 
 
 def _qlora_adapter_count(training: TrainingConfig, fallback: int) -> int:

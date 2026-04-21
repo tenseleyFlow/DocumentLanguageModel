@@ -79,9 +79,7 @@ def test_schema_violation_logs_and_continues(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     (tmp_path / ".dlm").mkdir()
-    (tmp_path / ".dlm" / "training.yaml").write_text(
-        "dlm_training_version: 1\nunknown_key: bad\n"
-    )
+    (tmp_path / ".dlm" / "training.yaml").write_text("dlm_training_version: 1\nunknown_key: bad\n")
     caplog.set_level(logging.WARNING, logger="dlm.directives.discovery")
     configs = discover_configs(tmp_path)
     assert configs[0].config is None
@@ -101,9 +99,7 @@ def test_training_yaml_non_mapping_top_level(
 
 def test_both_files_coexist(tmp_path: Path) -> None:
     (tmp_path / ".dlm").mkdir()
-    (tmp_path / ".dlm" / "training.yaml").write_text(
-        "dlm_training_version: 1\nexclude: ['a']\n"
-    )
+    (tmp_path / ".dlm" / "training.yaml").write_text("dlm_training_version: 1\nexclude: ['a']\n")
     (tmp_path / ".dlm" / "ignore").write_text("*.tmp\n")
     (c,) = discover_configs(tmp_path)
     assert c.config is not None

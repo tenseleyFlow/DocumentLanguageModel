@@ -92,18 +92,14 @@ def _single_adapter_parsed(dlm_id: str) -> ParsedDlm:
             base_model="smollm2-135m",
             training=TrainingConfig(seed=42),
         ),
-        sections=(
-            Section(type=SectionType.PROSE, content="Single-adapter prose."),
-        ),
+        sections=(Section(type=SectionType.PROSE, content="Single-adapter prose."),),
     )
 
 
 def _seed_store(tmp_path: Path, dlm_id: str) -> Any:
     store = for_dlm(dlm_id, home=tmp_path)
     store.ensure_layout()
-    save_manifest(
-        store.manifest, Manifest(dlm_id=dlm_id, base_model="smollm2-135m")
-    )
+    save_manifest(store.manifest, Manifest(dlm_id=dlm_id, base_model="smollm2-135m"))
     return store
 
 
@@ -220,9 +216,7 @@ class TestMultiAdapterOrchestration:
         # Flat field stays at 0 (untouched) for multi-adapter stores.
         assert manifest.adapter_version == 0
 
-    def test_training_run_summaries_carry_adapter_name(
-        self, tmp_path: Path
-    ) -> None:
+    def test_training_run_summaries_carry_adapter_name(self, tmp_path: Path) -> None:
         """Audit-07 M1: each TrainingRunSummary is tagged with the name."""
         dlm_id = "01HZ4X7TGZM3J1A2B3C4D5E6FB"
         store = _seed_store(tmp_path, dlm_id)

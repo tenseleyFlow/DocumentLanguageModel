@@ -49,9 +49,9 @@ class TestAccelerateUninstall:
         current = _lock(pinned_versions={"torch": "2.5.1"})
         msgs = [m for _s, m in classify_mismatches(prior, current)]
         # `_rule_minor_peers` fires on peer disappear with "no longer pinned".
-        assert any(
-            "accelerate" in m and "no longer pinned" in m for m in msgs
-        ), f"expected accelerate-removal warning, got {msgs!r}"
+        assert any("accelerate" in m and "no longer pinned" in m for m in msgs), (
+            f"expected accelerate-removal warning, got {msgs!r}"
+        )
 
 
 class TestWorldSize:

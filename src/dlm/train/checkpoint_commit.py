@@ -43,9 +43,7 @@ _LOG = logging.getLogger(__name__)
 _VERSION_PREFIX = "v"
 
 
-def allocate_next_version(
-    store: StorePath, *, adapter_name: str | None = None
-) -> Path:
+def allocate_next_version(store: StorePath, *, adapter_name: str | None = None) -> Path:
     """Return the next empty `adapter/[<name>/]versions/vNNNN/` path.
 
     Creates the directory (and any missing parents). When `adapter_name`
@@ -99,8 +97,7 @@ def commit_version(
             )
         except OSError:
             _LOG.exception(
-                "non-finite adapter weights + rejected-dir rename failed; "
-                "leaving %s in place",
+                "non-finite adapter weights + rejected-dir rename failed; leaving %s in place",
                 pending,
             )
         raise
@@ -156,9 +153,7 @@ def fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def list_pending_versions(
-    store: StorePath, *, adapter_name: str | None = None
-) -> list[Path]:
+def list_pending_versions(store: StorePath, *, adapter_name: str | None = None) -> list[Path]:
     """Return version dirs that exist on disk but aren't the current pointer.
 
     Used by the trainer's startup routine to detect crash-before-flip
@@ -182,13 +177,9 @@ def list_pending_versions(
     return [version_for(n) for n in sorted(existing) if n != current_n]
 
 
-def _existing_versions(
-    store: StorePath, *, adapter_name: str | None = None
-) -> list[int]:
+def _existing_versions(store: StorePath, *, adapter_name: str | None = None) -> list[int]:
     base = (
-        store.adapter_versions
-        if adapter_name is None
-        else store.adapter_versions_for(adapter_name)
+        store.adapter_versions if adapter_name is None else store.adapter_versions_for(adapter_name)
     )
     if not base.is_dir():
         return []

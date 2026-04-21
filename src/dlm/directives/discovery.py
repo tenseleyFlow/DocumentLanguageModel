@@ -76,11 +76,7 @@ def discover_configs(root: Path) -> tuple[DiscoveredConfig, ...]:
         anchor = dlm_dir.parent
         config = _load_training_yaml(dlm_dir / _CONFIG_FILENAME)
         ignore_rules = _load_ignore(dlm_dir / _IGNORE_FILENAME)
-        discovered.append(
-            DiscoveredConfig(
-                anchor=anchor, config=config, ignore_rules=ignore_rules
-            )
-        )
+        discovered.append(DiscoveredConfig(anchor=anchor, config=config, ignore_rules=ignore_rules))
 
     discovered.sort(key=lambda d: len(d.anchor.as_posix()))
     return tuple(discovered)
@@ -121,9 +117,7 @@ def _load_training_yaml(path: Path) -> DlmTrainingConfig | None:
     try:
         return DlmTrainingConfig.model_validate(raw)
     except ValidationError as exc:
-        _LOG.warning(
-            "discovery: %s: schema violation (%s); skipping config", path, exc
-        )
+        _LOG.warning("discovery: %s: schema violation (%s); skipping config", path, exc)
         return None
 
 

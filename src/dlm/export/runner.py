@@ -186,9 +186,7 @@ def run_export(
         if not adapter_path.exists():
             from dlm.export.errors import ExportError
 
-            raise ExportError(
-                f"adapter_path_override {adapter_path} does not exist"
-            )
+            raise ExportError(f"adapter_path_override {adapter_path} does not exist")
     elif adapter_name is None:
         resolved = store.resolve_current_adapter()
         pointer = store.adapter_current_pointer
@@ -196,8 +194,7 @@ def run_export(
             from dlm.export.errors import ExportError
 
             raise ExportError(
-                f"no current adapter under {pointer}; "
-                "run `dlm train` before exporting."
+                f"no current adapter under {pointer}; run `dlm train` before exporting."
             )
         adapter_path = resolved
     else:

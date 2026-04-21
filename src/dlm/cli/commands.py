@@ -139,9 +139,7 @@ def init_cmd(
         from dlm.templates import TemplateError, apply_template
 
         try:
-            applied_result = apply_template(
-                template, path, force=force, accept_license=True
-            )
+            applied_result = apply_template(template, path, force=force, accept_license=True)
         except TemplateError as exc:
             console.print(f"[red]init:[/red] {exc}")
             raise typer.Exit(code=1) from exc
@@ -1494,9 +1492,7 @@ def metrics_cmd(
     parsed = parse_file(path)
     store = for_dlm(parsed.frontmatter.dlm_id)
 
-    runs = recent_runs(
-        store.root, limit=limit, phase=phase, since=since_delta, run_id=run_id
-    )
+    runs = recent_runs(store.root, limit=limit, phase=phase, since=since_delta, run_id=run_id)
 
     if run_id is not None:
         # Drill-down: show this run's steps + evals.
@@ -1520,9 +1516,7 @@ def metrics_cmd(
             writer.writerow(["step", "loss", "lr", "grad_norm", "val_loss"])
             eval_by_step = {e.step: e.val_loss for e in evals}
             for s in steps:
-                writer.writerow(
-                    [s.step, s.loss, s.lr, s.grad_norm, eval_by_step.get(s.step)]
-                )
+                writer.writerow([s.step, s.loss, s.lr, s.grad_norm, eval_by_step.get(s.step)])
             return
         console.print(
             f"[green]run_id={run.run_id}[/green]  phase={run.phase}  "
@@ -1545,9 +1539,7 @@ def metrics_cmd(
         writer = csv.writer(sys.stdout)
         writer.writerow(["run_id", "phase", "seed", "status", "started_at", "ended_at"])
         for r in runs:
-            writer.writerow(
-                [r.run_id, r.phase, r.seed, r.status, r.started_at, r.ended_at]
-            )
+            writer.writerow([r.run_id, r.phase, r.seed, r.status, r.started_at, r.ended_at])
         return
 
     if not runs:
@@ -1690,8 +1682,8 @@ def show_cmd(
         raise typer.Exit(code=1) from exc
 
     store = for_dlm(parsed.frontmatter.dlm_id)
-    training_sources, discovered_configs = (
-        _summarize_training_sources_and_discovered(parsed, path.resolve().parent)
+    training_sources, discovered_configs = _summarize_training_sources_and_discovered(
+        parsed, path.resolve().parent
     )
     # Store may not exist yet (no `dlm train` run). Treat that as an
     # informational state rather than an error — useful after `dlm init`.
@@ -1830,9 +1822,7 @@ def _human_size(n: int) -> str:
     return f"{n} PB"
 
 
-def _summarize_training_sources(
-    parsed: object, base_path: Path
-) -> list[dict[str, object]] | None:
+def _summarize_training_sources(parsed: object, base_path: Path) -> list[dict[str, object]] | None:
     """Best-effort resolution of `training.sources` for `dlm show`.
 
     Returns None when the frontmatter declares no directives; returns
@@ -1905,9 +1895,7 @@ def _summarize_training_sources_and_discovered(
                 "has_ignore": bool(dc.ignore_rules),
                 "include": list(dc.config.include) if dc.config else [],
                 "exclude": list(dc.config.exclude) if dc.config else [],
-                "exclude_defaults": (
-                    dc.config.exclude_defaults if dc.config else True
-                ),
+                "exclude_defaults": (dc.config.exclude_defaults if dc.config else True),
                 "metadata": dict(dc.config.metadata) if dc.config else {},
                 "ignore_rules": len(dc.ignore_rules),
             }
@@ -1915,9 +1903,7 @@ def _summarize_training_sources_and_discovered(
     return records, discovered_records
 
 
-def _summarize_training_cache(
-    cache_dir: Path, store_root: Path
-) -> dict[str, object] | None:
+def _summarize_training_cache(cache_dir: Path, store_root: Path) -> dict[str, object] | None:
     """Return a JSON-friendly snapshot of the tokenized-section cache.
 
     None when the cache dir doesn't exist (store never trained with
@@ -1956,9 +1942,7 @@ def _render_training_cache_text(console: object, snap: dict[str, object]) -> Non
         console.print(f"    last hit rate:  {float(rate):.1%}")
 
 
-def _render_training_sources_text(
-    console: object, records: list[dict[str, object]]
-) -> None:
+def _render_training_sources_text(console: object, records: list[dict[str, object]]) -> None:
     from rich.console import Console
 
     assert isinstance(console, Console)
@@ -2110,9 +2094,7 @@ def push_cmd(
         bool,
         typer.Option("--sign", help="Sign the pack with minisign before upload."),
     ] = False,
-    include_exports: Annotated[
-        bool, typer.Option("--include-exports")
-    ] = False,
+    include_exports: Annotated[bool, typer.Option("--include-exports")] = False,
     include_base: Annotated[bool, typer.Option("--include-base")] = False,
     include_logs: Annotated[bool, typer.Option("--include-logs")] = False,
     licensee: Annotated[
@@ -2149,10 +2131,7 @@ def push_cmd(
         raise typer.Exit(code=1) from exc
 
     size_mb = result.bytes_sent / (1024 * 1024)
-    console.print(
-        f"[green]pushed:[/green] {result.destination} "
-        f"({size_mb:.2f} MB)"
-    )
+    console.print(f"[green]pushed:[/green] {result.destination} ({size_mb:.2f} MB)")
     if result.sink_kind.value == "hf":
         console.print(f"[dim]install:[/dim] dlm pull {result.destination}")
     if result.detail:
@@ -2197,10 +2176,7 @@ def pull_cmd(
         raise typer.Exit(code=1) from exc
 
     size_mb = result.bytes_received / (1024 * 1024)
-    console.print(
-        f"[green]pulled:[/green] {result.source} → {result.dlm_path} "
-        f"({size_mb:.2f} MB)"
-    )
+    console.print(f"[green]pulled:[/green] {result.source} → {result.dlm_path} ({size_mb:.2f} MB)")
 
     status = result.verification.status
     if status == VerifyStatus.VERIFIED:
@@ -2265,8 +2241,7 @@ def serve_cmd(
     store = for_dlm(dlm_id)
     if not store.manifest.exists():
         console.print(
-            f"[red]serve:[/red] no training state for {dlm_id} — run "
-            "[bold]dlm train[/bold] first."
+            f"[red]serve:[/red] no training state for {dlm_id} — run [bold]dlm train[/bold] first."
         )
         raise typer.Exit(code=1)
 
@@ -2387,8 +2362,7 @@ def cache_prune_cmd(
     seconds = _parse_duration(older_than)
     if seconds is None:
         console.print(
-            f"[red]cache:[/red] invalid --older-than {older_than!r} "
-            "(expected e.g. 30d, 12h, 45m)"
+            f"[red]cache:[/red] invalid --older-than {older_than!r} (expected e.g. 30d, 12h, 45m)"
         )
         raise typer.Exit(code=2)
 

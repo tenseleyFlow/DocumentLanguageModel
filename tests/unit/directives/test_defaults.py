@@ -93,6 +93,4 @@ def test_default_excludes_catch_known_traps(path: str) -> None:
     ],
 )
 def test_default_excludes_leave_source_alone(path: str) -> None:
-    assert not _matches_any_default(path), (
-        f"DEFAULT_EXCLUDES wrongly caught: {path}"
-    )
+    assert not _matches_any_default(path), f"DEFAULT_EXCLUDES wrongly caught: {path}"

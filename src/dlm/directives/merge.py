@@ -52,11 +52,7 @@ def ancestors_of(
     """Return DiscoveredConfigs whose anchor is an ancestor of file_path,
     sorted shallowest → deepest. Includes the direct-parent anchor."""
     abs_file = file_path.resolve()
-    result = [
-        d
-        for d in discovered
-        if _is_ancestor(d.anchor.resolve(), abs_file)
-    ]
+    result = [d for d in discovered if _is_ancestor(d.anchor.resolve(), abs_file)]
     result.sort(key=lambda d: len(d.anchor.as_posix()))
     return tuple(result)
 

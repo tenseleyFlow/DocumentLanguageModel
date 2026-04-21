@@ -83,9 +83,7 @@ def scaffold_train_target(
     if not target.exists():
         raise ScaffoldError(f"target does not exist: {target}", path=target)
     if not target.is_dir():
-        raise ScaffoldError(
-            f"scaffold expects a directory, got file: {target}", path=target
-        )
+        raise ScaffoldError(f"scaffold expects a directory, got file: {target}", path=target)
 
     dlm_dir = target / _SCAFFOLD_DIR
     existing = sorted(dlm_dir.glob("*.dlm")) if dlm_dir.is_dir() else []
@@ -105,13 +103,9 @@ def scaffold_train_target(
             return ScaffoldResult(dlm_path=named_match, scaffolded=False, dlm_id=dlm_id)
         if name_is_default and len(existing) == 1:
             dlm_id = _dlm_id_from_file(existing[0])
-            return ScaffoldResult(
-                dlm_path=existing[0], scaffolded=False, dlm_id=dlm_id
-            )
+            return ScaffoldResult(dlm_path=existing[0], scaffolded=False, dlm_id=dlm_id)
         if name_is_default and len(existing) > 1:
-            listing = "\n".join(
-                f"  dlm train {target} --name {c.stem}" for c in existing
-            )
+            listing = "\n".join(f"  dlm train {target} --name {c.stem}" for c in existing)
             raise ScaffoldError(
                 f"multiple .dlm files found under {target / _SCAFFOLD_DIR}; "
                 f"pass --name to pick one:\n{listing}",
@@ -128,11 +122,7 @@ def scaffold_train_target(
         )
 
     dlm_path = dlm_dir / f"{name}.dlm"
-    existing_id = (
-        _dlm_id_from_file(dlm_path)
-        if rescaffold and dlm_path.is_file()
-        else None
-    )
+    existing_id = _dlm_id_from_file(dlm_path) if rescaffold and dlm_path.is_file() else None
 
     dlm_id = existing_id or mint_ulid()
     dlm_dir.mkdir(parents=True, exist_ok=True)
@@ -146,9 +136,7 @@ def scaffold_train_target(
         policy=policy,
         target=target,
     )
-    _LOG.info(
-        "scaffold: wrote %s (dlm_id=%s, base=%s)", dlm_path, dlm_id, base
-    )
+    _LOG.info("scaffold: wrote %s (dlm_id=%s, base=%s)", dlm_path, dlm_id, base)
     return ScaffoldResult(dlm_path=dlm_path, scaffolded=True, dlm_id=dlm_id)
 
 
@@ -205,17 +193,14 @@ def _write_scaffold(
         [
             "---",
             "",
-            "# Auto-scaffolded by `dlm train`. Edit the frontmatter above "
-            "to refine training.",
+            "# Auto-scaffolded by `dlm train`. Edit the frontmatter above to refine training.",
             "",
         ]
     )
     atomic_write_text(dlm_path, "\n".join(lines))
 
 
-def _build_include_globs(
-    include: tuple[str, ...], *, recursive: bool
-) -> tuple[str, ...]:
+def _build_include_globs(include: tuple[str, ...], *, recursive: bool) -> tuple[str, ...]:
     """Map `--include` flags + `--recursive` to frontmatter globs.
 
     Empty `--include` + `--recursive` → `["**/*"]`: train on every

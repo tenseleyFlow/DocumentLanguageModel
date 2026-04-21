@@ -50,9 +50,7 @@ class CacheKey:
         birthday threshold. The full sha is persisted in the manifest
         for verification if a collision ever occurs in practice.
         """
-        return (
-            f"{self.section_id}.{self.tokenizer_sha[:12]}.seq{self.sequence_len}.npz"
-        )
+        return f"{self.section_id}.{self.tokenizer_sha[:12]}.seq{self.sequence_len}.npz"
 
     def shard(self) -> str:
         """First 2 hex chars of section_id — the directory shard."""

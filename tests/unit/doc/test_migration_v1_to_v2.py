@@ -87,9 +87,7 @@ class TestPartialDpoBlock:
 
 class TestReferenceRename:
     def test_pre_dpo_adapter_becomes_pre_adapter(self) -> None:
-        raw: dict[str, Any] = {
-            "training": {"dpo": {"reference": "pre_dpo_adapter"}}
-        }
+        raw: dict[str, Any] = {"training": {"dpo": {"reference": "pre_dpo_adapter"}}}
         out = migrate(raw)
         assert out["training"]["preference"]["reference"] == "pre_adapter"
 

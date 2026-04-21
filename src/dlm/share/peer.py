@@ -74,10 +74,7 @@ class PeerSession:
         signature = self._sign(self.dlm_id, expiry_iso, nonce)
         # Wire format: nonce || len(expiry_iso) || expiry_iso || sig
         payload = (
-            nonce
-            + len(expiry_iso).to_bytes(2, "big")
-            + expiry_iso.encode("ascii")
-            + signature
+            nonce + len(expiry_iso).to_bytes(2, "big") + expiry_iso.encode("ascii") + signature
         )
         return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
@@ -162,9 +159,7 @@ class RateLimiter:
             while self.requests and self.requests[0] < window_start:
                 self.requests.popleft()
             if len(self.requests) >= self.rate_limit_per_min:
-                raise RateLimitError(
-                    f"rate limit: {self.rate_limit_per_min} req/min exceeded"
-                )
+                raise RateLimitError(f"rate limit: {self.rate_limit_per_min} req/min exceeded")
             if self.active >= self.max_concurrency:
                 raise RateLimitError(
                     f"rate limit: max concurrent connections ({self.max_concurrency}) exceeded"

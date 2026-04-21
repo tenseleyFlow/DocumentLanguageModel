@@ -23,8 +23,7 @@ def test_templates_dir_is_populated() -> None:
     # Guard against a silent deletion of the bundled gallery.
     paths = _template_paths()
     assert len(paths) >= 8, (
-        f"expected at least 8 gallery templates under {bundled_templates_dir()}, "
-        f"got {len(paths)}"
+        f"expected at least 8 gallery templates under {bundled_templates_dir()}, got {len(paths)}"
     )
 
 

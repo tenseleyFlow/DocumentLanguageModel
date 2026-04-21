@@ -99,18 +99,24 @@ def test_training_yaml_exclude_blocks_file(tmp_path: Path) -> None:
     )
     directive = _directive(tmp_path, include=("**/*.py",))
     configs = discover_configs(tmp_path)
-    assert effective_config_for(
-        tmp_path / "src" / "main.py",
-        source_root=tmp_path,
-        discovered=configs,
-        parent_directive=directive,
-    ).included is True
-    assert effective_config_for(
-        tmp_path / "src" / "test_main.py",
-        source_root=tmp_path,
-        discovered=configs,
-        parent_directive=directive,
-    ).included is False
+    assert (
+        effective_config_for(
+            tmp_path / "src" / "main.py",
+            source_root=tmp_path,
+            discovered=configs,
+            parent_directive=directive,
+        ).included
+        is True
+    )
+    assert (
+        effective_config_for(
+            tmp_path / "src" / "test_main.py",
+            source_root=tmp_path,
+            discovered=configs,
+            parent_directive=directive,
+        ).included
+        is False
+    )
 
 
 # ---- .dlm/ignore negation --------------------------------------------------
@@ -136,18 +142,24 @@ def test_ignore_negation_re_includes_file(tmp_path: Path) -> None:
     _write(tmp_path / ".dlm" / "ignore", "*.log\n!special.log\n")
     directive = _directive(tmp_path)
     configs = discover_configs(tmp_path)
-    assert effective_config_for(
-        tmp_path / "debug.log",
-        source_root=tmp_path,
-        discovered=configs,
-        parent_directive=directive,
-    ).included is False
-    assert effective_config_for(
-        tmp_path / "special.log",
-        source_root=tmp_path,
-        discovered=configs,
-        parent_directive=directive,
-    ).included is True
+    assert (
+        effective_config_for(
+            tmp_path / "debug.log",
+            source_root=tmp_path,
+            discovered=configs,
+            parent_directive=directive,
+        ).included
+        is False
+    )
+    assert (
+        effective_config_for(
+            tmp_path / "special.log",
+            source_root=tmp_path,
+            discovered=configs,
+            parent_directive=directive,
+        ).included
+        is True
+    )
 
 
 def test_deeper_ignore_negation_unblocks_parent_exclude(tmp_path: Path) -> None:
@@ -176,18 +188,24 @@ def test_default_excludes_apply_by_default(tmp_path: Path) -> None:
     _write(tmp_path / "src" / "main.py", "x")
     directive = _directive(tmp_path)
     configs = discover_configs(tmp_path)
-    assert effective_config_for(
-        tmp_path / ".git" / "HEAD",
-        source_root=tmp_path,
-        discovered=configs,
-        parent_directive=directive,
-    ).included is False
-    assert effective_config_for(
-        tmp_path / "src" / "main.py",
-        source_root=tmp_path,
-        discovered=configs,
-        parent_directive=directive,
-    ).included is True
+    assert (
+        effective_config_for(
+            tmp_path / ".git" / "HEAD",
+            source_root=tmp_path,
+            discovered=configs,
+            parent_directive=directive,
+        ).included
+        is False
+    )
+    assert (
+        effective_config_for(
+            tmp_path / "src" / "main.py",
+            source_root=tmp_path,
+            discovered=configs,
+            parent_directive=directive,
+        ).included
+        is True
+    )
 
 
 def test_exclude_defaults_false_disables_default_set(tmp_path: Path) -> None:
@@ -230,9 +248,9 @@ def test_metadata_shallow_to_deep_merge(tmp_path: Path) -> None:
         parent_directive=directive,
     )
     assert eff.tags == {
-        "language": "python",       # from shallower
+        "language": "python",  # from shallower
         "domain": "vendor_override",  # deeper overrides shallower
-        "source": "third_party",   # from deeper only
+        "source": "third_party",  # from deeper only
     }
 
 

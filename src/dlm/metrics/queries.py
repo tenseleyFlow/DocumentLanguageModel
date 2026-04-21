@@ -132,9 +132,7 @@ def evals_for_run(store_root: Path, run_id: int, *, since_step: int = 0) -> list
     return [EvalRow(*row) for row in rows]
 
 
-def tokenization_for_run(
-    store_root: Path, run_id: int
-) -> TokenizationRow | None:
+def tokenization_for_run(store_root: Path, run_id: int) -> TokenizationRow | None:
     """The tokenization row for `run_id`, or None when absent.
 
     Returns None when the table is empty for this run (i.e. the run

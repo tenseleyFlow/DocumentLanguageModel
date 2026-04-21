@@ -60,9 +60,7 @@ class TestProseFansOut:
         prose_in_knowledge = [
             s for s in plan.by_adapter["knowledge"] if s.type is SectionType.PROSE
         ]
-        prose_in_tone = [
-            s for s in plan.by_adapter["tone"] if s.type is SectionType.PROSE
-        ]
+        prose_in_tone = [s for s in plan.by_adapter["tone"] if s.type is SectionType.PROSE]
         assert len(prose_in_knowledge) == 1
         assert len(prose_in_tone) == 1
 
@@ -80,38 +78,23 @@ class TestInstructionRouting:
         parsed = parse_text(_doc(body, multi_adapter=True))
         plan = build_plan(parsed)
         # First-declared is "knowledge".
-        assert any(
-            s.type is SectionType.INSTRUCTION
-            for s in plan.by_adapter["knowledge"]
-        )
-        assert not any(
-            s.type is SectionType.INSTRUCTION for s in plan.by_adapter["tone"]
-        )
+        assert any(s.type is SectionType.INSTRUCTION for s in plan.by_adapter["knowledge"])
+        assert not any(s.type is SectionType.INSTRUCTION for s in plan.by_adapter["tone"])
 
     def test_tagged_instruction_goes_to_named_adapter(self) -> None:
         body = "::instruction#tone::\n### Q\nhi\n### A\nbye\n"
         parsed = parse_text(_doc(body, multi_adapter=True))
         plan = build_plan(parsed)
-        assert not any(
-            s.type is SectionType.INSTRUCTION
-            for s in plan.by_adapter["knowledge"]
-        )
-        assert any(
-            s.type is SectionType.INSTRUCTION for s in plan.by_adapter["tone"]
-        )
+        assert not any(s.type is SectionType.INSTRUCTION for s in plan.by_adapter["knowledge"])
+        assert any(s.type is SectionType.INSTRUCTION for s in plan.by_adapter["tone"])
 
 
 class TestPreferenceRouting:
     def test_tagged_preference_goes_to_named_adapter(self) -> None:
-        body = (
-            "::preference#tone::\n"
-            "### Prompt\nq\n### Chosen\nc\n### Rejected\nr\n"
-        )
+        body = "::preference#tone::\n### Prompt\nq\n### Chosen\nc\n### Rejected\nr\n"
         parsed = parse_text(_doc(body, multi_adapter=True))
         plan = build_plan(parsed)
-        assert any(
-            s.type is SectionType.PREFERENCE for s in plan.by_adapter["tone"]
-        )
+        assert any(s.type is SectionType.PREFERENCE for s in plan.by_adapter["tone"])
 
 
 class TestUnknownAdapter:
@@ -129,10 +112,7 @@ class TestUnknownAdapter:
 
 class TestSingleAdapterDoc:
     def test_single_adapter_doc_routes_all_to_default(self) -> None:
-        body = (
-            "# Prose\n\nShared.\n\n"
-            "::instruction::\n### Q\nh\n### A\nb\n"
-        )
+        body = "# Prose\n\nShared.\n\n::instruction::\n### Q\nh\n### A\nb\n"
         parsed = parse_text(_doc(body, multi_adapter=False))
         plan = build_plan(parsed)
         assert set(plan.by_adapter) == {"default"}
@@ -149,10 +129,7 @@ class TestSingleAdapterDoc:
 
 class TestSectionsForShortcut:
     def test_returns_same_as_plan_entry(self) -> None:
-        body = (
-            "shared prose\n\n"
-            "::instruction#tone::\n### Q\nh\n### A\nb\n"
-        )
+        body = "shared prose\n\n::instruction#tone::\n### Q\nh\n### A\nb\n"
         parsed = parse_text(_doc(body, multi_adapter=True))
         plan = build_plan(parsed)
         assert sections_for(parsed, "tone") == plan.by_adapter["tone"]

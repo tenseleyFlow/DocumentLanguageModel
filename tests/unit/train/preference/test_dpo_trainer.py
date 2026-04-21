@@ -42,13 +42,9 @@ class TestCoreFields:
         cfg = PreferenceConfig(
             enabled=True,
             loss_type="ipo",
-            hyperparams=PreferenceHyperparams(
-                beta=0.2, learning_rate=3e-6, num_epochs=2
-            ),
+            hyperparams=PreferenceHyperparams(beta=0.2, learning_rate=3e-6, num_epochs=2),
         )
-        kwargs = build_dpo_config_kwargs(
-            cfg, _plan(), output_dir=tmp_path, max_length=1024, seed=7
-        )
+        kwargs = build_dpo_config_kwargs(cfg, _plan(), output_dir=tmp_path, max_length=1024, seed=7)
         assert kwargs["output_dir"] == str(tmp_path)
         assert kwargs["learning_rate"] == 3e-6
         assert kwargs["num_train_epochs"] == 2

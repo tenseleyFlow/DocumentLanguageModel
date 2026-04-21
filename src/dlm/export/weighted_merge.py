@@ -77,47 +77,37 @@ def parse_mix_spec(spec_str: str) -> list[MixEntry]:
     for piece in raw.split(","):
         token = piece.strip()
         if not token:
-            raise InvalidMixSpecError(
-                f"--adapter-mix: empty entry in spec {spec_str!r}"
-            )
+            raise InvalidMixSpecError(f"--adapter-mix: empty entry in spec {spec_str!r}")
         if ":" not in token:
             raise InvalidMixSpecError(
-                f"--adapter-mix: entry {token!r} is missing a weight "
-                "(shape: `name:weight`)"
+                f"--adapter-mix: entry {token!r} is missing a weight (shape: `name:weight`)"
             )
         name, _, weight_str = token.rpartition(":")
         name = name.strip()
         weight_str = weight_str.strip()
         if not _NAME_RE.fullmatch(name):
             raise InvalidMixSpecError(
-                f"--adapter-mix: adapter name {name!r} is not valid "
-                f"(must match {_NAME_RE.pattern})"
+                f"--adapter-mix: adapter name {name!r} is not valid (must match {_NAME_RE.pattern})"
             )
         if name in seen:
-            raise InvalidMixSpecError(
-                f"--adapter-mix: adapter {name!r} appears twice"
-            )
+            raise InvalidMixSpecError(f"--adapter-mix: adapter {name!r} appears twice")
         seen.add(name)
         try:
             weight = float(weight_str)
         except ValueError as exc:
             raise InvalidMixSpecError(
-                f"--adapter-mix: weight {weight_str!r} for adapter "
-                f"{name!r} is not a number"
+                f"--adapter-mix: weight {weight_str!r} for adapter {name!r} is not a number"
             ) from exc
         if weight < 0:
             raise InvalidMixSpecError(
-                f"--adapter-mix: weight {weight} for adapter {name!r} "
-                "is negative (must be >= 0)"
+                f"--adapter-mix: weight {weight} for adapter {name!r} is negative (must be >= 0)"
             )
         entries.append(MixEntry(name=name, weight=weight))
 
     return entries
 
 
-def validate_mix_against_declared(
-    entries: list[MixEntry], declared: set[str]
-) -> None:
+def validate_mix_against_declared(entries: list[MixEntry], declared: set[str]) -> None:
     """Refuse mix entries that reference adapters not in `training.adapters`.
 
     Single source of error messaging so the CLI and the runner both
@@ -170,9 +160,7 @@ def build_weighted_merged(  # pragma: no cover - heavy path
 
     first = entries[0]
     first_path = _resolve_or_raise(store, first.name)
-    model = PeftModel.from_pretrained(
-        base_model, str(first_path), adapter_name=first.name
-    )
+    model = PeftModel.from_pretrained(base_model, str(first_path), adapter_name=first.name)
     for extra in entries[1:]:
         path = _resolve_or_raise(store, extra.name)
         model.load_adapter(str(path), adapter_name=extra.name)
@@ -208,9 +196,7 @@ def resolve_first_source_path(store: StorePath, entries: list[MixEntry]) -> Path
     single-valued), so any source is interchangeable — we pick the first.
     """
     if not entries:
-        raise InvalidMixSpecError(
-            "resolve_first_source_path: empty mix"
-        )
+        raise InvalidMixSpecError("resolve_first_source_path: empty mix")
     return _resolve_or_raise(store, entries[0].name)
 
 
@@ -257,9 +243,7 @@ def save_merged_to_tmp(  # pragma: no cover - heavy path
     import shutil
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    merged_model.save_pretrained(
-        str(tmp_dir), selected_adapters=[_MERGED_ADAPTER_NAME]
-    )
+    merged_model.save_pretrained(str(tmp_dir), selected_adapters=[_MERGED_ADAPTER_NAME])
 
     # PEFT nests under the adapter name; that's where run_export
     # expects to find adapter_config.json + safetensors.

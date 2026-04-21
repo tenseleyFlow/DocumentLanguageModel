@@ -75,9 +75,7 @@ def push_hf(
             exist_ok=True,
         )
     except HfHubHTTPError as exc:
-        raise SinkError(
-            f"hf push: failed to ensure repo {repo_id!r}: {exc}"
-        ) from exc
+        raise SinkError(f"hf push: failed to ensure repo {repo_id!r}: {exc}") from exc
 
     # Upload the pack.
     if progress is not None:

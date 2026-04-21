@@ -119,8 +119,7 @@ def sign_file(
     sig_path = target.with_suffix(target.suffix + ".minisig")
     if not sig_path.is_file():
         raise ShareError(
-            f"minisign succeeded but {sig_path} is missing; "
-            "signing integration is out of sync"
+            f"minisign succeeded but {sig_path} is missing; signing integration is out of sync"
         )
     return sig_path
 
@@ -142,8 +141,7 @@ def verify_signature(
 
     if not minisign_available():
         _LOG.warning(
-            "verify: signature present (%s) but `minisign` is not installed; "
-            "cannot verify",
+            "verify: signature present (%s) but `minisign` is not installed; cannot verify",
             signature,
         )
         return VerifyResult(
@@ -154,8 +152,7 @@ def verify_signature(
     keys_dir = trusted_keys_dir or _DEFAULT_TRUSTED_KEYS_DIR
     if not keys_dir.is_dir():
         _LOG.warning(
-            "verify: signature present but no trusted keys at %s; "
-            "pack is unverifiable",
+            "verify: signature present but no trusted keys at %s; pack is unverifiable",
             keys_dir,
         )
         return VerifyResult(

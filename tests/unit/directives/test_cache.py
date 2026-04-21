@@ -98,9 +98,7 @@ class TestInvalidation:
         cache.put(key_a, _tokens(4))
         assert cache.get(key_b) is None
 
-    def test_missing_file_recovers(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_missing_file_recovers(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         """If the on-disk entry vanishes under us, get() should treat
         it as a miss and clean up the stale manifest row."""
         import logging

@@ -107,7 +107,6 @@ def sections_for(parsed: ParsedDlm, adapter_name: str) -> list[Section]:
     plan = build_plan(parsed)
     if adapter_name not in plan.by_adapter:
         raise UnknownAdapterError(
-            f"adapter {adapter_name!r} not declared "
-            f"(declared: {sorted(plan.by_adapter)})"
+            f"adapter {adapter_name!r} not declared (declared: {sorted(plan.by_adapter)})"
         )
     return plan.by_adapter[adapter_name]

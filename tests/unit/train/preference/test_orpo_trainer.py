@@ -36,9 +36,7 @@ class TestCoreMapping:
         cfg = PreferenceConfig(
             enabled=True,
             method="orpo",
-            hyperparams=PreferenceHyperparams(
-                alpha=0.15, learning_rate=3e-6, num_epochs=2
-            ),
+            hyperparams=PreferenceHyperparams(alpha=0.15, learning_rate=3e-6, num_epochs=2),
         )
         kwargs = build_orpo_config_kwargs(
             cfg, _plan(), output_dir=tmp_path, max_length=1024, seed=7

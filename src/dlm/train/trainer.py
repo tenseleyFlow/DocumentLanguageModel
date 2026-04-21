@@ -1257,9 +1257,7 @@ def _expand_directives(
     if parsed.frontmatter.training.sources is None:
         return parsed, ()
 
-    base_path = (
-        parsed.source_path.parent if parsed.source_path is not None else Path.cwd()
-    )
+    base_path = parsed.source_path.parent if parsed.source_path is not None else Path.cwd()
     result = expand_sources(parsed, base_path=base_path)
     if not result.sections:
         return parsed, result.provenance

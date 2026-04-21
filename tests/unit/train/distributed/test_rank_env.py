@@ -40,9 +40,7 @@ class TestDetectRank:
         monkeypatch.delenv("LOCAL_RANK", raising=False)
         assert detect_rank() == 0
 
-    def test_rank_takes_precedence_over_local_rank(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_rank_takes_precedence_over_local_rank(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("RANK", "3")
         monkeypatch.setenv("LOCAL_RANK", "1")
         assert detect_rank() == 3

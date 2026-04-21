@@ -55,9 +55,12 @@ def push_url(pack_path: Path, url: str, *, progress: ProgressCallback = None) ->
         headers=_build_headers(total, content_type="application/octet-stream"),
     )
     try:
-        with pack_path.open("rb") as src, urllib.request.urlopen(  # noqa: S310
-            req, data=_iter_read(src, total, progress), timeout=60
-        ) as resp:
+        with (
+            pack_path.open("rb") as src,
+            urllib.request.urlopen(  # noqa: S310
+                req, data=_iter_read(src, total, progress), timeout=60
+            ) as resp,
+        ):
             status = resp.status
             if status < 200 or status >= 300:
                 raise SinkError(f"url push: HTTP {status} from {url}")
@@ -105,9 +108,7 @@ def pull_url(url: str, out_path: Path, *, progress: ProgressCallback = None) -> 
         raise SinkError(f"url pull: I/O error writing {out_path}: {exc}") from exc
 
 
-def _build_headers(
-    content_length: int | None, *, content_type: str | None
-) -> dict[str, str]:
+def _build_headers(content_length: int | None, *, content_type: str | None) -> dict[str, str]:
     headers = {"User-Agent": _USER_AGENT}
     if content_type is not None:
         headers["Content-Type"] = content_type
@@ -119,9 +120,7 @@ def _build_headers(
     return headers
 
 
-def _iter_read(
-    src: IO[bytes], total: int, progress: ProgressCallback
-) -> bytes:
+def _iter_read(src: IO[bytes], total: int, progress: ProgressCallback) -> bytes:
     """Streaming read adapter for urllib's `data=` parameter.
 
     urllib accepts a bytes-or-bytes-iterable. We return the full bytes
@@ -138,9 +137,7 @@ def _iter_read(
     return data
 
 
-def _stream_to_file(
-    resp: IO[bytes], out_path: Path, total: int, progress: ProgressCallback
-) -> int:
+def _stream_to_file(resp: IO[bytes], out_path: Path, total: int, progress: ProgressCallback) -> int:
     written = 0
     with out_path.open("wb") as dst:
         while True:

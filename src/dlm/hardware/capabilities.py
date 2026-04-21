@@ -156,9 +156,7 @@ def _get_unified_memory_gb(backend: Backend) -> float | None:
     return psutil.virtual_memory().total / (1024**3)
 
 
-def _supports_bf16(
-    backend: Backend, sm: tuple[int, int] | None, rocm_arch: str | None
-) -> bool:
+def _supports_bf16(backend: Backend, sm: tuple[int, int] | None, rocm_arch: str | None) -> bool:
     if backend == Backend.CUDA:
         return sm is not None and sm >= (8, 0)
     if backend == Backend.ROCM:

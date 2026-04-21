@@ -46,6 +46,7 @@ class TestRegisterCanReplace:
     def test_register_overrides_existing(self) -> None:
         saved = resolve("dpo")
         try:
+
             def _stub(*args: object, **kwargs: object) -> str:  # type: ignore[return-value]
                 return "stub"
 

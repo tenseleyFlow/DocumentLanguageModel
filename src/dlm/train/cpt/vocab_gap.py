@@ -85,8 +85,7 @@ def compute_vocab_gap(
     """
     if len(token_ids) != len(decoded_tokens):
         raise ValueError(
-            f"token_ids/decoded_tokens length mismatch: "
-            f"{len(token_ids)} vs {len(decoded_tokens)}"
+            f"token_ids/decoded_tokens length mismatch: {len(token_ids)} vs {len(decoded_tokens)}"
         )
     if top_n < 0:
         raise ValueError(f"top_n must be non-negative, got {top_n}")
@@ -95,11 +94,7 @@ def compute_vocab_gap(
     total_words = _count_words(text)
     tpw = total_tokens / total_words if total_words else 0.0
 
-    unk_hits = (
-        sum(1 for tid in token_ids if tid == unk_token_id)
-        if unk_token_id is not None
-        else 0
-    )
+    unk_hits = sum(1 for tid in token_ids if tid == unk_token_id) if unk_token_id is not None else 0
 
     counts: Counter[str] = Counter(decoded_tokens)
     top_tokens = counts.most_common(top_n)
@@ -113,7 +108,9 @@ def compute_vocab_gap(
     )
 
 
-def report(text: str, tokenizer: Any, *, top_n: int = 10) -> VocabGapReport:  # pragma: no cover - network/heavy
+def report(
+    text: str, tokenizer: Any, *, top_n: int = 10
+) -> VocabGapReport:  # pragma: no cover - network/heavy
     """Run the base tokenizer over `text` and compute the fit report.
 
     Heavy-import shell around `compute_vocab_gap` — covered by the slow
@@ -147,12 +144,8 @@ def render_report(r: VocabGapReport) -> str:
         f"  <unk> hits      : {r.unk_hits}",
     ]
     if r.has_unk:
-        lines.append(
-            "  WARNING: non-zero <unk> count — tokenizer has rare-character"
-        )
-        lines.append(
-            "  holes for this domain. Consider a different base model."
-        )
+        lines.append("  WARNING: non-zero <unk> count — tokenizer has rare-character")
+        lines.append("  holes for this domain. Consider a different base model.")
     if r.top_tokens:
         lines.append("  top tokens:")
         width = max(len(t) for t, _ in r.top_tokens)

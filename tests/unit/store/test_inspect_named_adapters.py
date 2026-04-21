@@ -72,9 +72,7 @@ class TestMultiAdapterDiscovery:
 
         inspection = inspect_store(store)
         assert inspection.named_adapters == [
-            NamedAdapterState(
-                name="knowledge", has_current=False, latest_version=1
-            )
+            NamedAdapterState(name="knowledge", has_current=False, latest_version=1)
         ]
 
     def test_empty_adapter_dir_without_versions_skipped(self, tmp_path: Path) -> None:

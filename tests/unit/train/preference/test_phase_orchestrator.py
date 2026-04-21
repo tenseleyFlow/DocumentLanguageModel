@@ -45,9 +45,7 @@ def _instruction() -> Section:
 def _pref() -> Section:
     return Section(
         type=SectionType.PREFERENCE,
-        content=(
-            "### Prompt\nq\n### Chosen\nc\n### Rejected\nr\n"
-        ),
+        content=("### Prompt\nq\n### Chosen\nc\n### Rejected\nr\n"),
         start_line=1,
     )
 
@@ -88,10 +86,7 @@ def _parsed(
     who wrote `training.preference.enabled: true/false` in their
     frontmatter.
     """
-    pref = (
-        PreferenceConfig() if dpo_enabled is None
-        else PreferenceConfig(enabled=dpo_enabled)
-    )
+    pref = PreferenceConfig() if dpo_enabled is None else PreferenceConfig(enabled=dpo_enabled)
     return _FakeParsed(
         sections=tuple(sections),
         frontmatter=_FakeFrontmatter(training=_FakeTraining(preference=pref)),

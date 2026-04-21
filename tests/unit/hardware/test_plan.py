@@ -45,9 +45,7 @@ class TestPrecisionPicker:
         with force_mps():
             caps = probe()
         with caplog.at_level(logging.WARNING, logger="dlm.hardware.plan"):  # type: ignore[attr-defined]
-            plan = resolve(
-                _cfg(precision="fp16"), caps, base_params=8_000_000_000, seq_len=2048
-            )
+            plan = resolve(_cfg(precision="fp16"), caps, base_params=8_000_000_000, seq_len=2048)
         assert plan.precision == "fp16"
         # The caller must see the risk explicitly — silent fp16 on MPS
         # is what caused the original bug.
@@ -63,9 +61,7 @@ class TestPrecisionPicker:
         with force_mps():
             caps = probe()
         with caplog.at_level(logging.WARNING, logger="dlm.hardware.plan"):  # type: ignore[attr-defined]
-            plan = resolve(
-                _cfg(precision="bf16"), caps, base_params=1_500_000_000, seq_len=2048
-            )
+            plan = resolve(_cfg(precision="bf16"), caps, base_params=1_500_000_000, seq_len=2048)
         assert plan.precision == "bf16"
         assert caplog.records == []  # type: ignore[attr-defined]
 
@@ -73,9 +69,7 @@ class TestPrecisionPicker:
         # CUDA default is bf16 (Ampere+) — override to fp32 honored.
         with force_cuda(sm=(8, 0)):
             caps = probe()
-        plan = resolve(
-            _cfg(precision="fp32"), caps, base_params=1_500_000_000, seq_len=2048
-        )
+        plan = resolve(_cfg(precision="fp32"), caps, base_params=1_500_000_000, seq_len=2048)
         assert plan.precision == "fp32"
 
 
@@ -204,9 +198,7 @@ class TestDpoPhaseAdjustments:
         # at 1, not round to 0.
         with force_cuda(sm=(8, 9), vram_gb=4.0):
             caps = probe()
-        dpo = resolve(
-            _cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="dpo"
-        )
+        dpo = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="dpo")
         assert dpo.micro_batch_size >= 1
 
     def test_dpo_peak_vram_exceeds_sft(self) -> None:
@@ -228,12 +220,8 @@ class TestDpoPhaseAdjustments:
     def test_dpo_reason_mentions_phase(self) -> None:
         with force_cuda(sm=(8, 9), vram_gb=24.0):
             caps = probe()
-        dpo = resolve(
-            _cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="dpo"
-        )
-        sft = resolve(
-            _cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="sft"
-        )
+        dpo = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="dpo")
+        sft = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048, phase="sft")
         assert "phase=dpo" in dpo.reason
         assert "phase=dpo" not in sft.reason
 

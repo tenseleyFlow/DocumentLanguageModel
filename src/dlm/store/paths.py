@@ -52,8 +52,7 @@ _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 def _validate_adapter_name(name: str) -> None:
     if not _ADAPTER_NAME_RE.fullmatch(name):
         raise ValueError(
-            f"adapter name {name!r} is not valid "
-            f"(must match {_ADAPTER_NAME_RE.pattern})"
+            f"adapter name {name!r} is not valid (must match {_ADAPTER_NAME_RE.pattern})"
         )
 
 
@@ -235,9 +234,7 @@ class StorePath:
             ) from exc
         from dlm.io.atomic import write_text as _atomic_write_text
 
-        _atomic_write_text(
-            self.adapter_current_pointer_for(name), f"{relative}\n"
-        )
+        _atomic_write_text(self.adapter_current_pointer_for(name), f"{relative}\n")
 
     def export_quant_dir(self, quant: str) -> Path:
         """Return `exports/<quant>/` (does NOT create it)."""

@@ -45,8 +45,7 @@ class WandbSink:
             import wandb  # type: ignore[import-not-found]
         except ImportError as exc:  # pragma: no cover - depends on install
             raise RuntimeError(
-                "W&B sink requires `wandb`; "
-                "run `uv sync --extra observability` to install it."
+                "W&B sink requires `wandb`; run `uv sync --extra observability` to install it."
             ) from exc
 
         wandb_dir = store_root / "wandb"

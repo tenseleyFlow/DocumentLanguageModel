@@ -130,11 +130,7 @@ def test_enumerate_is_deterministic(tmp_path: Path) -> None:
 def test_enumerate_exclude_wins(tmp_path: Path) -> None:
     (tmp_path / "keep.py").write_text("x")
     (tmp_path / "skip.py").write_text("x")
-    got = list(
-        enumerate_matching_files(
-            tmp_path, include=("**/*.py",), exclude=("skip.py",)
-        )
-    )
+    got = list(enumerate_matching_files(tmp_path, include=("**/*.py",), exclude=("skip.py",)))
     assert [p.name for p in got] == ["keep.py"]
 
 

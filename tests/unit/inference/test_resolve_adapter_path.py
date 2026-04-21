@@ -49,13 +49,9 @@ class TestNamedLayout:
         v1 = s.adapter_version_for("knowledge", 1)
         v1.mkdir(parents=True)
         s.set_current_adapter_for("knowledge", v1)
-        assert (
-            resolve_adapter_path(s, adapter_name="knowledge") == v1.resolve()
-        )
+        assert resolve_adapter_path(s, adapter_name="knowledge") == v1.resolve()
 
-    def test_missing_named_pointer_mentions_adapter_name(
-        self, tmp_path: Path
-    ) -> None:
+    def test_missing_named_pointer_mentions_adapter_name(self, tmp_path: Path) -> None:
         s = _store(tmp_path)
         s.ensure_adapter_layout("knowledge")
         with pytest.raises(AdapterNotFoundError, match="'knowledge'"):

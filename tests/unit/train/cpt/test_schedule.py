@@ -19,29 +19,20 @@ class TestWarmupRamp:
         assert cosine_with_floor_lr(0, total_steps=100, warmup_steps=20) == 0.0
 
     def test_half_warmup_is_half(self) -> None:
-        assert cosine_with_floor_lr(
-            10, total_steps=100, warmup_steps=20
-        ) == pytest.approx(0.5)
+        assert cosine_with_floor_lr(10, total_steps=100, warmup_steps=20) == pytest.approx(0.5)
 
     def test_warmup_end_is_peak(self) -> None:
         # step == warmup_steps: first step of decay phase; cosine is 1.0
         # at decay_progress=0, so we're at peak.
-        assert cosine_with_floor_lr(
-            20, total_steps=100, warmup_steps=20
-        ) == pytest.approx(1.0)
+        assert cosine_with_floor_lr(20, total_steps=100, warmup_steps=20) == pytest.approx(1.0)
 
     def test_zero_warmup_jumps_to_peak(self) -> None:
-        assert cosine_with_floor_lr(
-            0, total_steps=100, warmup_steps=0
-        ) == pytest.approx(1.0)
+        assert cosine_with_floor_lr(0, total_steps=100, warmup_steps=0) == pytest.approx(1.0)
 
 
 class TestCosineDecay:
     def test_monotone_decrease_through_decay(self) -> None:
-        lrs = [
-            cosine_with_floor_lr(s, total_steps=100, warmup_steps=20)
-            for s in range(20, 100, 5)
-        ]
+        lrs = [cosine_with_floor_lr(s, total_steps=100, warmup_steps=20) for s in range(20, 100, 5)]
         for a, b in zip(lrs, lrs[1:], strict=False):
             assert a > b
 
@@ -66,9 +57,7 @@ class TestCosineDecay:
         # Midpoint of cosine decay (decay_progress=0.5) gives cos(pi/2)=0,
         # so cosine multiplier = 0.5 → LR = floor + (1-floor)*0.5
         floor = 0.1
-        mid = cosine_with_floor_lr(
-            60, total_steps=100, warmup_steps=20, floor_ratio=floor
-        )
+        mid = cosine_with_floor_lr(60, total_steps=100, warmup_steps=20, floor_ratio=floor)
         expected = floor + (1.0 - floor) * 0.5
         assert mid == pytest.approx(expected)
 
@@ -97,9 +86,7 @@ class TestInputValidation:
     @pytest.mark.parametrize("bad", [-0.01, 1.01, 2.0])
     def test_floor_ratio_out_of_range(self, bad: float) -> None:
         with pytest.raises(ValueError, match="floor_ratio must be in"):
-            cosine_with_floor_lr(
-                0, total_steps=100, warmup_steps=10, floor_ratio=bad
-            )
+            cosine_with_floor_lr(0, total_steps=100, warmup_steps=10, floor_ratio=bad)
 
 
 class TestDefaultConstants:
@@ -130,11 +117,7 @@ class TestContinuityAcrossWarmup:
         # At warmup_steps, cosine is exactly 1. They should differ by
         # ~1/warmup_steps (the ramp's last sub-peak increment).
         warmup = 50
-        last_ramp = cosine_with_floor_lr(
-            warmup - 1, total_steps=200, warmup_steps=warmup
-        )
-        first_decay = cosine_with_floor_lr(
-            warmup, total_steps=200, warmup_steps=warmup
-        )
+        last_ramp = cosine_with_floor_lr(warmup - 1, total_steps=200, warmup_steps=warmup)
+        first_decay = cosine_with_floor_lr(warmup, total_steps=200, warmup_steps=warmup)
         assert first_decay == pytest.approx(1.0)
         assert math.isclose(first_decay - last_ramp, 1 / warmup, abs_tol=1e-9)

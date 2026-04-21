@@ -64,9 +64,7 @@ def pull(
         pack_path = staging / "incoming.dlm.pack"
         sig_path = pack_path.with_suffix(pack_path.suffix + ".minisig")
 
-        bytes_received = _dispatch_pull(
-            spec, pack_path, sig_path, progress=progress
-        )
+        bytes_received = _dispatch_pull(spec, pack_path, sig_path, progress=progress)
 
         # Verify signature BEFORE unpack so users learn the trust
         # status even if unpack then fails for an unrelated reason.
@@ -181,9 +179,7 @@ def _try_peer_sidecar(target: str, sig_path: Path) -> None:
 
 def _log_verification(source: str, result: VerifyResult) -> None:
     if result.status == VerifyStatus.VERIFIED:
-        _LOG.info(
-            "pull: verified signature from %s using %s", source, result.key_path
-        )
+        _LOG.info("pull: verified signature from %s using %s", source, result.key_path)
     elif result.status == VerifyStatus.UNVERIFIED:
         _LOG.warning(
             "pull: signature present but could not verify (%s). "

@@ -84,9 +84,7 @@ class TestMlxAvailability:
             caps = probe()
         assert caps.has_mlx is True
 
-    def test_mps_reports_no_mlx_when_mlx_lm_missing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_mps_reports_no_mlx_when_mlx_lm_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from dlm.hardware import capabilities as caps_mod
 
         real_avail = caps_mod._module_available

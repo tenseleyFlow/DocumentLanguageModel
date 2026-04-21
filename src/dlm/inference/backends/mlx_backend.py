@@ -54,8 +54,7 @@ def stage_mlx_adapter_dir(peft_adapter_dir: Path, dst_dir: Path) -> Path:
     src_config = peft_adapter_dir / _ADAPTER_CONFIG_FILENAME
     if not src_config.exists():
         raise MlxConversionError(
-            f"{peft_adapter_dir} is not a PEFT adapter dir "
-            f"({_ADAPTER_CONFIG_FILENAME} is missing)"
+            f"{peft_adapter_dir} is not a PEFT adapter dir ({_ADAPTER_CONFIG_FILENAME} is missing)"
         )
     if not (peft_adapter_dir / "adapter_model.safetensors").exists():
         raise MlxConversionError(

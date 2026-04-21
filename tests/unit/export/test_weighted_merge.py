@@ -128,9 +128,7 @@ class TestResolveFirstSourcePath:
         with pytest.raises(InvalidMixSpecError, match="empty mix"):
             resolve_first_source_path(store, [])
 
-    def test_missing_adapter_raises_export_error(
-        self, tmp_path
-    ) -> None:  # type: ignore[no-untyped-def]
+    def test_missing_adapter_raises_export_error(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         from dlm.export.errors import ExportError
         from dlm.export.weighted_merge import resolve_first_source_path
         from dlm.store.paths import StorePath

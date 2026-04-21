@@ -130,9 +130,7 @@ class TestMixedModeFields:
 
 class TestSplitLossByMode:
     def test_mixed_rows(self) -> None:
-        out = split_loss_by_mode(
-            [(1.0, "cpt"), (2.0, "cpt"), (0.5, "sft"), (1.5, "sft")]
-        )
+        out = split_loss_by_mode([(1.0, "cpt"), (2.0, "cpt"), (0.5, "sft"), (1.5, "sft")])
         assert out == LossByMode(cpt=1.5, sft=1.0)
 
     def test_all_cpt(self) -> None:
@@ -151,9 +149,7 @@ class TestSplitLossByMode:
         assert out.sft is None
 
     def test_unknown_modes_ignored(self) -> None:
-        out = split_loss_by_mode(
-            [(1.0, "cpt"), (2.0, "preference"), (3.0, "other")]
-        )
+        out = split_loss_by_mode([(1.0, "cpt"), (2.0, "preference"), (3.0, "other")])
         assert out.cpt == pytest.approx(1.0)
         assert out.sft is None
 

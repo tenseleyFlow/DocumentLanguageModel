@@ -18,12 +18,7 @@ from dlm.cli.app import app
 
 def _write_minimal_dlm(path: Path, dlm_id: str = "01KPQ9M3" + "0" * 18) -> None:
     path.write_text(
-        "---\n"
-        f"dlm_id: {dlm_id}\n"
-        "dlm_version: 6\n"
-        "base_model: smollm2-135m\n"
-        "---\n"
-        "body\n",
+        f"---\ndlm_id: {dlm_id}\ndlm_version: 6\nbase_model: smollm2-135m\n---\nbody\n",
         encoding="utf-8",
     )
 
@@ -40,8 +35,10 @@ class TestServeUntrainedGuard:
         result = runner.invoke(
             app,
             [
-                "--home", str(tmp_path / "home"),
-                "serve", str(doc),
+                "--home",
+                str(tmp_path / "home"),
+                "serve",
+                str(doc),
             ],
         )
         assert result.exit_code == 1, result.output

@@ -23,31 +23,31 @@ _VALID_ULID = "01HZ4X7TGZM3J1A2B3C4D5E6F7"
 def _build_tree(root: Path) -> None:
     """Build a repo fixture:
 
-        root/
+    root/
+      .dlm/
+        training.yaml   include: ['src/**/*.py', 'docs/**/*.md']
+                        exclude: ['**/test_*.py']
+                        metadata: {language: python}
+        ignore          *.log
+      src/
+        main.py
+        test_main.py
+        vendor/
           .dlm/
-            training.yaml   include: ['src/**/*.py', 'docs/**/*.md']
-                            exclude: ['**/test_*.py']
-                            metadata: {language: python}
-            ignore          *.log
-          src/
-            main.py
-            test_main.py
-            vendor/
-              .dlm/
-                training.yaml  exclude_defaults: false
-                               metadata: {vendor: true_yes}
-              .git_shim/       (bare dir w/ file to prove defaults off)
-                HEAD
-              dep.py
-          docs/
-            guide.md
-            .dlm/
-              ignore  !draft.md     (re-include what parent excluded? N/A)
-            draft.md
-          debug.log
-          .env.local
-          build/
-            output.py
+            training.yaml  exclude_defaults: false
+                           metadata: {vendor: true_yes}
+          .git_shim/       (bare dir w/ file to prove defaults off)
+            HEAD
+          dep.py
+      docs/
+        guide.md
+        .dlm/
+          ignore  !draft.md     (re-include what parent excluded? N/A)
+        draft.md
+      debug.log
+      .env.local
+      build/
+        output.py
     """
     (root / ".dlm").mkdir()
     (root / ".dlm" / "training.yaml").write_text(
@@ -66,9 +66,7 @@ def _build_tree(root: Path) -> None:
     (root / "src" / "vendor").mkdir()
     (root / "src" / "vendor" / ".dlm").mkdir()
     (root / "src" / "vendor" / ".dlm" / "training.yaml").write_text(
-        "dlm_training_version: 1\n"
-        "exclude_defaults: false\n"
-        "metadata:\n  vendor: true_yes\n",
+        "dlm_training_version: 1\nexclude_defaults: false\nmetadata:\n  vendor: true_yes\n",
         encoding="utf-8",
     )
     (root / "src" / "vendor" / "dep.py").write_text("def dep(): pass\n")

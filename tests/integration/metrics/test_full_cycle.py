@@ -33,9 +33,7 @@ def test_trained_store_has_metrics_rows(  # pragma: no cover - slow path
     runs = recent_runs(trained_store.store.root, limit=10)
     assert runs, "trainer.run() did not record any runs"
     latest = runs[0]
-    assert latest.status in ("ok", "running"), (
-        f"expected 'ok' or 'running', got {latest.status!r}"
-    )
+    assert latest.status in ("ok", "running"), f"expected 'ok' or 'running', got {latest.status!r}"
 
     steps = steps_for_run(trained_store.store.root, latest.run_id)
     # The tiny-model fixture runs at least one step.

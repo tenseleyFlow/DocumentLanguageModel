@@ -104,8 +104,10 @@ def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
             lines.append(f"{pad}{field_name}:")
             lines.extend(nested)
             continue
-        if isinstance(value, dict) and value and all(
-            isinstance(v, BaseModel) for v in value.values()
+        if (
+            isinstance(value, dict)
+            and value
+            and all(isinstance(v, BaseModel) for v in value.values())
         ):
             # `dict[str, BaseModel]` (e.g. training.adapters) — emit
             # each entry as a nested mapping. The key is the dict

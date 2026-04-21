@@ -23,9 +23,7 @@ class _FakeParam:
         self.requires_grad = requires_grad
 
 
-def _model(
-    *, embed_frozen: bool = True, head_frozen: bool = True, tied: bool = False
-) -> Any:
+def _model(*, embed_frozen: bool = True, head_frozen: bool = True, tied: bool = False) -> Any:
     embed_param = _FakeParam(requires_grad=not embed_frozen)
     head_param = embed_param if tied else _FakeParam(requires_grad=not head_frozen)
     embed_module = SimpleNamespace(weight=embed_param)
@@ -77,9 +75,9 @@ class TestExtendModulesToSave:
         assert extend_modules_to_save_for_embed_warmup(None, embed_warmup_steps=0) is None
 
     def test_zero_warmup_passes_through_list(self) -> None:
-        assert extend_modules_to_save_for_embed_warmup(
-            ["embed_tokens"], embed_warmup_steps=0
-        ) == ["embed_tokens"]
+        assert extend_modules_to_save_for_embed_warmup(["embed_tokens"], embed_warmup_steps=0) == [
+            "embed_tokens"
+        ]
 
     def test_warmup_on_with_no_existing(self) -> None:
         out = extend_modules_to_save_for_embed_warmup(None, embed_warmup_steps=50)

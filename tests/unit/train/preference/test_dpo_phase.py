@@ -23,20 +23,14 @@ from dlm.train.state_sidecar import STATE_FILENAME, STATE_SHA_FILENAME
 
 
 def _parsed_with_preferences() -> ParsedDlm:
-    pref_body = (
-        "### Prompt\nq?\n### Chosen\nc.\n### Rejected\nr.\n"
-    )
+    pref_body = "### Prompt\nq?\n### Chosen\nc.\n### Rejected\nr.\n"
     return ParsedDlm(
         frontmatter=DlmFrontmatter(
             dlm_id="01KABCD" + "0" * 19,
             base_model="smollm2-135m",
-            training=TrainingConfig(
-                seed=42, preference=PreferenceConfig(enabled=True)
-            ),
+            training=TrainingConfig(seed=42, preference=PreferenceConfig(enabled=True)),
         ),
-        sections=(
-            Section(type=SectionType.PREFERENCE, content=pref_body),
-        ),
+        sections=(Section(type=SectionType.PREFERENCE, content=pref_body),),
     )
 
 

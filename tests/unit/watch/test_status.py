@@ -16,23 +16,17 @@ class TestRenderStatus:
 
     def test_after_cycle_shows_loss_and_steps(self) -> None:
         status = WatchStatus(doc_path="mydoc.dlm", sections=12)
-        status.mark_cycle_done(
-            train_loss=1.2, val_loss=1.35, steps=50, coalesced=1
-        )
+        status.mark_cycle_done(train_loss=1.2, val_loss=1.35, steps=50, coalesced=1)
         line = render_status(status)
         assert "val loss: 1.35" in line
         assert "steps: 50" in line
 
     def test_coalesced_only_shown_when_plural(self) -> None:
         status = WatchStatus(doc_path="d")
-        status.mark_cycle_done(
-            train_loss=None, val_loss=None, steps=10, coalesced=1
-        )
+        status.mark_cycle_done(train_loss=None, val_loss=None, steps=10, coalesced=1)
         assert "coalesced" not in render_status(status)
 
-        status.mark_cycle_done(
-            train_loss=None, val_loss=None, steps=10, coalesced=5
-        )
+        status.mark_cycle_done(train_loss=None, val_loss=None, steps=10, coalesced=5)
         assert "coalesced: 5" in render_status(status)
 
     def test_age_buckets(self) -> None:

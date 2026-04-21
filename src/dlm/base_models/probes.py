@@ -378,9 +378,7 @@ def probe_pretokenizer_hash(
 # --- aggregate ---------------------------------------------------------------
 
 
-def run_all(
-    spec: BaseModelSpec, *, skip_export_probes: bool = False
-) -> ProbeReport:
+def run_all(spec: BaseModelSpec, *, skip_export_probes: bool = False) -> ProbeReport:
     """Run every probe; aggregate into a `ProbeReport`.
 
     `GatedModelError` from an individual probe propagates immediately —

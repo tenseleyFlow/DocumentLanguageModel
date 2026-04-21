@@ -137,6 +137,10 @@ ignore = [
 # will take so `--help` reflects the shipping surface — even though the
 # stub body discards them.
 "src/dlm/cli/commands.py" = ["ARG001"]
+# HuggingFace Trainer callbacks MUST accept `args`/`state`/`control`
+# positionally even when the implementation only reads some of them —
+# HF dispatches them by position. ARG002 for these wrappers is noise.
+"src/dlm/train/cpt/embed_warmup.py" = ["ARG002"]
 
 [tool.ruff.format]
 quote-style = "double"

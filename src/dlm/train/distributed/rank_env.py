@@ -31,9 +31,7 @@ def detect_world_size() -> int:
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ValueError(
-            f"WORLD_SIZE env var is not an integer: {raw!r}"
-        ) from exc
+        raise ValueError(f"WORLD_SIZE env var is not an integer: {raw!r}") from exc
     if value < 1:
         return 1
     return value
@@ -53,9 +51,7 @@ def detect_rank() -> int:
         try:
             value = int(raw)
         except ValueError as exc:
-            raise ValueError(
-                f"{key} env var is not an integer: {raw!r}"
-            ) from exc
+            raise ValueError(f"{key} env var is not an integer: {raw!r}") from exc
         if value < 0:
             return 0
         return value

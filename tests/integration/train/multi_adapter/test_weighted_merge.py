@@ -79,9 +79,7 @@ def _train_two_adapters(
         make_dlm(
             sections=[prose(_PROSE)],
             base_model="smollm2-135m",
-            training_overrides={
-                "adapters": {"knowledge": {}, "tone": {}}
-            },
+            training_overrides={"adapters": {"knowledge": {}, "tone": {}}},
         ),
         encoding="utf-8",
     )
@@ -134,9 +132,7 @@ def test_weighted_merge_saves_tokenizer_files(
 
     spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
     cached = download_spec(spec, local_files_only=True)
-    base_model = AutoModelForCausalLM.from_pretrained(
-        str(cached.path), revision=spec.revision
-    )
+    base_model = AutoModelForCausalLM.from_pretrained(str(cached.path), revision=spec.revision)
 
     entries = [
         MixEntry(name="knowledge", weight=1.0),
@@ -194,9 +190,7 @@ def test_weighted_merge_passes_preflight_tokenizer_vocab(
 
     spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
     cached = download_spec(spec, local_files_only=True)
-    base_model = AutoModelForCausalLM.from_pretrained(
-        str(cached.path), revision=spec.revision
-    )
+    base_model = AutoModelForCausalLM.from_pretrained(str(cached.path), revision=spec.revision)
 
     entries = [
         MixEntry(name="knowledge", weight=0.7),

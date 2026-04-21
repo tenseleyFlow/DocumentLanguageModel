@@ -43,9 +43,7 @@ class TestParseFenceSuffix:
         assert instr[0].adapter == "tone"
 
     def test_preference_fence_adapter(self) -> None:
-        parsed = _parse(
-            "::preference#knowledge::\n### Prompt\nq\n### Chosen\nc\n### Rejected\nr\n"
-        )
+        parsed = _parse("::preference#knowledge::\n### Prompt\nq\n### Chosen\nc\n### Rejected\nr\n")
         pref = [s for s in parsed.sections if s.type == SectionType.PREFERENCE]
         assert pref
         assert pref[0].adapter == "knowledge"
@@ -97,9 +95,7 @@ class TestSectionIdentityUnchanged:
         """Routing is structural, not content — same content with and
         without a `#adapter` suffix must produce the same section_id
         so replay snapshots don't duplicate rows on routing edits."""
-        s_plain = Section(
-            type=SectionType.INSTRUCTION, content="### Q\nhi\n### A\nbye"
-        )
+        s_plain = Section(type=SectionType.INSTRUCTION, content="### Q\nhi\n### A\nbye")
         s_routed = Section(
             type=SectionType.INSTRUCTION,
             content="### Q\nhi\n### A\nbye",

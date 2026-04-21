@@ -25,8 +25,7 @@ def test_bundled_templates_dir_exists() -> None:
 def test_list_bundled_returns_eight_templates() -> None:
     templates = list_bundled()
     assert len(templates) >= 8, (
-        f"expected at least 8 templates, got {len(templates)}: "
-        f"{[t.name for t in templates]}"
+        f"expected at least 8 templates, got {len(templates)}: {[t.name for t in templates]}"
     )
     names = {t.name for t in templates}
     required = {
@@ -69,17 +68,13 @@ def test_registry_drops_template_missing_sidecar(tmp_path: Path) -> None:
 
 
 def test_registry_drops_template_with_malformed_meta(tmp_path: Path) -> None:
-    (tmp_path / "broken.dlm").write_text(
-        "---\ndlm_id: 01AAAA\nbase_model: foo\n---\n# body\n"
-    )
+    (tmp_path / "broken.dlm").write_text("---\ndlm_id: 01AAAA\nbase_model: foo\n---\n# body\n")
     (tmp_path / "broken.meta.yaml").write_text("not: a: valid: yaml: mapping\n")
     assert list_bundled(gallery_dir=tmp_path) == []
 
 
 def test_load_template_with_mismatched_name_raises(tmp_path: Path) -> None:
-    (tmp_path / "fine.dlm").write_text(
-        "---\ndlm_id: 01AAAA\nbase_model: foo\n---\n# body\n"
-    )
+    (tmp_path / "fine.dlm").write_text("---\ndlm_id: 01AAAA\nbase_model: foo\n---\n# body\n")
     # meta.name doesn't match the filename stem.
     (tmp_path / "fine.meta.yaml").write_text(
         "name: different\ntitle: X\nrecommended_base: qwen2.5-1.5b\nsummary: hi\n"

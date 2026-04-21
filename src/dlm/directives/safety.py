@@ -158,9 +158,7 @@ def enumerate_matching_files(
             yield candidate
 
 
-def _matches_filters(
-    rel_path: str, include: Iterable[str], exclude: Iterable[str]
-) -> bool:
+def _matches_filters(rel_path: str, include: Iterable[str], exclude: Iterable[str]) -> bool:
     """Match rel_path against include (any) and exclude (none)."""
     if any(_compile_glob(pat).fullmatch(rel_path) for pat in exclude):
         return False

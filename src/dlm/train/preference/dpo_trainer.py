@@ -119,9 +119,7 @@ def load_reference_model(  # pragma: no cover
         try:
             ref = PeftModel.from_pretrained(model, str(adapter_path), is_trainable=False)
         except Exception as exc:
-            raise DpoReferenceLoadError(
-                adapter_path=str(adapter_path), cause=str(exc)
-            ) from exc
+            raise DpoReferenceLoadError(adapter_path=str(adapter_path), cause=str(exc)) from exc
         _freeze(ref)
         return ref
 

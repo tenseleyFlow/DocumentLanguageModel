@@ -12,9 +12,7 @@ from dlm.train.preference.dpo_dataset import (
 )
 
 _PREF_BODY_ONE = (
-    "### Prompt\nWhat time is it?\n"
-    "### Chosen\nIt is 3 PM.\n"
-    "### Rejected\nTime is an illusion.\n"
+    "### Prompt\nWhat time is it?\n### Chosen\nIt is 3 PM.\n### Rejected\nTime is an illusion.\n"
 )
 
 _PREF_BODY_TWO = (

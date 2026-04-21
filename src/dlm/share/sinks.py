@@ -58,9 +58,7 @@ def parse_source(source: str) -> SinkSpec:
     if source.startswith("hf:"):
         rest = source[len("hf:") :]
         if not rest or "/" not in rest:
-            raise UnknownSinkError(
-                f"hf: source must be 'hf:<org>/<repo>', got {source!r}"
-            )
+            raise UnknownSinkError(f"hf: source must be 'hf:<org>/<repo>', got {source!r}")
         return SinkSpec(kind=SinkKind.HF, target=rest)
 
     if source.startswith(("http://", "https://")):
@@ -69,9 +67,7 @@ def parse_source(source: str) -> SinkSpec:
     if source.startswith("peer://"):
         rest = source[len("peer://") :]
         if not rest:
-            raise UnknownSinkError(
-                f"peer:// source needs host:port/path, got {source!r}"
-            )
+            raise UnknownSinkError(f"peer:// source needs host:port/path, got {source!r}")
         return SinkSpec(kind=SinkKind.PEER, target=rest)
 
     # Fall through to local path. Accept absolute, relative, and `~`.
@@ -80,6 +76,4 @@ def parse_source(source: str) -> SinkSpec:
     if path_looking:
         return SinkSpec(kind=SinkKind.LOCAL, target=source)
 
-    raise UnknownSinkError(
-        f"unrecognized source {source!r}: expected hf:/https:/peer:/ or a path"
-    )
+    raise UnknownSinkError(f"unrecognized source {source!r}: expected hf:/https:/peer:/ or a path")

@@ -100,9 +100,7 @@ def expand_sources(parsed: ParsedDlm, *, base_path: Path) -> ExpandResult:
     if not directives:
         return ExpandResult(sections=(), provenance=(), discovered=())
 
-    effective_base = (
-        base_path.parent if base_path.name == ".dlm" else base_path
-    )
+    effective_base = base_path.parent if base_path.name == ".dlm" else base_path
     strict = training.sources_policy == "strict"
     sections: list[Section] = []
     provenance: list[SourceProvenance] = []
@@ -159,10 +157,7 @@ def _expand_one(
     header_root = resolved_root if resolved_root.is_dir() else resolved_root.parent
 
     for file_path in _iter_candidates(resolved_root):
-        if (
-            directive.max_files is not None
-            and len(sections) >= directive.max_files
-        ):
+        if directive.max_files is not None and len(sections) >= directive.max_files:
             _LOG.info(
                 "directive: hit max_files=%d for %s; truncating deterministically",
                 directive.max_files,
@@ -190,10 +185,7 @@ def _expand_one(
             _LOG.warning("directive: stat failed for %s: %s; skipping", file_path, exc)
             continue
 
-        if (
-            directive.max_bytes_per_file is not None
-            and size > directive.max_bytes_per_file
-        ):
+        if directive.max_bytes_per_file is not None and size > directive.max_bytes_per_file:
             _LOG.info(
                 "directive: %s (%d bytes) exceeds max_bytes_per_file=%d; skipping",
                 file_path,
@@ -210,9 +202,7 @@ def _expand_one(
             continue
 
         if is_probably_binary(raw):
-            _LOG.info(
-                "directive: %s looks binary (NUL in first KiB); skipping", file_path
-            )
+            _LOG.info("directive: %s looks binary (NUL in first KiB); skipping", file_path)
             skipped_binary += 1
             continue
 
@@ -225,9 +215,7 @@ def _expand_one(
 
         relpath = file_path.relative_to(header_root).as_posix()
         content = f"# source: {relpath}\n\n{text}"
-        sections.append(
-            Section(type=SectionType.PROSE, content=content, tags=effective.tags)
-        )
+        sections.append(Section(type=SectionType.PROSE, content=content, tags=effective.tags))
         total_bytes += len(raw)
 
     return sections, SourceProvenance(

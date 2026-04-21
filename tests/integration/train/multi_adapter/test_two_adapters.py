@@ -148,12 +148,12 @@ def test_two_adapters_each_get_their_own_version_history(
     import json
 
     k_cfg = json.loads(
-        (store.adapter_version_for("knowledge", 1) / "adapter_config.json")
-        .read_text(encoding="utf-8")
+        (store.adapter_version_for("knowledge", 1) / "adapter_config.json").read_text(
+            encoding="utf-8"
+        )
     )
     t_cfg = json.loads(
-        (store.adapter_version_for("tone", 1) / "adapter_config.json")
-        .read_text(encoding="utf-8")
+        (store.adapter_version_for("tone", 1) / "adapter_config.json").read_text(encoding="utf-8")
     )
     assert k_cfg["r"] == 8, f"knowledge lora_r: {k_cfg['r']}"
     assert t_cfg["r"] == 4, f"tone lora_r: {t_cfg['r']}"

@@ -51,9 +51,7 @@ def test_round_trip_v4_multi_adapter_doc_is_idempotent() -> None:
 
     once = serialize(parse_text(original))
     twice = serialize(parse_text(once))
-    assert once == twice, (
-        "v4 adapters doc not idempotent under serialize round-trip"
-    )
+    assert once == twice, "v4 adapters doc not idempotent under serialize round-trip"
 
 
 def test_round_trip_preserves_fence_suffixes() -> None:

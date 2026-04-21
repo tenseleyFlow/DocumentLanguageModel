@@ -116,9 +116,7 @@ def run_phases(
       explicitly request DPO, skip with a warning instead of raising.
     """
     sections = list(parsed.sections)
-    pref_cfg = resolve_preference_enabled(
-        parsed.frontmatter.training.preference, sections
-    )
+    pref_cfg = resolve_preference_enabled(parsed.frontmatter.training.preference, sections)
     results: list[PhaseResult] = []
 
     sft_fn = sft_runner or _real_sft_runner()
@@ -137,9 +135,7 @@ def run_phases(
         sft_result = sft_fn(store, parsed, spec, plan, **sft_kwargs)
         results.append(PhaseResult(phase="sft", result=sft_result))
 
-    should_run_pref = phase == "preference" or (
-        phase == "all" and pref_cfg.enabled
-    )
+    should_run_pref = phase == "preference" or (phase == "all" and pref_cfg.enabled)
     if should_run_pref:
         if not has_preference_content(sections):
             if phase == "preference":
