@@ -87,11 +87,7 @@ _VL_DEFAULT_TOP_P: float = 0.9
 # prompt. Earlier versions silently drop it — the doctor's
 # `ollama --version` check belongs to Sprint 35.4's DoD but is
 # tracked separately; this template assumes 0.4+.
-_VL_TEMPLATE_BODY: str = (
-    "{{ if .System }}{{ .System }}\n\n{{ end }}"
-    "{{ .Image }}\n"
-    "{{ .Prompt }}"
-)
+_VL_TEMPLATE_BODY: str = "{{ if .System }}{{ .System }}\n\n{{ end }}{{ .Image }}\n{{ .Prompt }}"
 
 # Minimal stop-token set for VL generation when the adapter's
 # tokenizer config doesn't ship explicit stops. PaliGemma's end-
@@ -112,9 +108,7 @@ def render_vl_modelfile(ctx: VlModelfileContext) -> str:
     stops = _resolve_stops(ctx.adapter_dir, _vl_template_row())
     header = _build_header(_as_modelfile_ctx(ctx))
     from_line = f"FROM ./{ctx.base_gguf_name}"
-    adapter_line = (
-        f"ADAPTER ./{ctx.adapter_gguf_name}" if ctx.adapter_gguf_name else None
-    )
+    adapter_line = f"ADAPTER ./{ctx.adapter_gguf_name}" if ctx.adapter_gguf_name else None
     template_block = f'TEMPLATE """{_VL_TEMPLATE_BODY}"""'
     num_ctx = _resolve_num_ctx(_as_modelfile_ctx(ctx))
     temperature = (
@@ -122,11 +116,7 @@ def render_vl_modelfile(ctx: VlModelfileContext) -> str:
         if ctx.override_temperature is not None
         else _VL_DEFAULT_TEMPERATURE
     )
-    top_p = (
-        ctx.override_top_p
-        if ctx.override_top_p is not None
-        else _VL_DEFAULT_TOP_P
-    )
+    top_p = ctx.override_top_p if ctx.override_top_p is not None else _VL_DEFAULT_TOP_P
     param_lines = _build_param_lines(
         stops=stops,
         temperature=temperature,

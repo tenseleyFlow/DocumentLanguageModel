@@ -130,9 +130,7 @@ class AudioLmCollator:
                     f"({set(row.keys())}); expected audio_path + text"
                 )
             blob_sha = row.get("audio_blob_sha")
-            waveforms.append(
-                self._load_waveform(Path(row["audio_path"]), blob_sha=blob_sha)
-            )
+            waveforms.append(self._load_waveform(Path(row["audio_path"]), blob_sha=blob_sha))
             texts.append(row["text"])
 
         # One processor call over the whole batch: it handles padding
@@ -156,9 +154,7 @@ class AudioLmCollator:
         batch["labels"] = labels
         return dict(batch)
 
-    def _load_waveform(
-        self, path: Path, *, blob_sha: str | None = None
-    ) -> np.ndarray:
+    def _load_waveform(self, path: Path, *, blob_sha: str | None = None) -> np.ndarray:
         """Decode one audio blob into a mono float32 waveform.
 
         When `waveform_cache` is configured and `blob_sha` is provided,

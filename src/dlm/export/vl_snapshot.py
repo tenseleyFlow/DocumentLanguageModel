@@ -148,7 +148,10 @@ def run_vl_snapshot_export(
 
     artifacts: list[Path] = []
     for path in sorted(export_dir.rglob("*")):
-        if path.is_file() and path.name not in (SNAPSHOT_MANIFEST_FILENAME, SNAPSHOT_README_FILENAME):
+        if path.is_file() and path.name not in (
+            SNAPSHOT_MANIFEST_FILENAME,
+            SNAPSHOT_README_FILENAME,
+        ):
             artifacts.append(path)
 
     manifest = VlSnapshotManifest(
@@ -194,9 +197,7 @@ def _resolve_adapter_for_export(
     """
     if adapter_path_override is not None:
         if not adapter_path_override.exists():
-            raise ExportError(
-                f"adapter_path_override {adapter_path_override} does not exist"
-            )
+            raise ExportError(f"adapter_path_override {adapter_path_override} does not exist")
         return adapter_path_override, _version_from_dir_name(adapter_path_override)
 
     if adapter_name is None:
@@ -207,9 +208,7 @@ def _resolve_adapter_for_export(
         pointer = store.adapter_current_pointer_for(adapter_name)
 
     if resolved is None or not resolved.exists():
-        raise ExportError(
-            f"no current adapter under {pointer}; run `dlm train` before exporting."
-        )
+        raise ExportError(f"no current adapter under {pointer}; run `dlm train` before exporting.")
     return resolved, _version_from_dir_name(resolved)
 
 

@@ -1539,11 +1539,7 @@ def _dispatch_vl_snapshot_export(
         verdict = None
 
     if verdict is None or verdict.support is SupportLevel.UNSUPPORTED:
-        tag_note = (
-            f"at tag={verdict.llama_cpp_tag or 'unknown'} "
-            if verdict is not None
-            else ""
-        )
+        tag_note = f"at tag={verdict.llama_cpp_tag or 'unknown'} " if verdict is not None else ""
         console.print(
             f"[yellow]export:[/yellow] base {spec.key!r} "
             f"(arch={spec.architecture}) is not covered by the vendored "

@@ -281,7 +281,7 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
                 if fence_type in _FENCE_ATTR_SPEC:
                     raise FenceError(
                         f"fence '::{fence_name}::' requires attributes "
-                        f"(expected e.g. `::{fence_type.value} path=\"...\"::`)",
+                        f'(expected e.g. `::{fence_type.value} path="..."::`)',
                         path=path,
                         line=source_line,
                         col=1,

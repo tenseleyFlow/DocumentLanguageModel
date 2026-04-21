@@ -57,7 +57,6 @@ def load_for_vl_inference(  # pragma: no cover
     from transformers import AutoModelForImageTextToText
 
     from dlm.base_models._typed_shims import load_auto_processor
-
     from dlm.inference.plan import resolve_inference
 
     plan = resolve_inference(adapter_path, caps)

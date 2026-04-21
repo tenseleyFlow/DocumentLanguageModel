@@ -459,8 +459,7 @@ def probe_vl_image_token(spec: BaseModelSpec) -> ProbeResult:
             name="vl_image_token",
             passed=False,
             detail=(
-                f"placeholder {placeholder!r} tokenized to "
-                f"{len(token_ids)} tokens (expected 1)"
+                f"placeholder {placeholder!r} tokenized to {len(token_ids)} tokens (expected 1)"
             ),
         )
     return ProbeResult(
@@ -534,8 +533,7 @@ def probe_audio_token(spec: BaseModelSpec) -> ProbeResult:
             name="audio_token",
             passed=False,
             detail=(
-                f"placeholder {placeholder!r} tokenized to "
-                f"{len(token_ids)} tokens (expected 1)"
+                f"placeholder {placeholder!r} tokenized to {len(token_ids)} tokens (expected 1)"
             ),
         )
     return ProbeResult(

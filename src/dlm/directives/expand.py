@@ -209,9 +209,7 @@ def _expand_one(
     header_root = resolved_root if resolved_root.is_dir() else resolved_root.parent
 
     for file_path in _iter_candidates(resolved_root):
-        if directive.max_files is not None and _section_cap_reached(
-            sections, directive.max_files
-        ):
+        if directive.max_files is not None and _section_cap_reached(sections, directive.max_files):
             _LOG.info(
                 "directive: hit max_files=%d for %s; truncating deterministically",
                 directive.max_files,
@@ -344,9 +342,7 @@ def _expand_one(
     # per-modality counters don't collide. PROSE + INSTRUCTION +
     # PREFERENCE → file_count; IMAGE → image_count; AUDIO →
     # audio_count.
-    text_sections = sum(
-        1 for s in sections if s.type not in (SectionType.IMAGE, SectionType.AUDIO)
-    )
+    text_sections = sum(1 for s in sections if s.type not in (SectionType.IMAGE, SectionType.AUDIO))
     return sections, SourceProvenance(
         path=directive.path,
         file_count=text_sections,

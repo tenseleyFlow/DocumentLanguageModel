@@ -140,10 +140,7 @@ class WaveformCacheKey:
 
     def as_filename(self) -> str:
         rs = ".rs" if self.auto_resample else ""
-        return (
-            f"{self.blob_sha}.{self.sample_rate}.{self.max_length_ms}"
-            f"{rs}.wav.npz"
-        )
+        return f"{self.blob_sha}.{self.sample_rate}.{self.max_length_ms}{rs}.wav.npz"
 
     def shard(self) -> str:
         return self.blob_sha[:2]
@@ -226,9 +223,7 @@ def processor_sha256(processor: Any) -> str:
         "hop_length": _readable(getattr(feature_extractor, "hop_length", None)),
         "chunk_length": _readable(getattr(feature_extractor, "chunk_length", None)),
         "padding_value": _readable(getattr(feature_extractor, "padding_value", None)),
-        "return_attention_mask": bool(
-            getattr(feature_extractor, "return_attention_mask", False)
-        ),
+        "return_attention_mask": bool(getattr(feature_extractor, "return_attention_mask", False)),
     }
     canonical = json.dumps(state, sort_keys=True, default=str)
     sha = hashlib.sha256(canonical.encode("utf-8")).hexdigest()

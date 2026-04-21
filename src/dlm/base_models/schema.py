@@ -155,8 +155,7 @@ class BaseModelSpec(BaseModel):
                 )
             if self.vl_preprocessor_plan is not None:
                 raise ValueError(
-                    f"base {self.key!r}: vl_preprocessor_plan is invalid "
-                    "on an audio-language base"
+                    f"base {self.key!r}: vl_preprocessor_plan is invalid on an audio-language base"
                 )
         else:  # "text"
             if self.vl_preprocessor_plan is not None:
