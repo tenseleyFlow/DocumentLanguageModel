@@ -341,6 +341,44 @@ dlm cache clear <path> [--force]
 See `docs/cookbook/directive-cache.md` for tuning, invalidation
 triggers, and maintenance patterns.
 
+### `dlm harvest`
+
+Pull failing-probe results from a sway-style eval report back into the
+document as `!probe`-tagged `::instruction::` sections for the next
+retrain. See `docs/cookbook/probe-driven-training.md`.
+
+```
+dlm harvest <path> --sway-json <report> [--apply] [--dry-run]
+                   [--tag NAME] [--min-confidence F]
+                   [--strict | --lax]
+dlm harvest <path> --revert
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--sway-json PATH` | required | Path to the sway probe report JSON. |
+| `--apply` | false | Write changes to disk. Without it, dry-run. |
+| `--dry-run` | true | Print the diff; no writes. |
+| `--revert` | — | Strip all `auto_harvest=True` sections; mutually exclusive with `--sway-json`. |
+| `--tag NAME` | `auto-harvest` | Provenance tag written into `harvest_source`. |
+| `--min-confidence F` | `0.0` | Skip candidates below this confidence. |
+| `--strict` / `--lax` | lax | Strict: fail if any failing probe lacks a reference. Lax: skip + log. |
+
+Exit codes: `0` success, `1` validation error (malformed JSON, strict
+miss, mutual-exclusion violation), `2` no candidates to harvest.
+
+### `dlm train --listen-rpc`
+
+During `--watch`, open a JSON-RPC endpoint that accepts `inject_probe`
+pushes from external eval harnesses. Requires `DLM_PROBE_TOKEN` in the
+environment. See `docs/cookbook/probe-driven-training.md` for the wire
+protocol and security notes.
+
+| Option | Default | Notes |
+|---|---|---|
+| `--listen-rpc HOST:PORT` | off | Bind the probe-RPC endpoint. Requires `--watch` or `--max-cycles`. |
+| `--max-cycles N` | `0` | Bounded-loop alternative to `--watch` for convergence runs (scaffolded — currently refuses execution without `--watch`). |
+
 ## Exit codes
 
 | Code | Meaning |
