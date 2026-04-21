@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from dlm.doc.schema import (
+    CURRENT_SCHEMA_VERSION,
     AdapterConfig,
     CptConfig,
     DlmFrontmatter,
@@ -401,7 +402,7 @@ class TestDlmFrontmatterForwardVersion:
 class TestDlmFrontmatter:
     def test_minimal_valid(self) -> None:
         fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="smollm2-135m")
-        assert fm.dlm_version == 5
+        assert fm.dlm_version == CURRENT_SCHEMA_VERSION
         assert fm.training == TrainingConfig()
         assert fm.export == ExportConfig()
         assert fm.system_prompt is None

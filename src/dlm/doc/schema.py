@@ -22,7 +22,7 @@ _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 # Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
 _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 5
+CURRENT_SCHEMA_VERSION: Final[int] = 6
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
@@ -32,7 +32,12 @@ DPO and ORPO under one `method`-switched config. v3 added the
 additive `training.cpt` block (DAPT schedule + embedding warm-up)
 for continued-pretraining refinements. v4 added the additive
 `training.adapters` map for named multi-adapter composition; flat
-`adapter`/`lora_*` keys remain the single-adapter shorthand.
+`adapter`/`lora_*` keys remain the single-adapter shorthand. v5
+added the additive `training.precision` override (opt-in fp16/bf16
+on MPS after the NaN-adapter bug). v6 adds the additive
+`training.sources` block — declarative file-tree directives that
+synthesize PROSE sections at train time, letting a `.dlm` act as a
+training plan over content stored elsewhere on disk.
 """
 
 
@@ -122,6 +127,33 @@ class AdapterConfig(BaseModel):
     learning_rate: float = Field(2e-4, gt=0.0)
 
 
+class SourceDirective(BaseModel):
+    """A directive to ingest file(s) as synthetic PROSE sections at train
+    time.
+
+    Paths resolve relative to the `.dlm` file's parent directory when
+    not absolute; `~` expands via `Path.expanduser()`. Under
+    `training.sources_policy="strict"` the resolved path must stay
+    under the `.dlm` parent dir (symlinks included — containment is
+    checked after `Path.resolve()`). `permissive` lets absolute paths
+    anywhere on disk.
+
+    `include` / `exclude` are POSIX-glob patterns relative to each
+    source root (default `("**/*",)` + `()` — every file matches).
+    Size caps apply per-file and per-directive; binary files (first-
+    KiB NUL scan) and non-UTF-8 bytes are skipped with a log warning,
+    never a fatal error, because mixed trees are the common case.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path: str = Field(..., min_length=1)
+    include: tuple[str, ...] = ("**/*",)
+    exclude: tuple[str, ...] = ()
+    max_bytes_per_file: int | None = Field(default=None, ge=1)
+    max_files: int | None = Field(default=None, ge=1)
+
+
 class TrainingConfig(BaseModel):
     """Training-time knobs. `auto` values are resolved by the hardware doctor."""
 
@@ -158,6 +190,19 @@ class TrainingConfig(BaseModel):
     # "which config wins?" semantics. An empty/None `adapters` keeps
     # the single-adapter shorthand fully backward-compatible.
     adapters: dict[str, AdapterConfig] | None = None
+    # Source directives (v6). Declarative file-tree ingestion — each
+    # entry becomes a walk-and-read at train time, synthesizing PROSE
+    # sections for the CPT path. `None` / empty keeps the `.dlm` as a
+    # self-contained training corpus; populated lets the document
+    # reference external codebases, notes directories, etc. See
+    # `dlm.directives.expand_sources`.
+    sources: tuple[SourceDirective, ...] | None = None
+    # `permissive` (default) lets directive paths point anywhere on
+    # disk. `strict` confines them to the `.dlm` parent subtree —
+    # useful when a `.dlm` travels with a project and the author wants
+    # training content to stay project-local regardless of where a
+    # downstream user places the file.
+    sources_policy: Literal["permissive", "strict"] = "permissive"
 
     @field_validator("micro_batch_size", "grad_accum")
     @classmethod
