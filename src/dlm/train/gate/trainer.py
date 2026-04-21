@@ -1,0 +1,287 @@
+"""Post-SFT gate training + persistence.
+
+The gate routes each prompt to a weighted combination of the document's
+named adapters. Training is short (200 steps by default) and cheap
+relative to SFT — runs after the SFT adapter commits so a failure here
+doesn't touch the trained weights.
+
+The supervision signal is the fence-tagged adapter label:
+
+    ::instruction#runtime:: → label = "runtime"
+    ::preference#tone::     → label = "tone"
+
+Prose sections without an adapter tag are dropped from the gate
+training set — they train into the SFT adapter but have no per-adapter
+routing signal.
+
+Loss: cross-entropy (the adapter tag is hard labeled) plus an entropy
+regularizer `λ * H(p)` on the softmax output. Entropy reg discourages
+mode collapse, where the gate learns to put all weight on one adapter.
+
+Cold-start fallback: if any declared adapter has fewer supervising
+sections than `cold_start_floor`, the trainer writes a uniform-mode
+`gate_config.json` and skips the training pass. Inference detects
+`mode=="uniform"` and synthesizes `[1/N, 1/N, ...]` directly — no
+weights file loaded.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from dlm.io.atomic import write_text as atomic_write_text
+from dlm.train.gate.errors import GateConfigError, GateTrainingError
+from dlm.train.gate.module import Gate, GateMetadata, build_gate
+from dlm.train.gate.paths import gate_config_path, gate_dir, gate_save_path
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    import torch
+
+    from dlm.store.paths import StorePath
+
+_LOG = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class GateTrainingSample:
+    """One supervising input for the gate.
+
+    `embedding` is the prompt representation produced by the base model
+    with all adapters disabled (typically mean-pooled last-hidden-state).
+    `adapter_name` is the routing label — must match one of the declared
+    adapter names passed to `train_gate`.
+    """
+
+    embedding: torch.Tensor
+    adapter_name: str
+
+
+@dataclass(frozen=True)
+class GateTrainingResult:
+    """Outcome of a `train_gate` call."""
+
+    mode: str  # "trained" | "uniform"
+    steps: int
+    final_loss: float | None
+    final_entropy: float | None
+    sample_count: int
+    # Per-adapter supervising sample count — the cold-start gate reads
+    # this map to decide the fallback.
+    per_adapter_samples: dict[str, int]
+
+
+def _count_per_adapter(
+    samples: Sequence[GateTrainingSample],
+    adapter_names: Sequence[str],
+) -> dict[str, int]:
+    counts = dict.fromkeys(adapter_names, 0)
+    for sample in samples:
+        if sample.adapter_name in counts:
+            counts[sample.adapter_name] += 1
+    return counts
+
+
+def _write_uniform_config(
+    store: StorePath,
+    *,
+    input_dim: int,
+    hidden_proj_dim: int,
+    adapter_names: Sequence[str],
+    entropy_lambda: float,
+) -> None:
+    """Persist a uniform-mode gate config (no weights file)."""
+    meta = GateMetadata(
+        input_dim=input_dim,
+        hidden_proj_dim=hidden_proj_dim,
+        adapter_names=tuple(adapter_names),
+        mode="uniform",
+        entropy_lambda=entropy_lambda,
+    )
+    gate_dir(store).mkdir(parents=True, exist_ok=True)
+    atomic_write_text(
+        gate_config_path(store),
+        json.dumps(meta.to_json(), indent=2, sort_keys=True) + "\n",
+    )
+
+
+def _save_trained_gate(
+    store: StorePath,
+    gate: Gate,
+    *,
+    adapter_names: Sequence[str],
+    entropy_lambda: float,
+) -> None:
+    from safetensors.torch import save_file
+
+    gate_dir(store).mkdir(parents=True, exist_ok=True)
+    state = {k: v.detach().cpu().contiguous() for k, v in gate.module.state_dict().items()}
+    save_file(state, str(gate_save_path(store)))
+    meta = GateMetadata(
+        input_dim=gate.input_dim,
+        hidden_proj_dim=gate.hidden_proj_dim,
+        adapter_names=tuple(adapter_names),
+        mode="trained",
+        entropy_lambda=entropy_lambda,
+    )
+    atomic_write_text(
+        gate_config_path(store),
+        json.dumps(meta.to_json(), indent=2, sort_keys=True) + "\n",
+    )
+
+
+def train_gate(  # noqa: PLR0913 — cycle driver has many deps by design
+    store: StorePath,
+    samples: Sequence[GateTrainingSample],
+    *,
+    adapter_names: Sequence[str],
+    input_dim: int,
+    hidden_proj_dim: int = 64,
+    steps: int = 200,
+    lr: float = 3e-4,
+    cold_start_floor: int = 4,
+    entropy_lambda: float = 0.01,
+    batch_size: int = 16,
+    seed: int = 42,
+    on_step: Callable[[int, float, float], None] | None = None,
+) -> GateTrainingResult:
+    """Train the gate on `samples` and persist it to `store`.
+
+    `on_step(step, loss, entropy)` is an observer hook for metrics /
+    logging. Raises `GateTrainingError` if training diverges (nan).
+
+    Cold-start fallback: if any adapter has fewer than `cold_start_floor`
+    supervising samples, skip training and write a uniform-mode config.
+    The returned `GateTrainingResult.mode == "uniform"`.
+    """
+    if len(adapter_names) < 2:
+        raise GateConfigError(f"train_gate requires >= 2 adapters, got {list(adapter_names)}")
+
+    per_adapter = _count_per_adapter(samples, adapter_names)
+    below_floor = [name for name, n in per_adapter.items() if n < cold_start_floor]
+    if below_floor:
+        _LOG.warning(
+            "gate: cold-start fallback — adapters %s have < %d supervising "
+            "sections (counts=%s); writing uniform gate_config.json",
+            below_floor,
+            cold_start_floor,
+            per_adapter,
+        )
+        _write_uniform_config(
+            store,
+            input_dim=input_dim,
+            hidden_proj_dim=hidden_proj_dim,
+            adapter_names=adapter_names,
+            entropy_lambda=entropy_lambda,
+        )
+        return GateTrainingResult(
+            mode="uniform",
+            steps=0,
+            final_loss=None,
+            final_entropy=None,
+            sample_count=len(samples),
+            per_adapter_samples=per_adapter,
+        )
+
+    import torch
+    from torch.nn import functional as F  # noqa: N812 — torch convention
+
+    torch.manual_seed(seed)
+
+    name_to_idx = {name: i for i, name in enumerate(adapter_names)}
+    xs = torch.stack([s.embedding.detach().to(torch.float32).reshape(-1) for s in samples])
+    ys = torch.tensor([name_to_idx[s.adapter_name] for s in samples], dtype=torch.long)
+    if xs.shape[1] != input_dim:
+        raise GateConfigError(f"sample embedding dim {xs.shape[1]} != input_dim {input_dim}")
+
+    gate = build_gate(
+        input_dim=input_dim,
+        hidden_proj_dim=hidden_proj_dim,
+        n_adapters=len(adapter_names),
+    )
+    optim = torch.optim.AdamW(gate.module.parameters(), lr=lr)
+
+    n = xs.shape[0]
+    rng = torch.Generator().manual_seed(seed)
+    last_loss: float | None = None
+    last_entropy: float | None = None
+
+    for step in range(steps):
+        idx = torch.randint(0, n, (min(batch_size, n),), generator=rng)
+        batch_x = xs[idx]
+        batch_y = ys[idx]
+        logits = gate.module(batch_x)
+        probs = F.softmax(logits, dim=-1)
+        ce = F.cross_entropy(logits, batch_y)
+        # Shannon entropy of the per-sample distribution, averaged
+        # across the batch. Subtract so the optimizer is incentivized
+        # to *keep* entropy (discourage mode collapse).
+        entropy = -(probs * torch.log(probs + 1e-9)).sum(dim=-1).mean()
+        loss = ce - entropy_lambda * entropy
+
+        if not torch.isfinite(loss):
+            raise GateTrainingError(
+                f"gate loss diverged to non-finite at step {step} (ce={ce.item()}, "
+                f"entropy={entropy.item()})"
+            )
+
+        optim.zero_grad(set_to_none=True)
+        loss.backward()  # type: ignore[no-untyped-call]
+        optim.step()
+
+        last_loss = float(loss.item())
+        last_entropy = float(entropy.item())
+        if on_step is not None:
+            on_step(step, last_loss, last_entropy)
+
+    _save_trained_gate(
+        store,
+        gate,
+        adapter_names=adapter_names,
+        entropy_lambda=entropy_lambda,
+    )
+    return GateTrainingResult(
+        mode="trained",
+        steps=steps,
+        final_loss=last_loss,
+        final_entropy=last_entropy,
+        sample_count=len(samples),
+        per_adapter_samples=per_adapter,
+    )
+
+
+def load_gate(store: StorePath) -> tuple[Gate | None, GateMetadata]:
+    """Load a persisted gate. Returns `(Gate, metadata)` for trained
+    gates, or `(None, metadata)` for uniform-mode gates — callers
+    synthesize the uniform weight vector themselves.
+
+    Raises `GateConfigError` when `gate_config.json` is missing or
+    malformed.
+    """
+    config_path = gate_config_path(store)
+    if not config_path.exists():
+        raise GateConfigError(f"gate_config.json not found at {config_path}")
+    raw = json.loads(config_path.read_text(encoding="utf-8"))
+    meta = GateMetadata.from_json(raw)
+    if meta.mode == "uniform":
+        return None, meta
+
+    from safetensors.torch import load_file
+
+    weights_path = gate_save_path(store)
+    if not weights_path.exists():
+        raise GateConfigError(f"gate mode is 'trained' but weights file {weights_path} is missing")
+
+    gate = build_gate(
+        input_dim=meta.input_dim,
+        hidden_proj_dim=meta.hidden_proj_dim,
+        n_adapters=meta.n_adapters,
+    )
+    state = load_file(str(weights_path))
+    gate.module.load_state_dict(state)
+    gate.module.eval()
+    return gate, meta
