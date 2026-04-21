@@ -84,12 +84,29 @@ _VL_DEFAULT_TOP_P: float = 0.9
 # tracked separately; this template assumes 0.4+.
 _VL_TEMPLATE_BODY: str = "{{ if .System }}{{ .System }}\n\n{{ end }}{{ .Image }}\n{{ .Prompt }}"
 
-# Minimal stop-token set for VL generation when the adapter's
-# tokenizer config doesn't ship explicit stops. PaliGemma's end-
-# of-turn marker is `<eos>`; Qwen2-VL uses `<|im_end|>`. The adapter's
-# `special_tokens_map.json` is the source of truth at runtime; this
-# is the last-resort default.
-_VL_FALLBACK_STOPS: tuple[str, ...] = ("<|im_end|>", "<eos>")
+# Per-architecture fallback stops for VL bases. The adapter's
+# `special_tokens_map.json` is the source of truth at runtime — these
+# kick in only when it's missing the EOS marker entirely.
+#
+# PaliGemma: Gemma-tokenizer `<eos>` alone; it's not an im_end family.
+# Qwen2-VL: chatml family, `<|im_end|>` is the turn boundary, plus
+#   `<|endoftext|>` for safety.
+# InternVL2: chatml-derived but its tokenizer also ships
+#   `<|endoftext|>` + `<|im_end|>` and some builds add `</s>`.
+# Any unknown architecture falls through to the union — the old
+# behavior, which we preserve so we don't silently drop a stop when a
+# new VL base lands before this table is updated.
+_VL_FALLBACK_STOPS_BY_ARCH: dict[str, tuple[str, ...]] = {
+    "PaliGemmaForConditionalGeneration": ("<eos>",),
+    "Qwen2VLForConditionalGeneration": ("<|im_end|>", "<|endoftext|>"),
+    "InternVLChatModel": ("<|im_end|>", "<|endoftext|>", "</s>"),
+}
+_VL_FALLBACK_STOPS_DEFAULT: tuple[str, ...] = ("<|im_end|>", "<eos>")
+
+
+def _fallback_stops_for(architecture: str) -> tuple[str, ...]:
+    """Return the per-family fallback stops, defaulting to the union."""
+    return _VL_FALLBACK_STOPS_BY_ARCH.get(architecture, _VL_FALLBACK_STOPS_DEFAULT)
 
 
 def render_vl_modelfile(ctx: VlModelfileContext) -> str:
@@ -100,7 +117,7 @@ def render_vl_modelfile(ctx: VlModelfileContext) -> str:
     directory supplies stop tokens + chat template just like the text
     path.
     """
-    stops = resolve_stops(ctx.adapter_dir, _vl_template_row())
+    stops = resolve_stops(ctx.adapter_dir, _vl_template_row(ctx.spec.architecture))
     header = build_header(
         dlm_version=ctx.dlm_version,
         dlm_id=ctx.dlm_id,
@@ -143,19 +160,20 @@ def render_vl_modelfile(ctx: VlModelfileContext) -> str:
     return "\n".join(parts) + "\n"
 
 
-def _vl_template_row() -> DialectTemplate:
+def _vl_template_row(architecture: str) -> DialectTemplate:
     """Fallback DialectTemplate used by `resolve_stops` for VL bases.
 
     The existing stops resolver reads from the adapter's
     `special_tokens_map.json` first, then falls back to the dialect
     row. VL bases don't map to one of the registered text dialects,
-    so we pass a synthetic row whose `default_stops` are the VL
-    fallback set.
+    so we pass a synthetic row whose `default_stops` are pulled from
+    the per-family table. This preserves the adapter-tokenizer-wins
+    precedence while giving each VL family its correct fallback.
     """
     return DialectTemplate(
         dialect="chatml",  # placeholder — resolve_stops only reads defaults
         template_path=Path("/dev/null"),
-        default_stops=_VL_FALLBACK_STOPS,
+        default_stops=_fallback_stops_for(architecture),
         default_temperature=_VL_DEFAULT_TEMPERATURE,
         default_top_p=_VL_DEFAULT_TOP_P,
         extra_stop_hints=(),
