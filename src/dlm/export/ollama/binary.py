@@ -20,9 +20,17 @@ from dlm.export.ollama.errors import (
 )
 
 # Audit F16: ollama 0.4.2 is the first release whose Modelfile grammar
-# matches the `TEMPLATE`/`ADAPTER`/`PARAMETER` shape Sprint 11 emits.
-# Bumping this requires a matching CI matrix update + grep sweep.
+# matches the `TEMPLATE`/`ADAPTER`/`PARAMETER` shape we emit for text
+# models. Bumping this requires a matching CI matrix update + grep sweep.
 OLLAMA_MIN_VERSION: Final[tuple[int, int, int]] = (0, 4, 2)
+
+# Vision-language Modelfiles emit `{{ .Image }}` in the TEMPLATE body —
+# ollama 0.4.0 is the first release that honors the directive. Earlier
+# versions silently drop it, producing a model that appears to work but
+# never sees the image bytes. VL callers enforce this floor on top of
+# OLLAMA_MIN_VERSION before feeding a rendered VL Modelfile to
+# `ollama create`.
+OLLAMA_VL_MIN_VERSION: Final[tuple[int, int, int]] = (0, 4, 0)
 
 # Common Ollama install paths on macOS + Linux. Tried after PATH lookup.
 _STANDARD_PATHS: Final[tuple[Path, ...]] = (
@@ -107,5 +115,24 @@ def check_ollama_version(binary: Path | None = None) -> tuple[int, int, int]:
         raise OllamaVersionError(
             detected=detected,
             required=OLLAMA_MIN_VERSION,
+        )
+    return detected
+
+
+def check_vl_ollama_version(binary: Path | None = None) -> tuple[int, int, int]:
+    """Assert the detected ollama supports VL's `{{ .Image }}` directive.
+
+    Callers that are about to feed a VL Modelfile to `ollama create`
+    should invoke this guard first. The VL TEMPLATE body relies on
+    `{{ .Image }}` for image injection; pre-0.4 releases parse the
+    directive as literal text and silently produce a model that
+    never sees image bytes — a hazard distinct from the generic
+    `OLLAMA_MIN_VERSION` floor since it's VL-specific.
+    """
+    detected = ollama_version(binary)
+    if detected < OLLAMA_VL_MIN_VERSION:
+        raise OllamaVersionError(
+            detected=detected,
+            required=OLLAMA_VL_MIN_VERSION,
         )
     return detected

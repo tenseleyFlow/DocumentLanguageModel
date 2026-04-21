@@ -16,6 +16,12 @@ Today's vendored llama.cpp tag doesn't fully support PaliGemma or
 InternVL2 GGUF export (see `dlm.export.arch_probe`), so this module
 produces output that isn't exercised end-to-end — only the render
 path is covered.
+
+Production callers that feed the rendered Modelfile to `ollama create`
+MUST call `dlm.export.ollama.binary.check_vl_ollama_version()` first.
+The `{{ .Image }}` directive in the TEMPLATE body is a no-op on
+ollama < 0.4; the check raises rather than shipping a silently-broken
+VL model. Unit tests that just render strings skip the check.
 """
 
 from __future__ import annotations
