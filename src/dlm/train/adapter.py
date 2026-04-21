@@ -37,6 +37,7 @@ def build_lora_config(
     lora_alpha: int,
     lora_dropout: float,
     tokenizer_grew: bool,
+    use_dora: bool = False,
 ) -> Any:
     """Return a `peft.LoraConfig` sized for `spec`.
 
@@ -46,6 +47,12 @@ def build_lora_config(
     inflates the adapter checkpoint size substantially; surfacing this
     at the LoRA level keeps the tradeoff auditable (CLAUDE.md pitfall
     #4 / audit F02).
+
+    `use_dora=True` switches from plain LoRA to DoRA (weight-
+    decomposed low-rank adaptation). DoRA factors each weight update
+    into a magnitude vector plus a direction (the standard LoRA pair);
+    reported to yield quality uplift over vanilla LoRA at the cost of
+    ~10% extra training wall-clock. Requires `peft >= 0.8`.
     """
     from peft import LoraConfig, TaskType
 
@@ -61,6 +68,7 @@ def build_lora_config(
         modules_to_save=modules_to_save,
         bias="none",
         task_type=TaskType.CAUSAL_LM,
+        use_dora=use_dora,
     )
 
 
@@ -132,6 +140,7 @@ def build_or_resume_adapter(  # pragma: no cover
     mode: Literal["fresh", "resume"],
     resume_path: Any = None,
     use_qlora: bool = False,
+    use_dora: bool = False,
     gradient_checkpointing: bool = False,
 ) -> Any:
     """Wrap `base_model` in a PEFT adapter, fresh or resumed.
@@ -158,5 +167,6 @@ def build_or_resume_adapter(  # pragma: no cover
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         tokenizer_grew=tokenizer_grew,
+        use_dora=use_dora,
     )
     return get_peft_model(base_model, config)
