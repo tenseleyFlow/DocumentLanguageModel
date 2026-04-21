@@ -6,6 +6,34 @@ the project targets [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`gguf_arch` preflight probe was silently false-negative on every
+  HF off-registry base.** Three compounding bugs surfaced while
+  trying to train against `hf:Qwen/Qwen3-1.7B`:
+  1. The probe's regex matched `@Model.register(...)` but upstream
+     llama.cpp renamed the decorator to `@ModelBase.register(...)`
+     mid-2024; the regex now accepts both forms.
+  2. The regex captured only the *first* quoted arg, silently
+     missing multi-arg decorators like
+     `@ModelBase.register("Qwen3ForCausalLM", "Qwen3Model")`; the
+     probe now extracts every quoted string inside the decorator's
+     arg list.
+  3. The probe compared `spec.gguf_arch` (short label like
+     `"qwen3"`) against the decorator's arguments, but llama.cpp
+     registers HF class names (`"Qwen3ForCausalLM"`) — different
+     namespaces, will never match. Comparison now uses
+     `spec.architecture`. The bug was invisible because registered
+     models bypass the probe entirely; it only bit `hf:` paths.
+
+### Added
+
+- **`dlm train --skip-export-probes`** mirrors the flag on `dlm init`
+  (it was missing from the train CLI; a user could `dlm init
+  --skip-export-probes` a fresh .dlm then have `dlm train` re-run
+  the probes and fail). The flag threads into `resolve_base_model`
+  identically on both paths; help text matches verbatim.
+
 ## [0.10.0] — 2026-04-21
 
 Four phases of work in a single release: advanced training, expanded
