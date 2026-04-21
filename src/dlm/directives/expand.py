@@ -85,6 +85,12 @@ def expand_sources(parsed: ParsedDlm, *, base_path: Path) -> ExpandResult:
     because unit tests commonly synthesize `ParsedDlm` with
     `source_path=None`.
 
+    When the `.dlm` lives under a `.dlm/` metadata directory (the
+    scaffolded shape at `<corpus>/.dlm/corpus.dlm`), the user's
+    intended anchor is the corpus directory, not the metadata
+    directory — so relative resolution and strict confinement use the
+    grandparent as the effective base. Fixes Audit-09 B2.
+
     Returns an `ExpandResult` with an empty sections tuple when the
     frontmatter has no directives — callers can unconditionally
     concatenate without a None check.
@@ -94,6 +100,9 @@ def expand_sources(parsed: ParsedDlm, *, base_path: Path) -> ExpandResult:
     if not directives:
         return ExpandResult(sections=(), provenance=(), discovered=())
 
+    effective_base = (
+        base_path.parent if base_path.name == ".dlm" else base_path
+    )
     strict = training.sources_policy == "strict"
     sections: list[Section] = []
     provenance: list[SourceProvenance] = []
@@ -101,11 +110,12 @@ def expand_sources(parsed: ParsedDlm, *, base_path: Path) -> ExpandResult:
 
     for directive in directives:
         root_raw = Path(directive.path)
-        # Relative paths anchor on base_path (the .dlm's parent).
+        # Relative paths anchor on effective_base (the corpus dir for
+        # scaffolded .dlms, the .dlm's parent otherwise).
         if not root_raw.is_absolute() and not directive.path.startswith("~"):
-            root_raw = base_path / root_raw
+            root_raw = effective_base / root_raw
 
-        resolved_root = confine_path(root_raw, base_path, strict=strict)
+        resolved_root = confine_path(root_raw, effective_base, strict=strict)
         if not resolved_root.exists():
             raise DirectivePathError(resolved_root, "path does not exist")
 

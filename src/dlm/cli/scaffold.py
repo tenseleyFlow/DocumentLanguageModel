@@ -144,6 +144,7 @@ def scaffold_train_target(
         exclude=exclude,
         recursive=recursive,
         policy=policy,
+        target=target,
     )
     _LOG.info(
         "scaffold: wrote %s (dlm_id=%s, base=%s)", dlm_path, dlm_id, base
@@ -166,6 +167,7 @@ def _write_scaffold(
     exclude: tuple[str, ...],
     recursive: bool,
     policy: Policy,
+    target: Path,
 ) -> None:
     """Serialize a minimal `.dlm` frontmatter + body to `dlm_path`.
 
@@ -174,6 +176,12 @@ def _write_scaffold(
     the frontmatter is a fixed shape, and keeping the write path
     independent of the full parser simplifies bootstrapping for
     directory-first users.
+
+    The `path:` field is the absolute resolved `target`, not `"."`. A
+    relative `"."` would anchor on `dlm_path.parent` (the `.dlm/`
+    directory), which doesn't contain the user's files and is
+    default-excluded by the descent protocol — the first scaffolded
+    train would ingest zero content.
     """
     effective_include = _build_include_globs(include, recursive=recursive)
     lines: list[str] = [
@@ -184,7 +192,7 @@ def _write_scaffold(
         "training:",
         f"  sources_policy: {policy}",
         "  sources:",
-        '    - path: "."',
+        f'    - path: "{target.resolve().as_posix()}"',
         "      include:",
     ]
     for pat in effective_include:
