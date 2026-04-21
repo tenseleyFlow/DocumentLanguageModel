@@ -27,6 +27,7 @@ from dlm.metrics.db import connect
 from dlm.metrics.events import (
     EvalEvent,
     ExportEvent,
+    GateEvent,
     RunEnd,
     RunStart,
     StepEvent,
@@ -143,6 +144,24 @@ class MetricsRecorder:
                     event.cache_misses,
                     event.total_tokenize_seconds,
                     event.cache_bytes_after,
+                    event.at,
+                ),
+            )
+
+        self._with_conn(_do)
+
+    def record_gate(self, event: GateEvent) -> None:
+        def _do(conn: sqlite3.Connection) -> None:
+            conn.execute(
+                "INSERT OR REPLACE INTO gate_events "
+                "(run_id, adapter_name, mean_weight, sample_count, mode, at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    event.run_id,
+                    event.adapter_name,
+                    event.mean_weight,
+                    event.sample_count,
+                    event.mode,
                     event.at,
                 ),
             )

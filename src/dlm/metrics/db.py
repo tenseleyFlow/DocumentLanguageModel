@@ -85,6 +85,17 @@ _SCHEMA_SQL = [
         at                      TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS gate_events (
+        run_id        INTEGER NOT NULL REFERENCES runs(run_id),
+        adapter_name  TEXT NOT NULL,
+        mean_weight   REAL NOT NULL,
+        sample_count  INTEGER NOT NULL,
+        mode          TEXT NOT NULL,
+        at            TEXT NOT NULL,
+        PRIMARY KEY (run_id, adapter_name)
+    )
+    """,
 ]
 
 

@@ -105,6 +105,30 @@ class TokenizationEvent:
 
 
 @dataclass(frozen=True)
+class GateEvent:
+    """Emitted after the post-SFT gate training pass (Sprint 34).
+
+    Records per-adapter routing statistics so operators can see which
+    adapter the gate learned to prefer on average. ``mean_weight`` is
+    the softmax average across supervising samples; ``sample_count``
+    is how many sections trained that adapter. ``mode`` is ``trained``
+    when the gate trained normally or ``uniform`` when the cold-start
+    fallback fired.
+    """
+
+    run_id: int
+    adapter_name: str
+    mean_weight: float
+    sample_count: int
+    mode: str  # "trained" | "uniform"
+    at: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.at:
+            object.__setattr__(self, "at", _utc_iso())
+
+
+@dataclass(frozen=True)
 class ExportEvent:
     """Emitted from `dlm export` on completion."""
 
