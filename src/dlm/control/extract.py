@@ -31,6 +31,12 @@ import numpy as np
 
 from dlm.control.errors import ControlExtractError, ControlPolicyRefusal
 
+# Minimum |cos(angle)| between principal SVD direction and mean(diffs)
+# for the sign-alignment step to be meaningful. 0.1 is a practical
+# "loosely aligned" floor — below it, the mean pull is essentially
+# orthogonal to the direction and the sign flip is dominated by noise.
+_SIGN_ALIGN_THRESHOLD: float = 0.1
+
 
 @dataclass(frozen=True)
 class ControlVector:
@@ -118,8 +124,27 @@ def extract_control_vector(
     # is unique only up to sign), which would make extraction
     # non-reproducible across numpy versions. Convention: positive
     # strength pushes toward chosen, so align with mean(diffs).
+    #
+    # Threshold check: when the principal direction is near-orthogonal
+    # to the mean pull, |cos(angle)| is near zero and the sign decision
+    # is dominated by numerical noise — two runs on slightly different
+    # data would produce opposite signs. That's a meaningless vector,
+    # not a steering direction; reject rather than ship a coin-flip.
     mean_pull = diffs.mean(axis=0)
-    if float(np.dot(direction, mean_pull)) < 0:
+    mean_pull_norm = float(np.linalg.norm(mean_pull))
+    dot = float(np.dot(direction, mean_pull))
+    if mean_pull_norm > 0.0:
+        cos_align = abs(dot) / mean_pull_norm  # direction is already unit-length
+        if cos_align < _SIGN_ALIGN_THRESHOLD:
+            raise ControlExtractError(
+                "principal SVD direction is near-orthogonal to mean(diffs) "
+                f"(|cos|={cos_align:.3f} < {_SIGN_ALIGN_THRESHOLD}). "
+                "This means the preference pairs disagree enough that the "
+                "sign of the extracted direction is unstable — two runs on "
+                "similar data would emit opposite vectors. Gather more "
+                "coherent pairs or check that chosen/rejected are not swapped."
+            )
+    if dot < 0:
         direction = -direction
 
     explained = float(singular_values[0] ** 2 / total_energy)
