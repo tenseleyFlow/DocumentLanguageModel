@@ -64,6 +64,7 @@ TOKENIZED_CACHE_DIR: Final = "tokenized-cache"
 CONTROLS_DIR: Final = "controls"
 BLOBS_DIR: Final = "blobs"
 VL_CACHE_DIR: Final = "vl-cache"
+AUDIO_CACHE_DIR: Final = "audio-cache"
 LOGS_DIR: Final = "logs"
 
 # Under adapter/

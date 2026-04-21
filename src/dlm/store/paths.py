@@ -28,6 +28,7 @@ from dlm.store.layout import (
     ADAPTER_DIR,
     ADAPTER_VERSIONS_DIR,
     ALWAYS_CREATE_DIRS,
+    AUDIO_CACHE_DIR,
     BLOBS_DIR,
     CACHE_DIR,
     CONTROLS_DIR,
@@ -197,6 +198,17 @@ class StorePath:
         `(section_id, tokenizer_sha, sequence_len)`. Lazy.
         """
         return self.root / VL_CACHE_DIR
+
+    @property
+    def audio_cache_dir(self) -> Path:
+        """Per-store audio preprocessor tensor cache (Sprint 35.2).
+
+        Parallel to `vl_cache_dir`. Keyed on
+        `(blob_sha, processor_sha, sample_rate, max_length_seconds)` —
+        any of those four changing invalidates the entry. Lazy; created
+        on first `AudioCache.put`.
+        """
+        return self.root / AUDIO_CACHE_DIR
 
     @property
     def controls_dir(self) -> Path:
