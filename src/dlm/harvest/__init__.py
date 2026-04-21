@@ -13,13 +13,13 @@ Public surface:
 - :func:`build_plan` / :class:`HarvestPlan` — dedup candidates
   against the current document, materialize Sections.
 - :func:`render_plan` — plain-text diff for ``--dry-run``.
-- :func:`apply_plan` / :func:`revert_last_harvest` — commit the
+- :func:`apply_plan` / :func:`revert_all_auto_harvests` — commit the
   plan to disk (or strip auto-harvested sections on revert).
 """
 
 from __future__ import annotations
 
-from dlm.harvest.applier import HarvestSummary, apply_plan, revert_last_harvest
+from dlm.harvest.applier import HarvestSummary, apply_plan, revert_all_auto_harvests
 from dlm.harvest.diff import (
     HarvestPlan,
     PlannedAddition,
@@ -49,5 +49,5 @@ __all__ = [
     "build_plan",
     "read_sway_report",
     "render_plan",
-    "revert_last_harvest",
+    "revert_all_auto_harvests",
 ]

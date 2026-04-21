@@ -189,7 +189,8 @@ class TestHarvestCmd:
         # Then revert
         result = runner.invoke(app, ["--home", str(tmp_path), "harvest", str(doc), "--revert"])
         assert result.exit_code == 0, result.output
-        assert "reverted 1" in result.output
+        assert "stripped 1" in result.output
+        assert "all harvest runs" in result.output
 
         from dlm.doc.parser import parse_file
 

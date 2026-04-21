@@ -22,7 +22,7 @@ from dlm.io.atomic import write_text as atomic_write_text
 
 @dataclass(frozen=True)
 class HarvestSummary:
-    """Outcome of :func:`apply_plan` or :func:`revert_last_harvest`."""
+    """Outcome of :func:`apply_plan` or :func:`revert_all_auto_harvests`."""
 
     target: Path
     added: int
@@ -49,13 +49,17 @@ def apply_plan(parsed: ParsedDlm, plan: HarvestPlan, *, target: Path) -> Harvest
     )
 
 
-def revert_last_harvest(parsed: ParsedDlm, *, target: Path) -> HarvestSummary:
+def revert_all_auto_harvests(parsed: ParsedDlm, *, target: Path) -> HarvestSummary:
     """Strip every `auto_harvest=True` section and rewrite `target`.
 
-    Coarser than "undo the last harvest" — any auto-harvested section
-    is removed regardless of which harvest run added it. This matches
-    the sprint spec's `--revert HEAD` UX: users audit the diff before
-    applying, so "undo all auto-edits" is the safe escape hatch.
+    Coarser than an "undo-the-most-recent-harvest" operation — any
+    auto-harvested section is removed, regardless of which harvest run
+    added it. We don't track per-run provenance in the section tags, so
+    fine-grained per-harvest rollback isn't possible without schema
+    work. "Undo all auto-edits" is the safe escape hatch users reach
+    for after reviewing a diff anyway; if fine-grained rollback becomes
+    a real need, a follow-up adds a run_id tag and a
+    `revert_by_run(run_id)` sibling.
     """
     survivors = tuple(s for s in parsed.sections if not s.auto_harvest)
     removed_ids = tuple(s.section_id for s in parsed.sections if s.auto_harvest)

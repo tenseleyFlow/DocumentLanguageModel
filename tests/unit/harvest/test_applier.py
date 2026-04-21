@@ -9,7 +9,7 @@ from dlm.harvest import (
     HarvestCandidate,
     apply_plan,
     build_plan,
-    revert_last_harvest,
+    revert_all_auto_harvests,
 )
 
 _FRONTMATTER = """---
@@ -88,7 +88,7 @@ class TestRevertLastHarvest:
         # Now revert
         parsed_with_harvest = parse_file(target)
         assert any(s.auto_harvest for s in parsed_with_harvest.sections)
-        summary = revert_last_harvest(parsed_with_harvest, target=target)
+        summary = revert_all_auto_harvests(parsed_with_harvest, target=target)
 
         assert summary.added == 0
         # summary.added_section_ids carries the IDs of the REMOVED sections
@@ -103,7 +103,7 @@ class TestRevertLastHarvest:
         target = tmp_path / "doc.dlm"
         _write_dlm(target, "## hello\n")
         parsed = parse_file(target)
-        summary = revert_last_harvest(parsed, target=target)
+        summary = revert_all_auto_harvests(parsed, target=target)
 
         assert summary.added == 0
         assert summary.added_section_ids == ()

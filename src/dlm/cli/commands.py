@@ -3572,7 +3572,7 @@ def harvest_cmd(
         build_plan,
         read_sway_report,
         render_plan,
-        revert_last_harvest,
+        revert_all_auto_harvests,
     )
 
     console = Console(stderr=True)
@@ -3597,10 +3597,10 @@ def harvest_cmd(
         raise typer.Exit(code=1) from exc
 
     if revert:
-        summary = revert_last_harvest(parsed, target=path)
+        summary = revert_all_auto_harvests(parsed, target=path)
         out_console.print(
-            f"[green]harvest:[/green] reverted {len(summary.added_section_ids)} "
-            f"auto-harvested section(s) from {path}"
+            f"[green]harvest:[/green] stripped {len(summary.added_section_ids)} "
+            f"auto-harvested section(s) from {path} (all harvest runs, not just last)"
         )
         return
 
