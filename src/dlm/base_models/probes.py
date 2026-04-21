@@ -392,6 +392,83 @@ def probe_pretokenizer_hash(
     )
 
 
+def probe_vl_image_token(spec: BaseModelSpec) -> ProbeResult:
+    """Verify the processor exposes the spec's image-placeholder token.
+
+    For `modality="vision-language"` bases the preprocessor plan pins
+    `image_token` (e.g. `"<image>"`). `AutoProcessor.from_pretrained`
+    must expose it as a known additional-special token — otherwise
+    mixed-row collation can't expand the placeholder into the model's
+    fixed `num_image_tokens` slots and training silently runs on
+    text-only rows.
+
+    Text-modality bases skip this probe cleanly.
+    """
+    if spec.modality != "vision-language" or spec.vl_preprocessor_plan is None:
+        return ProbeResult(
+            name="vl_image_token",
+            passed=True,
+            detail="skipped: spec is not a vision-language base",
+            skipped=True,
+        )
+
+    try:
+        from huggingface_hub.errors import GatedRepoError
+        from transformers import AutoProcessor
+    except ImportError as exc:  # pragma: no cover
+        return ProbeResult(
+            name="vl_image_token",
+            passed=True,
+            detail=f"skipped: transformers unavailable ({exc})",
+            skipped=True,
+        )
+
+    try:
+        processor = AutoProcessor.from_pretrained(spec.hf_id, revision=spec.revision)
+    except GatedRepoError as exc:
+        raise GatedModelError(spec.hf_id, spec.license_url) from exc
+    except Exception as exc:
+        return ProbeResult(
+            name="vl_image_token",
+            passed=False,
+            detail=f"processor load failed: {type(exc).__name__}: {exc}",
+        )
+
+    # AutoProcessor wraps a tokenizer on `.tokenizer`. The image
+    # placeholder must tokenize to a *single* known token — otherwise
+    # the collator can't locate the insertion points deterministically.
+    placeholder = spec.vl_preprocessor_plan.image_token
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is None:
+        return ProbeResult(
+            name="vl_image_token",
+            passed=False,
+            detail="processor has no `.tokenizer` attribute",
+        )
+    try:
+        token_ids = tokenizer.encode(placeholder, add_special_tokens=False)
+    except Exception as exc:
+        return ProbeResult(
+            name="vl_image_token",
+            passed=False,
+            detail=f"tokenizer rejected placeholder {placeholder!r}: {exc}",
+        )
+    if len(token_ids) != 1:
+        return ProbeResult(
+            name="vl_image_token",
+            passed=False,
+            detail=(
+                f"placeholder {placeholder!r} tokenized to "
+                f"{len(token_ids)} tokens (expected 1)"
+            ),
+        )
+    return ProbeResult(
+        name="vl_image_token",
+        passed=True,
+        detail=f"placeholder {placeholder!r} resolves to token id {token_ids[0]}",
+    )
+
+
 # --- aggregate ---------------------------------------------------------------
 
 
@@ -408,13 +485,19 @@ def run_all(spec: BaseModelSpec, *, skip_export_probes: bool = False) -> ProbeRe
     + HF inference on a base whose architecture ships faster than our
     vendored llama.cpp can absorb (e.g. brand-new Qwen3 on a llama.cpp
     pin from last month). They forfeit `dlm export` to Ollama until
-    the vendored copy catches up.
+    the vendored copy catches up. VL bases auto-opt-out of export
+    probes — GGUF conversion for VL archs is tracked in Sprint 35.4.
     """
-    core = (
-        probe_architecture(spec),
-        probe_chat_template(spec),
-    )
-    if skip_export_probes:
+    core: tuple[ProbeResult, ...] = (probe_architecture(spec),)
+    if spec.modality == "vision-language":
+        core = (*core, probe_vl_image_token(spec))
+    else:
+        core = (*core, probe_chat_template(spec))
+
+    # VL bases bypass the llama.cpp-converter probes: converter support
+    # for VL archs is Sprint 35.4's scope. The export path refuses
+    # cleanly without probing a converter that doesn't know the arch.
+    if skip_export_probes or spec.modality == "vision-language":
         return ProbeReport(hf_id=spec.hf_id, results=core)
     results = (
         *core,
