@@ -5,6 +5,8 @@ Heavy imports (`transformers`, `peft`, `torch`) are deferred.
 
 from __future__ import annotations
 
+from dlm.inference.audio_generate import format_audio_prompt, generate_audio, load_audios
+from dlm.inference.audio_loader import LoadedAudioInference, load_for_audio_inference
 from dlm.inference.errors import (
     AdapterNotFoundError,
     InferenceError,
@@ -28,15 +30,20 @@ __all__ = [
     "InferenceError",
     "InferencePlan",
     "InferencePlanError",
+    "LoadedAudioInference",
     "LoadedInference",
     "LoadedVlInference",
     "PrecisionLit",
     "build_generate_kwargs",
     "build_load_kwargs",
+    "format_audio_prompt",
     "format_chat_prompt",
     "format_vl_prompt",
     "generate",
+    "generate_audio",
     "generate_vl",
+    "load_audios",
+    "load_for_audio_inference",
     "load_for_inference",
     "load_for_vl_inference",
     "load_images",
