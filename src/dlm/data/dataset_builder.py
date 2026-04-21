@@ -27,6 +27,8 @@ from dlm.doc.sections import Section
 if TYPE_CHECKING:
     from datasets import Dataset
 
+    from dlm.store.blobs import BlobStore
+
 Row = dict[str, Any]
 
 
@@ -37,6 +39,8 @@ def build_dataset(
     seed: int,
     replay_rows: Iterable[Row] | None = None,
     weights: Mapping[str, Mapping[str, float]] | None = None,
+    blob_store: BlobStore | None = None,
+    image_token: str = "<image>",
 ) -> tuple[Dataset, Dataset]:
     """Build a (train, val) `Dataset` pair from parsed `.dlm` sections.
 
@@ -48,8 +52,12 @@ def build_dataset(
     rows, fractional factors drive a deterministic per-section keep
     decision. The expansion applies to both in-document and replay
     rows so retention behaves uniformly.
+
+    `blob_store` + `image_token` flow through to `sections_to_rows` for
+    IMAGE-section emission (Sprint 35 v1). Callers with VL bases must
+    supply the store; text-only documents leave the defaults.
     """
-    rows = sections_to_rows(sections)
+    rows = sections_to_rows(sections, blob_store=blob_store, image_token=image_token)
     if replay_rows is not None:
         rows.extend(replay_rows)
 
