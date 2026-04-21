@@ -42,9 +42,13 @@ class CacheKey:
         """Stable shard/name for on-disk storage.
 
         Format: `<section_id>.<tok_sha[:12]>.seq<sequence_len>.npz`.
-        The 12-char tokenizer-sha prefix is plenty to avoid collisions
-        within a cache (one prefix per tokenizer family); the full sha
-        is persisted in the manifest for verification.
+        The 12-char tokenizer-sha prefix (48 bits) is plenty to avoid
+        collisions within a cache: caches are per-store, typical stores
+        see O(1) tokenizer families (one pinned fingerprint per base
+        model), so the collision space is "one entry per section per
+        tokenizer family" — astronomically far from the 2^24-entry
+        birthday threshold. The full sha is persisted in the manifest
+        for verification if a collision ever occurs in practice.
         """
         return (
             f"{self.section_id}.{self.tokenizer_sha[:12]}.seq{self.sequence_len}.npz"
