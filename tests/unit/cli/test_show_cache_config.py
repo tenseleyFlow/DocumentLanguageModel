@@ -21,11 +21,8 @@ def _write_doc(path: Path, *, enabled: bool | None = None, max_bytes: int | None
             cache_lines.append(f"    max_bytes: {max_bytes}")
     body = "\n".join(cache_lines) + ("\n" if cache_lines else "")
     path.write_text(
-        "---\n"
-        "dlm_id: 01KPQ9SHWCACHE00000000000000"[:33] + "\n"
-        "base_model: smollm2-135m\n"
-        + body
-        + "---\n"
+        "---\ndlm_id: 01KPQ9SHWCACHE00000000000000"[:33] + "\n"
+        "base_model: smollm2-135m\n" + body + "---\n"
         "body\n",
         encoding="utf-8",
     )
@@ -46,11 +43,7 @@ def test_json_reports_cache_config_defaults(tmp_path: Path) -> None:
     `training_cache_config`."""
     doc = tmp_path / "doc.dlm"
     doc.write_text(
-        "---\n"
-        "dlm_id: 01KPQ9SHWCACHE000000000000\n"
-        "base_model: smollm2-135m\n"
-        "---\n"
-        "body\n",
+        "---\ndlm_id: 01KPQ9SHWCACHE000000000000\nbase_model: smollm2-135m\n---\nbody\n",
         encoding="utf-8",
     )
 
@@ -97,11 +90,7 @@ def test_cache_config_present_even_without_store(tmp_path: Path) -> None:
     not derived from on-disk state."""
     doc = tmp_path / "doc.dlm"
     doc.write_text(
-        "---\n"
-        "dlm_id: 01KPQ9SHWCACHE000000000000\n"
-        "base_model: smollm2-135m\n"
-        "---\n"
-        "body\n",
+        "---\ndlm_id: 01KPQ9SHWCACHE000000000000\nbase_model: smollm2-135m\n---\nbody\n",
         encoding="utf-8",
     )
 

@@ -205,9 +205,7 @@ def latest_gate_events(store_root: Path) -> list[GateEventRow]:
     gate. Empty list when no run has gate-event rows yet."""
     try:
         with connect(store_root) as conn:
-            row = conn.execute(
-                "SELECT MAX(run_id) FROM gate_events"
-            ).fetchone()
+            row = conn.execute("SELECT MAX(run_id) FROM gate_events").fetchone()
     except sqlite3.Error:
         return []
     if row is None or row[0] is None:

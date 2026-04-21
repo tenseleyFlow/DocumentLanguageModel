@@ -850,9 +850,7 @@ def _maybe_pretokenize_datasets(  # pragma: no cover — real path is covered by
         # Sprint 31.6: `training.cache.max_bytes` overrides the cache
         # module's 10 GiB default. Pre-v9 docs inherit the default via
         # the CacheConfig factory.
-        cache = TokenizedCache.open(
-            store.tokenized_cache_dir, max_bytes=training.cache.max_bytes
-        )
+        cache = TokenizedCache.open(store.tokenized_cache_dir, max_bytes=training.cache.max_bytes)
         seq_len = training.sequence_len
 
         train_rows = [dict(r) for r in train_ds]

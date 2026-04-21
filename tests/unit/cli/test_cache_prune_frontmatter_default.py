@@ -18,17 +18,11 @@ from dlm.cli.app import app
 def _write_doc(path: Path, *, prune_days: int | None = None) -> None:
     cache_block = ""
     if prune_days is not None:
-        cache_block = (
-            "training:\n"
-            "  cache:\n"
-            f"    prune_older_than_days: {prune_days}\n"
-        )
+        cache_block = f"training:\n  cache:\n    prune_older_than_days: {prune_days}\n"
     path.write_text(
         "---\n"
         "dlm_id: 01KPQ9PRNE" + "0" * 16 + "\n"
-        "base_model: smollm2-135m\n"
-        + cache_block
-        + "---\n"
+        "base_model: smollm2-135m\n" + cache_block + "---\n"
         "body\n",
         encoding="utf-8",
     )
