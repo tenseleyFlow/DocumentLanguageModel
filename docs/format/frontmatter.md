@@ -59,6 +59,7 @@ training:
   optimizer: adamw_torch          # or adamw_bnb_8bit / paged_adamw_8bit
   lr_scheduler: cosine            # or linear / constant
   warmup_ratio: 0.1               # 0.0..0.5
+  # precision: fp16               # optional override; default lets the doctor pick
   seed: 42
 export:
   default_quant: Q4_K_M           # or Q5_K_M / Q6_K / Q8_0
@@ -97,6 +98,7 @@ export:
 | `optimizer` | enum | `adamw_torch` | `adamw_bnb_8bit` / `paged_adamw_8bit` for CUDA + bnb. |
 | `lr_scheduler` | enum | `cosine` | |
 | `warmup_ratio` | float 0..0.5 | 0.1 | |
+| `precision` | `bf16` / `fp16` / `fp32` or null | null | Override the doctor's auto-pick. Defaults: bf16 on Ampere+/ROCm-bf16, fp16 on older CUDA, **fp32 on MPS** (the MPS fp16 attention kernels produce NaN LoRA weights on tiny-data SFT — see bug note below). Set `fp16` on MPS only if you need the memory headroom for a 7–8B base and your data isn't pathologically small; the post-train finite-weights gate will still refuse to persist a corrupt adapter. |
 | `seed` | int | 42 | Determinism seed. Changing it invalidates the [determinism golden](../determinism.md). |
 
 ### `export`
