@@ -1,7 +1,7 @@
-"""HF-snapshot export for audio-language bases (Sprint 35.2).
+"""HF-snapshot export for audio-language bases.
 
 Parallel to `vl_snapshot.py`. GGUF conversion for audio architectures
-isn't on llama.cpp's roadmap, so Sprint 35.2 emits an HF snapshot: a
+isn't on llama.cpp's roadmap, so this path emits an HF snapshot: a
 self-contained directory a recipient can load with
 `AutoProcessor.from_pretrained` + architecture-class `from_pretrained`
 + `PeftModel.from_pretrained`.
@@ -76,7 +76,7 @@ class AudioSnapshotManifest(BaseModel):
     rationale: str = Field(
         default=(
             "Audio-language architectures are not on the llama.cpp "
-            "roadmap; Sprint 35.2 emits an HF-snapshot fallback so "
+            "roadmap; this build emits an HF-snapshot fallback so "
             "users can share trained adapters without waiting for "
             "upstream GGUF support."
         ),

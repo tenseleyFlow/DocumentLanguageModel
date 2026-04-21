@@ -1,10 +1,11 @@
-"""Audio preprocessor tensor cache (Sprint 35.2).
+"""Audio preprocessor tensor cache.
 
 Mirrors `vl_cache.py`. Keyed on
 `(blob_sha, processor_sha, sample_rate, max_length_seconds)` — a blob
 bytes change, a processor / feature-extractor upgrade, a sample-rate
 pin change, or a duration-cap change each invalidate the entry.
-Orthogonal to the tokenized-section cache (Sprint 31).
+Orthogonal to the tokenized-section cache (which is keyed on
+tokenizer sha, not audio processor sha).
 
 Layout: `<audio-cache>/<blob_sha[:2]>/<blob_sha>.<proc_sha[:12]>.<sr>.<ms>.npz`.
 Contents: a single numpy array stored under the key `input_features`.

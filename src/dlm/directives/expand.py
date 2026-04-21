@@ -52,10 +52,10 @@ _IMAGE_EXTENSIONS: Final[frozenset[str]] = frozenset(
     {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
 )
 
-# File extensions dispatched to the blob store as AUDIO sections
-# (Sprint 35.2). `.mp3` / `.m4a` deferred — soundfile can't decode
-# them without libsndfile MP3 support, which isn't in the v1 runtime
-# dep tree. Users with mp3 corpora re-encode to wav/flac first.
+# File extensions dispatched to the blob store as AUDIO sections.
+# `.mp3` / `.m4a` deferred — soundfile can't decode them without
+# libsndfile MP3 support, which isn't in our runtime dep tree.
+# Users with mp3 corpora re-encode to wav/flac first.
 _AUDIO_EXTENSIONS: Final[frozenset[str]] = frozenset({".wav", ".flac", ".ogg"})
 
 # Sidecar transcript filename suffix: `clips/hello.wav` pairs with
@@ -275,8 +275,8 @@ def _expand_one(
             image_bytes += handle.size
             continue
 
-        # Audio-extension dispatch (Sprint 35.2). Same shape as image
-        # but requires a `<stem>.txt` sidecar for the transcript —
+        # Audio-extension dispatch: same shape as image but requires
+        # a `<stem>.txt` sidecar for the transcript —
         # audio without text has no training signal. Missing sidecar
         # is a skip (with an explicit counter), not a hard raise,
         # because a mixed corpus may have both "for-training" audio

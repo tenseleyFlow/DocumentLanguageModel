@@ -1,4 +1,4 @@
-"""Custom data collator for audio-language training (Sprint 35.2 T8).
+"""Custom data collator for audio-language training.
 
 TRL 1.2 ships `DataCollatorForVisionLanguageModeling` for VL bases but
 does **not** ship an audio equivalent. This module fills the gap: it
@@ -13,9 +13,9 @@ Design choices:
 - Rows carry `audio_path` + `audio_blob_sha` (not decoded waveforms).
   This keeps the HF `Dataset` rows small and lets the collator decide
   whether to decode per-batch or hit the cache.
-- The optional `WaveformCache` (Sprint 35.2 deferred-item follow-up)
-  memoizes the `soundfile decode → mono-mix → truncate` pipeline on
-  disk, keyed on `(blob_sha, sample_rate, max_length_ms)`. The HF
+- The optional `WaveformCache` memoizes the
+  `soundfile decode → mono-mix → truncate` pipeline on disk, keyed on
+  `(blob_sha, sample_rate, max_length_ms)`. The HF
   processor's feature extractor still runs every batch — caching its
   output would require re-implementing Qwen2-Audio's text-expansion
   logic (the processor derives per-audio placeholder counts from
@@ -167,8 +167,8 @@ class AudioLmCollator:
         Truncates to the configured duration.
         """
         # Cache lookup: only when both the cache is configured and the
-        # row carries a blob sha (rows built before Sprint 35.2 T7 may
-        # not have one; skip the cache rather than break them).
+        # row carries a blob sha (older row shapes may not have one;
+        # skip the cache rather than break them).
         cache_key: WaveformCacheKey | None = None
         if self._waveform_cache is not None and blob_sha is not None:
             cache_key = WaveformCacheKey(

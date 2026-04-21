@@ -3,10 +3,10 @@
 Parallel to `dlm.inference.loader` — the text path loads
 `AutoModelForCausalLM` + a tokenizer; this path loads
 `AutoModelForImageTextToText` + the full `AutoProcessor` (ProcessorMixin).
-QLoRA is not plumbed through the VL path in v1: PaliGemma fp16 fits
+QLoRA is not plumbed through the VL path yet: PaliGemma fp16 fits
 on 16 GB MPS, and the bitsandbytes + VL weight loading combination
-isn't exercised anywhere in our test matrix yet — Sprint 35.3 or a
-dedicated audit can thread it when the need surfaces.
+isn't exercised anywhere in our test matrix. A follow-up threads it
+when the need surfaces.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def load_for_vl_inference(  # pragma: no cover
 
     Pragma'd from unit coverage: exercises `AutoModelForImageTextToText.from_pretrained`
     and `AutoProcessor.from_pretrained` over real HF weights. Covered
-    by the Sprint 35 v1 slow integration test (T12).
+    by the slow VL integration test.
     """
     if spec.modality != "vision-language":
         raise ValueError(

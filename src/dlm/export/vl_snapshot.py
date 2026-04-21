@@ -1,9 +1,9 @@
-"""HF-snapshot export for vision-language bases (Sprint 35 v1).
+"""HF-snapshot export for vision-language bases.
 
 GGUF conversion for VL architectures is in flux upstream
 (`convert_hf_to_gguf.py` doesn't register PaliGemma / Qwen2-VL /
-InternVL2 consistently yet), so Sprint 35 v1 refuses the GGUF path
-and emits an HF snapshot instead: a self-contained directory that a
+InternVL2 consistently yet), so this path refuses to emit GGUF and
+writes an HF snapshot instead: a self-contained directory that a
 downstream user can load with `AutoProcessor.from_pretrained` +
 `AutoModelForImageTextToText.from_pretrained` + `PeftModel.from_pretrained`.
 
@@ -21,7 +21,7 @@ to 6 GB+ and conflicts with Gemma / Llama licensing for most VL
 bases (they are `redistributable=False`).
 
 The `export_target` field on the manifest is the load-bearing flag:
-a future Sprint 35.4 GGUF path writes `export_target="gguf"` instead.
+a future GGUF path will write `export_target="gguf"` instead.
 """
 
 from __future__ import annotations
@@ -53,8 +53,9 @@ class VlSnapshotManifest(BaseModel):
 
     Parallel to `ExportManifest` but scoped to the VL path. No
     `quant` / `llama_cpp_tag` — the snapshot doesn't run llama.cpp.
-    `export_target` is the discriminator: Sprint 35.4 adds a `"gguf"`
-    branch to the same file when upstream converter support lands.
+    `export_target` is the discriminator: a future GGUF path adds a
+    `"gguf"` branch to the same file when upstream converter support
+    lands.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -74,7 +75,7 @@ class VlSnapshotManifest(BaseModel):
     rationale: str = Field(
         default=(
             "Vision-language architectures in llama.cpp are in flux; "
-            "Sprint 35 v1 emits an HF-snapshot fallback. Sprint 35.4 "
+            "this build emits an HF-snapshot fallback. A future release "
             "will add a GGUF path when upstream converter support "
             "stabilizes."
         ),
@@ -279,7 +280,7 @@ def _write_readme(
         f"## Why HF snapshot (not GGUF)\n"
         f"\n"
         f"Vision-language converter support in `llama.cpp` is in flux.\n"
-        f"Sprint 35.4 adds GGUF export when upstream stabilizes.\n"
+        f"A future release adds GGUF export when upstream stabilizes.\n"
     )
     write_text(path, body)
     return path
