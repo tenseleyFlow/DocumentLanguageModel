@@ -135,3 +135,141 @@ class TestRunAllSkipsExportProbesForVl:
         assert "architecture" in probe_names
         # Chat-template probe does not apply to VL bases.
         assert "chat_template" not in probe_names
+
+
+# --- Sprint 35.3: registry expansion to Qwen2-VL + InternVL2 ----------------
+
+_VL_BASE_KEYS: tuple[str, ...] = (
+    "paligemma-3b-mix-224",
+    "qwen2-vl-2b-instruct",
+    "internvl2-2b",
+)
+
+
+class TestAllVlBasesShipModalityInvariants:
+    """Every registered VL base carries the modality + preprocessor plan."""
+
+    @pytest.mark.parametrize("key", _VL_BASE_KEYS)
+    def test_modality_is_vl(self, key: str) -> None:
+        assert BASE_MODELS[key].modality == "vision-language"
+
+    @pytest.mark.parametrize("key", _VL_BASE_KEYS)
+    def test_has_preprocessor_plan(self, key: str) -> None:
+        spec = BASE_MODELS[key]
+        assert spec.vl_preprocessor_plan is not None
+        # Pinned identity fields — each one is part of the cache key,
+        # so a silent default would silently invalidate caches.
+        assert spec.vl_preprocessor_plan.resize_policy == "fixed"
+        assert spec.vl_preprocessor_plan.num_image_tokens > 0
+
+    @pytest.mark.parametrize("key", _VL_BASE_KEYS)
+    def test_run_all_drops_export_probes(self, key: str) -> None:
+        report = run_all(BASE_MODELS[key])
+        names = {r.name for r in report.results}
+        # VL bases bypass the three llama.cpp-converter probes.
+        assert names.isdisjoint({"gguf_arch", "pretokenizer_label", "pretokenizer_hash"})
+        # chat_template probe doesn't apply to VL bases (their chat
+        # templates live in the processor, not the tokenizer).
+        assert "chat_template" not in names
+        assert "vl_image_token" in names
+        assert "architecture" in names
+
+
+class TestQwen2VlRegistryEntry:
+    """Sprint 35.3: Qwen2-VL-2B-Instruct landed with pinned fixed res."""
+
+    def test_entry_present(self) -> None:
+        assert "qwen2-vl-2b-instruct" in BASE_MODELS
+
+    def test_apache_permissive(self) -> None:
+        spec = BASE_MODELS["qwen2-vl-2b-instruct"]
+        assert spec.license_spdx == "Apache-2.0"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+
+    def test_pinned_preprocessing_plan(self) -> None:
+        spec = BASE_MODELS["qwen2-vl-2b-instruct"]
+        plan = spec.vl_preprocessor_plan
+        assert plan is not None
+        # 672×672 with Qwen2-VL's 28-pixel patch-merger grid → 24×24 = 576.
+        # Sprint 35.3 pins fixed resolution (implementation-note (a));
+        # dynamic-resolution support is deferred to a follow-up.
+        assert plan.target_size == (672, 672)
+        assert plan.image_token == "<|image_pad|>"
+        assert plan.num_image_tokens == 576
+
+    def test_architecture_is_qwen2vl_conditional_generation(self) -> None:
+        assert (
+            BASE_MODELS["qwen2-vl-2b-instruct"].architecture
+            == "Qwen2VLForConditionalGeneration"
+        )
+
+    def test_template_dialect(self) -> None:
+        assert BASE_MODELS["qwen2-vl-2b-instruct"].template == "qwen2-vl"
+
+
+class TestInternVL2RegistryEntry:
+    """Sprint 35.3: InternVL2-2B landed with MIT license + 448×448 plan.
+
+    Loader caveat (documented on the registry entry): InternVL2's HF
+    integration uses `InternVLChatModel` via remote code — this test
+    verifies only the metadata contract, not the runtime load.
+    """
+
+    def test_entry_present(self) -> None:
+        assert "internvl2-2b" in BASE_MODELS
+
+    def test_mit_permissive(self) -> None:
+        spec = BASE_MODELS["internvl2-2b"]
+        assert spec.license_spdx == "MIT"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+
+    def test_pinned_preprocessing_plan(self) -> None:
+        spec = BASE_MODELS["internvl2-2b"]
+        plan = spec.vl_preprocessor_plan
+        assert plan is not None
+        # 448×448 with InternVL2's ViT-L/14 + 2×2 pixel shuffle → 256 tokens.
+        assert plan.target_size == (448, 448)
+        assert plan.image_token == "<IMG_CONTEXT>"
+        assert plan.num_image_tokens == 256
+
+    def test_architecture_is_internvl_chat(self) -> None:
+        assert BASE_MODELS["internvl2-2b"].architecture == "InternVLChatModel"
+
+    def test_template_dialect(self) -> None:
+        assert BASE_MODELS["internvl2-2b"].template == "internvl2"
+
+
+class TestDistinctVlBases:
+    """The three VL bases occupy distinct rows — no silent duplicates."""
+
+    def test_all_keys_unique(self) -> None:
+        assert len(set(_VL_BASE_KEYS)) == 3
+
+    def test_hf_ids_distinct(self) -> None:
+        hf_ids = {BASE_MODELS[k].hf_id for k in _VL_BASE_KEYS}
+        assert len(hf_ids) == 3
+
+    def test_image_tokens_distinct_per_base(self) -> None:
+        """Each VL base uses its native image-token string.
+
+        Silently sharing a placeholder across bases would break the
+        cache-key invariant in vl_cache.py (cache key includes the
+        token via processor_sha256).
+        """
+        tokens = {
+            BASE_MODELS[k].vl_preprocessor_plan.image_token  # type: ignore[union-attr]
+            for k in _VL_BASE_KEYS
+        }
+        assert len(tokens) == 3
+
+
+class TestCountVlRegistryEntries:
+    """Defend against accidental regression to the PaliGemma-only state."""
+
+    def test_at_least_three_vl_bases_registered(self) -> None:
+        vl_count = sum(
+            1 for s in BASE_MODELS.values() if s.modality == "vision-language"
+        )
+        assert vl_count >= 3
