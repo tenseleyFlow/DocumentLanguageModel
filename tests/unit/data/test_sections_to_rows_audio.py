@@ -27,9 +27,7 @@ def blob_store(tmp_path: Path) -> BlobStore:
 
 
 @pytest.fixture
-def audio_section(
-    blob_store: BlobStore, tmp_path: Path
-) -> tuple[Section, bytes, str]:
+def audio_section(blob_store: BlobStore, tmp_path: Path) -> tuple[Section, bytes, str]:
     """Ingested AUDIO section + the raw bytes + the blob sha."""
     data = b"fake-wav-bytes"
     src = tmp_path / "hello.wav"
@@ -76,9 +74,7 @@ class TestAudioRowShape:
         self, blob_store: BlobStore, audio_section: tuple[Section, bytes, str]
     ) -> None:
         section, _, _ = audio_section
-        row = sections_to_rows(
-            [section], blob_store=blob_store, audio_token="<|custom|>"
-        )[0]
+        row = sections_to_rows([section], blob_store=blob_store, audio_token="<|custom|>")[0]
         assert row["text"] == "<|custom|>\nHello there."
 
     def test_section_id_flows_through(
@@ -90,9 +86,7 @@ class TestAudioRowShape:
 
 
 class TestAudioTagsFlowThrough:
-    def test_tags_propagate_into_row_tags(
-        self, blob_store: BlobStore, tmp_path: Path
-    ) -> None:
+    def test_tags_propagate_into_row_tags(self, blob_store: BlobStore, tmp_path: Path) -> None:
         data = b"audio"
         src = tmp_path / "x.wav"
         src.write_bytes(data)
@@ -132,9 +126,7 @@ class TestAudioRefusals:
         with pytest.raises(ValueError, match="media_blob_sha"):
             sections_to_rows([section], blob_store=blob_store)
 
-    def test_empty_transcript_refused(
-        self, blob_store: BlobStore, tmp_path: Path
-    ) -> None:
+    def test_empty_transcript_refused(self, blob_store: BlobStore, tmp_path: Path) -> None:
         data = b"bytes"
         src = tmp_path / "x.wav"
         src.write_bytes(data)
@@ -149,9 +141,7 @@ class TestAudioRefusals:
         with pytest.raises(ValueError, match="empty transcript"):
             sections_to_rows([section], blob_store=blob_store)
 
-    def test_none_transcript_refused(
-        self, blob_store: BlobStore, tmp_path: Path
-    ) -> None:
+    def test_none_transcript_refused(self, blob_store: BlobStore, tmp_path: Path) -> None:
         data = b"bytes"
         src = tmp_path / "x.wav"
         src.write_bytes(data)
@@ -170,9 +160,7 @@ class TestAudioRefusals:
 class TestAudioMixedWithText:
     """Emit audio alongside prose + instruction without cross-contamination."""
 
-    def test_mixed_corpus_orders_preserved(
-        self, blob_store: BlobStore, tmp_path: Path
-    ) -> None:
+    def test_mixed_corpus_orders_preserved(self, blob_store: BlobStore, tmp_path: Path) -> None:
         data = b"audio"
         src = tmp_path / "clip.wav"
         src.write_bytes(data)

@@ -105,9 +105,7 @@ class TestRefusals:
 
 
 class TestSnapshotLayout:
-    def test_export_dir_under_exports_hf_audio_snapshot(
-        self, populated_store
-    ) -> None:
+    def test_export_dir_under_exports_hf_audio_snapshot(self, populated_store) -> None:
         result = run_audio_snapshot_export(populated_store, _audio_spec())
         assert result.export_dir.name == AUDIO_SNAPSHOT_SUBDIR
         assert result.export_dir.parent == populated_store.exports
@@ -131,13 +129,9 @@ class TestSnapshotLayout:
         v1 = populated_store.adapter_version(1)
         (v1 / "adapter_model.safetensors").write_bytes(b"new bytes")
         result = run_audio_snapshot_export(populated_store, _audio_spec())
-        assert (
-            result.adapter_dir / "adapter_model.safetensors"
-        ).read_bytes() == b"new bytes"
+        assert (result.adapter_dir / "adapter_model.safetensors").read_bytes() == b"new bytes"
 
-    def test_vl_and_audio_snapshots_disjoint_subdirs(
-        self, populated_store
-    ) -> None:
+    def test_vl_and_audio_snapshots_disjoint_subdirs(self, populated_store) -> None:
         """Audio + VL snapshots live in different subdirectories.
 
         A store could in principle hold exports from two separate
@@ -152,26 +146,20 @@ class TestSnapshotLayout:
 class TestManifestContent:
     def test_export_target_is_hf_snapshot(self, populated_store) -> None:
         run_audio_snapshot_export(populated_store, _audio_spec())
-        manifest = load_audio_snapshot_manifest(
-            populated_store.exports / AUDIO_SNAPSHOT_SUBDIR
-        )
+        manifest = load_audio_snapshot_manifest(populated_store.exports / AUDIO_SNAPSHOT_SUBDIR)
         assert manifest.export_target == "hf_snapshot"
         assert manifest.modality == "audio-language"
 
     def test_base_pinned_in_manifest(self, populated_store) -> None:
         run_audio_snapshot_export(populated_store, _audio_spec())
-        manifest = load_audio_snapshot_manifest(
-            populated_store.exports / AUDIO_SNAPSHOT_SUBDIR
-        )
+        manifest = load_audio_snapshot_manifest(populated_store.exports / AUDIO_SNAPSHOT_SUBDIR)
         assert manifest.base_model_hf_id == "Qwen/Qwen2-Audio-test"
         assert manifest.base_model_revision == "c" * 40
         assert manifest.base_model_architecture == "Qwen2AudioForConditionalGeneration"
 
     def test_preprocessor_params_pinned(self, populated_store) -> None:
         run_audio_snapshot_export(populated_store, _audio_spec())
-        manifest = load_audio_snapshot_manifest(
-            populated_store.exports / AUDIO_SNAPSHOT_SUBDIR
-        )
+        manifest = load_audio_snapshot_manifest(populated_store.exports / AUDIO_SNAPSHOT_SUBDIR)
         assert manifest.audio_token == "<|AUDIO|>"
         assert manifest.num_audio_tokens == 750
         assert manifest.sample_rate == 16_000
@@ -179,16 +167,12 @@ class TestManifestContent:
 
     def test_adapter_version_recorded(self, populated_store) -> None:
         run_audio_snapshot_export(populated_store, _audio_spec())
-        manifest = load_audio_snapshot_manifest(
-            populated_store.exports / AUDIO_SNAPSHOT_SUBDIR
-        )
+        manifest = load_audio_snapshot_manifest(populated_store.exports / AUDIO_SNAPSHOT_SUBDIR)
         assert manifest.adapter_version == 1
 
     def test_adapter_artifacts_listed(self, populated_store) -> None:
         run_audio_snapshot_export(populated_store, _audio_spec())
-        manifest = load_audio_snapshot_manifest(
-            populated_store.exports / AUDIO_SNAPSHOT_SUBDIR
-        )
+        manifest = load_audio_snapshot_manifest(populated_store.exports / AUDIO_SNAPSHOT_SUBDIR)
         paths = {entry.path for entry in manifest.artifacts}
         assert "adapter/adapter_config.json" in paths
         assert "adapter/adapter_model.safetensors" in paths

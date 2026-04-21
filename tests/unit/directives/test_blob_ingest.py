@@ -41,10 +41,7 @@ class TestImageExtensionDispatch:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         (corpus / "arch.png").write_bytes(b"\x89PNG\r\n\x1a\nbody")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.png"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.png"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
 
@@ -60,10 +57,7 @@ class TestImageExtensionDispatch:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         (corpus / "hero.jpg").write_bytes(b"jpeg body")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.jpg"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.jpg"]\n')
         result = expand_sources(parsed, base_path=tmp_path, blob_store=None)
         assert result.sections == ()
         [prov] = result.provenance
@@ -75,10 +69,7 @@ class TestImageExtensionDispatch:
         corpus.mkdir()
         (corpus / "hero.png").write_bytes(b"png bytes")
         (corpus / "notes.md").write_text("Notes.\n", encoding="utf-8")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.png", "**/*.md"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.png", "**/*.md"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         kinds = [s.type for s in result.sections]
@@ -88,18 +79,13 @@ class TestImageExtensionDispatch:
         assert prov.image_count == 1
         assert prov.file_count == 1  # prose count only
 
-    def test_identical_bytes_different_paths_distinct_section_ids(
-        self, tmp_path: Path
-    ) -> None:
+    def test_identical_bytes_different_paths_distinct_section_ids(self, tmp_path: Path) -> None:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         body = b"same-bytes-shared"
         (corpus / "a.png").write_bytes(body)
         (corpus / "b.png").write_bytes(body)
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.png"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.png"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert len(result.sections) == 2
@@ -115,10 +101,7 @@ class TestImageExtensionDispatch:
         corpus.mkdir()
         payload = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00rest"
         (corpus / "photo.jpg").write_bytes(payload)
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.jpg"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.jpg"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert len(result.sections) == 1
@@ -128,10 +111,7 @@ class TestImageExtensionDispatch:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         (corpus / "FIG.PNG").write_bytes(b"uppercase extension")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.PNG"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.PNG"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert len(result.sections) == 1
@@ -143,10 +123,7 @@ class TestImageAltDefaults:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         (corpus / "pipeline-v2.png").write_bytes(b"bytes")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.png"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.png"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert result.sections[0].media_alt == "pipeline-v2"
@@ -158,10 +135,7 @@ class TestImageProvenance:
         corpus.mkdir()
         (corpus / "a.png").write_bytes(b"a" * 100)
         (corpus / "b.png").write_bytes(b"b" * 200)
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.png"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.png"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         [prov] = result.provenance
@@ -173,11 +147,7 @@ class TestImageProvenance:
         corpus.mkdir()
         for i in range(5):
             (corpus / f"{i}.png").write_bytes(f"payload {i}".encode())
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.png"]\n'
-            "      max_files: 3\n"
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.png"]\n      max_files: 3\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert len(result.sections) == 3

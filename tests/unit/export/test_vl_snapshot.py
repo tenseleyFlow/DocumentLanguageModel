@@ -112,7 +112,9 @@ class TestSnapshotLayout:
     def test_adapter_files_copied(self, populated_store) -> None:
         result = run_vl_snapshot_export(populated_store, _vl_spec())
         assert (result.adapter_dir / "adapter_config.json").exists()
-        assert (result.adapter_dir / "adapter_model.safetensors").read_bytes() == b"fake adapter bytes"
+        assert (
+            result.adapter_dir / "adapter_model.safetensors"
+        ).read_bytes() == b"fake adapter bytes"
 
     def test_manifest_and_readme_written(self, populated_store) -> None:
         result = run_vl_snapshot_export(populated_store, _vl_spec())

@@ -145,9 +145,7 @@ class TestSpecModalityInvariants:
         )
 
     def test_audio_without_plan_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="requires an audio_preprocessor_plan"
-        ):
+        with pytest.raises(ValidationError, match="requires an audio_preprocessor_plan"):
             BaseModelSpec(**self._base_kwargs(), modality="audio-language")  # type: ignore[arg-type]
 
     def test_text_with_audio_plan_rejected(self) -> None:

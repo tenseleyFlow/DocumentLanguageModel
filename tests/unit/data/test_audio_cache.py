@@ -206,14 +206,12 @@ class TestWaveformCacheKey:
         assert _wkey(blob_sha="cd" + "0" * 62).shard() == "cd"
 
     def test_different_sample_rate_different_filename(self) -> None:
-        assert _wkey(sample_rate=16_000).as_filename() != _wkey(
-            sample_rate=48_000
-        ).as_filename()
+        assert _wkey(sample_rate=16_000).as_filename() != _wkey(sample_rate=48_000).as_filename()
 
     def test_different_max_length_different_filename(self) -> None:
-        assert _wkey(max_length_ms=30_000).as_filename() != _wkey(
-            max_length_ms=60_000
-        ).as_filename()
+        assert (
+            _wkey(max_length_ms=30_000).as_filename() != _wkey(max_length_ms=60_000).as_filename()
+        )
 
     def test_key_no_processor_sha(self) -> None:
         """Waveform cache is pre-processor; key should omit processor_sha."""

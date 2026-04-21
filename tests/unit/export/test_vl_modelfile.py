@@ -85,16 +85,12 @@ def vl_ctx(adapter_dir: Path) -> VlModelfileContext:
 
 
 class TestVlModelfileRender:
-    def test_emits_from_and_adapter_directives(
-        self, vl_ctx: VlModelfileContext
-    ) -> None:
+    def test_emits_from_and_adapter_directives(self, vl_ctx: VlModelfileContext) -> None:
         out = render_vl_modelfile(vl_ctx)
         assert "FROM ./base.Q4_K_M.gguf" in out
         assert "ADAPTER ./adapter.Q4_K_M.gguf" in out
 
-    def test_template_block_uses_image_directive(
-        self, vl_ctx: VlModelfileContext
-    ) -> None:
+    def test_template_block_uses_image_directive(self, vl_ctx: VlModelfileContext) -> None:
         """Ollama 0.4+'s `{{ .Image }}` slot is the VL-specific gate."""
         out = render_vl_modelfile(vl_ctx)
         assert "{{ .Image }}" in out
@@ -102,9 +98,7 @@ class TestVlModelfileRender:
         # System block is conditional.
         assert "{{ if .System }}" in out
 
-    def test_template_uses_triple_quoted_form(
-        self, vl_ctx: VlModelfileContext
-    ) -> None:
+    def test_template_uses_triple_quoted_form(self, vl_ctx: VlModelfileContext) -> None:
         """Ollama Modelfile parser wants `TEMPLATE \"\"\"...\"\"\"`.
 
         The single-line quoted form fails on multi-line templates,
@@ -119,9 +113,7 @@ class TestVlModelfileRender:
         assert "PARAMETER temperature 0.2" in out
         assert "PARAMETER top_p 0.9" in out
 
-    def test_override_temperature_respected(
-        self, vl_ctx: VlModelfileContext
-    ) -> None:
+    def test_override_temperature_respected(self, vl_ctx: VlModelfileContext) -> None:
         ctx = VlModelfileContext(
             spec=vl_ctx.spec,
             plan=vl_ctx.plan,
@@ -135,17 +127,13 @@ class TestVlModelfileRender:
         out = render_vl_modelfile(ctx)
         assert "PARAMETER temperature 0.7" in out
 
-    def test_adapter_eos_merged_into_stops(
-        self, vl_ctx: VlModelfileContext
-    ) -> None:
+    def test_adapter_eos_merged_into_stops(self, vl_ctx: VlModelfileContext) -> None:
         """The `<eos>` token from tokenizer_config.json is a PARAMETER stop."""
         out = render_vl_modelfile(vl_ctx)
         # JSON-quoted `"<eos>"` appears in the stop line.
         assert 'PARAMETER stop "<eos>"' in out
 
-    def test_merged_path_omits_adapter_directive(
-        self, vl_ctx: VlModelfileContext
-    ) -> None:
+    def test_merged_path_omits_adapter_directive(self, vl_ctx: VlModelfileContext) -> None:
         merged_ctx = VlModelfileContext(
             spec=vl_ctx.spec,
             plan=vl_ctx.plan,
@@ -159,9 +147,7 @@ class TestVlModelfileRender:
         assert "FROM ./merged.Q4_K_M.gguf" in out
         assert "ADAPTER " not in out
 
-    def test_system_prompt_emitted_as_directive(
-        self, vl_ctx: VlModelfileContext
-    ) -> None:
+    def test_system_prompt_emitted_as_directive(self, vl_ctx: VlModelfileContext) -> None:
         ctx = VlModelfileContext(
             spec=vl_ctx.spec,
             plan=vl_ctx.plan,
@@ -182,9 +168,7 @@ class TestVlModelfileRender:
 
 
 class TestStopsFallback:
-    def test_missing_tokenizer_config_uses_vl_defaults(
-        self, tmp_path: Path
-    ) -> None:
+    def test_missing_tokenizer_config_uses_vl_defaults(self, tmp_path: Path) -> None:
         """Without `tokenizer_config.json` the fallback stop set applies."""
         adapter_dir = tmp_path / "adapter"
         adapter_dir.mkdir()  # no tokenizer_config.json inside

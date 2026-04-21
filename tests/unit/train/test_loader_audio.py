@@ -84,9 +84,7 @@ class TestLoadBaseModelAudioDispatch:
         import transformers  # type: ignore[import-not-found]
 
         real_cls = transformers.Qwen2AudioForConditionalGeneration
-        with patch.object(
-            real_cls, "from_pretrained", return_value=sentinel
-        ) as from_pretrained:
+        with patch.object(real_cls, "from_pretrained", return_value=sentinel) as from_pretrained:
             result = loader.load_base_model(_audio_spec(), _plan())
         assert result is sentinel
         from_pretrained.assert_called_once()
@@ -108,9 +106,7 @@ class TestLoadBaseModelAudioDispatch:
 
     def test_unknown_audio_architecture_refused(self) -> None:
         spec = _audio_spec(architecture="MysteryAudioModel")
-        with pytest.raises(
-            ValueError, match="no audio-LM loader wired for architecture"
-        ):
+        with pytest.raises(ValueError, match="no audio-LM loader wired for architecture"):
             loader.load_base_model(spec, _plan())
 
 

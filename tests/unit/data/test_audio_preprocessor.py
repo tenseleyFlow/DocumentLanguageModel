@@ -115,9 +115,7 @@ class TestPreprocessAudioNoCache:
             )
         assert proc.calls == 0
 
-    def test_sample_rate_mismatch_hint_mentions_auto_resample(
-        self, tiny_wav_48k: Path
-    ) -> None:
+    def test_sample_rate_mismatch_hint_mentions_auto_resample(self, tiny_wav_48k: Path) -> None:
         """Error guides the user to the opt-in flag."""
         proc = _StubProcessor()
         with pytest.raises(AudioSampleRateMismatch, match="auto_resample"):
@@ -136,9 +134,7 @@ class TestPreprocessAudioNoCache:
         """auto_resample=True on a mismatch calls dlm.data.audio_resample.resample."""
         calls: list[tuple[int, int]] = []
 
-        def fake_resample(
-            waveform: np.ndarray, *, src_sr: int, dst_sr: int
-        ) -> np.ndarray:
+        def fake_resample(waveform: np.ndarray, *, src_sr: int, dst_sr: int) -> np.ndarray:
             calls.append((src_sr, dst_sr))
             out_len = int(waveform.shape[0] * dst_sr / src_sr)
             return np.zeros(out_len, dtype=np.float32)

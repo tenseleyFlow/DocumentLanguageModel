@@ -185,10 +185,7 @@ class TestImageInMixedBody:
         # image gets folded into the image's caption body — the same
         # rule that applies to INSTRUCTION/PREFERENCE sections today.
         body = (
-            "Opening prose.\n"
-            "\n"
-            '::image path="fig1.png" alt="first figure"::\n'
-            "Figure one caption.\n"
+            'Opening prose.\n\n::image path="fig1.png" alt="first figure"::\nFigure one caption.\n'
         )
         parsed = parse_text(_doc(body))
         types = [s.type for s in parsed.sections]

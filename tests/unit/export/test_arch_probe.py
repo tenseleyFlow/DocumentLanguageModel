@@ -115,9 +115,7 @@ class TestPartialVerdict:
     def test_mmproj_only_binding_is_partial(self, tmp_path: Path) -> None:
         root = _fixture_llama_cpp(
             tmp_path,
-            '@ModelBase.register("SomeVLArch")\n'
-            "class SomeVisionTower(MmprojModel):\n"
-            "    pass\n",
+            '@ModelBase.register("SomeVLArch")\nclass SomeVisionTower(MmprojModel):\n    pass\n',
         )
         result = probe_gguf_arch("SomeVLArch", llama_cpp_root=root)
         assert result.support is SupportLevel.PARTIAL
@@ -142,9 +140,7 @@ class TestGrammarEdgeCases:
         """Register decorators sometimes use single quotes; still match."""
         root = _fixture_llama_cpp(
             tmp_path,
-            "@ModelBase.register('FooForCausalLM')\n"
-            "class FooModel(TextModel):\n"
-            "    pass\n",
+            "@ModelBase.register('FooForCausalLM')\nclass FooModel(TextModel):\n    pass\n",
         )
         result = probe_gguf_arch("FooForCausalLM", llama_cpp_root=root)
         assert result.support is SupportLevel.SUPPORTED
@@ -170,9 +166,7 @@ class TestGrammarEdgeCases:
         """`"Gemma3..."` should not match `"Gemma"` — use full quoted name."""
         root = _fixture_llama_cpp(
             tmp_path,
-            '@ModelBase.register("Gemma3ForCausalLM")\n'
-            "class Gemma3Model(TextModel):\n"
-            "    pass\n",
+            '@ModelBase.register("Gemma3ForCausalLM")\nclass Gemma3Model(TextModel):\n    pass\n',
         )
         result = probe_gguf_arch("GemmaForCausalLM", llama_cpp_root=root)
         # "GemmaForCausalLM" (without the 3) isn't registered.
@@ -186,8 +180,7 @@ class TestMemoization:
         persists."""
         root = _fixture_llama_cpp(
             tmp_path,
-            '@ModelBase.register("Arch1")\n'
-            "class Arch1Model(TextModel):\n    pass\n",
+            '@ModelBase.register("Arch1")\nclass Arch1Model(TextModel):\n    pass\n',
         )
         (root / "VERSION").write_text("tag-v1\n", encoding="utf-8")
         first = probe_gguf_arch("Arch1", llama_cpp_root=root)
@@ -195,9 +188,7 @@ class TestMemoization:
 
         # Rewrite the script so a re-read would flip the verdict to
         # UNSUPPORTED — the cache must defeat this.
-        (root / "convert_hf_to_gguf.py").write_text(
-            "# No registrations now.\n", encoding="utf-8"
-        )
+        (root / "convert_hf_to_gguf.py").write_text("# No registrations now.\n", encoding="utf-8")
         second = probe_gguf_arch("Arch1", llama_cpp_root=root)
         assert second is first
 
@@ -216,8 +207,7 @@ class TestMemoization:
         # Bump the tag AND add the registration.
         (root / "VERSION").write_text("tag-v2\n", encoding="utf-8")
         (root / "convert_hf_to_gguf.py").write_text(
-            '@ModelBase.register("Arch1")\n'
-            "class Arch1Model(TextModel):\n    pass\n",
+            '@ModelBase.register("Arch1")\nclass Arch1Model(TextModel):\n    pass\n',
             encoding="utf-8",
         )
         second = probe_gguf_arch("Arch1", llama_cpp_root=root)

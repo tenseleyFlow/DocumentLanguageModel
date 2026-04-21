@@ -73,9 +73,7 @@ class TestBlobStorePut:
         h2 = store.put(src2)
         assert h1 == h2
 
-    def test_put_different_bytes_different_shas(
-        self, store: BlobStore, tmp_path: Path
-    ) -> None:
+    def test_put_different_bytes_different_shas(self, store: BlobStore, tmp_path: Path) -> None:
         a = tmp_path / "a.png"
         b = tmp_path / "b.png"
         a.write_bytes(b"first")
@@ -136,9 +134,7 @@ class TestBlobStoreGC:
         assert not store.exists(hb.sha)
         assert store.exists(hc.sha)
 
-    def test_gc_empty_live_removes_everything(
-        self, store: BlobStore, tmp_path: Path
-    ) -> None:
+    def test_gc_empty_live_removes_everything(self, store: BlobStore, tmp_path: Path) -> None:
         src = tmp_path / "x.png"
         src.write_bytes(b"xxx")
         store.put(src)
@@ -152,7 +148,7 @@ class TestBlobStoreGC:
 
 class TestBlobStoreExtensions:
     @pytest.mark.parametrize(
-        "suffix,expected",
+        ("suffix", "expected"),
         [
             # Images.
             (".png", ".png"),

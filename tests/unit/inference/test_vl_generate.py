@@ -36,9 +36,7 @@ class TestFormatVlPrompt:
         # When the prompt already mentions the image token, we don't
         # prepend anything — the user has placed it deliberately.
         prompt = "Compare the before <image> and after <image> shots."
-        assert (
-            format_vl_prompt(prompt, image_token="<image>", num_images=2) == prompt
-        )
+        assert format_vl_prompt(prompt, image_token="<image>", num_images=2) == prompt
 
     def test_custom_image_token(self) -> None:
         out = format_vl_prompt(

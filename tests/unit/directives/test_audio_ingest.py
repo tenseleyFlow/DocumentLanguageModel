@@ -47,10 +47,7 @@ class TestAudioExtensionDispatch:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         _write_pair(corpus, "hello", b"RIFF....fake wav", "Hello there.")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.wav"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.wav"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
 
@@ -66,10 +63,7 @@ class TestAudioExtensionDispatch:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         _write_pair(corpus, "clip", b"fLaC....fake", "Clip one.", ext=".flac")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.flac"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.flac"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert len(result.sections) == 1
@@ -80,10 +74,7 @@ class TestAudioExtensionDispatch:
         corpus.mkdir()
         # Audio without matching .txt sidecar.
         (corpus / "orphan.wav").write_bytes(b"RIFF....orphan")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.wav"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.wav"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert result.sections == ()
@@ -95,10 +86,7 @@ class TestAudioExtensionDispatch:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         _write_pair(corpus, "hello", b"audio bytes", "Hello.")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.wav"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.wav"]\n')
         result = expand_sources(parsed, base_path=tmp_path, blob_store=None)
         assert result.sections == ()
         [prov] = result.provenance
@@ -111,8 +99,7 @@ class TestAudioExtensionDispatch:
         (corpus / "fig.png").write_bytes(b"png bytes")
         (corpus / "notes.md").write_text("Notes.\n", encoding="utf-8")
         parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.wav", "**/*.png", "**/*.md"]\n'
+            f'    - path: {corpus}\n      include: ["**/*.wav", "**/*.png", "**/*.md"]\n'
         )
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
@@ -130,10 +117,7 @@ class TestAudioExtensionDispatch:
         corpus.mkdir()
         # Sidecar with surrounding whitespace + trailing newline.
         _write_pair(corpus, "x", b"bytes", "\n\n  Actual text.  \n")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.wav"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.wav"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert result.sections[0].media_transcript == "Actual text."
@@ -143,10 +127,7 @@ class TestAudioExtensionDispatch:
         corpus.mkdir()
         (corpus / "LOUD.WAV").write_bytes(b"bytes")
         (corpus / "LOUD.txt").write_text("Transcript.", encoding="utf-8")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.WAV"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.WAV"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert len(result.sections) == 1
@@ -159,10 +140,7 @@ class TestAudioProvenance:
         corpus.mkdir()
         _write_pair(corpus, "a", b"a" * 100, "First.")
         _write_pair(corpus, "b", b"b" * 250, "Second.")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.wav"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.wav"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         [prov] = result.provenance
@@ -174,11 +152,7 @@ class TestAudioProvenance:
         corpus.mkdir()
         for i in range(5):
             _write_pair(corpus, f"clip-{i}", f"payload {i}".encode(), f"Clip {i}.")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.wav"]\n'
-            "      max_files: 3\n"
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.wav"]\n      max_files: 3\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert len(result.sections) == 3
@@ -188,10 +162,7 @@ class TestAudioProvenance:
         corpus.mkdir()
         _write_pair(corpus, "good", b"wav one", "Transcript one.")
         (corpus / "bad.wav").write_bytes(b"wav two")  # no sidecar
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.wav"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.wav"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert len(result.sections) == 1
@@ -201,18 +172,13 @@ class TestAudioProvenance:
 
 
 class TestAudioSectionIdentity:
-    def test_same_bytes_different_paths_distinct_section_ids(
-        self, tmp_path: Path
-    ) -> None:
+    def test_same_bytes_different_paths_distinct_section_ids(self, tmp_path: Path) -> None:
         corpus = tmp_path / "corpus"
         corpus.mkdir()
         body = b"same-bytes"
         _write_pair(corpus, "a", body, "First path.")
         _write_pair(corpus, "b", body, "Second path.")
-        parsed = _parse(
-            f"    - path: {corpus}\n"
-            '      include: ["**/*.wav"]\n'
-        )
+        parsed = _parse(f'    - path: {corpus}\n      include: ["**/*.wav"]\n')
         blob_store = BlobStore(tmp_path / "blobs")
         result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)
         assert len(result.sections) == 2

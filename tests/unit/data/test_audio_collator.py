@@ -146,18 +146,14 @@ class TestBatchShape:
     def test_sampling_rate_passed_to_processor(self, wav_16k: Path) -> None:
         proc = _StubProcessor()
         collator = _make_collator(proc)
-        collator(
-            [{"audio_blob_sha": "a" * 64, "audio_path": str(wav_16k), "text": "x"}]
-        )
+        collator([{"audio_blob_sha": "a" * 64, "audio_path": str(wav_16k), "text": "x"}])
         assert proc.last_kwargs is not None
         assert proc.last_kwargs["sampling_rate"] == 16_000
 
     def test_max_length_forwarded_when_set(self, wav_16k: Path) -> None:
         proc = _StubProcessor()
         collator = _make_collator(proc)
-        collator(
-            [{"audio_blob_sha": "a" * 64, "audio_path": str(wav_16k), "text": "x"}]
-        )
+        collator([{"audio_blob_sha": "a" * 64, "audio_path": str(wav_16k), "text": "x"}])
         assert proc.last_kwargs is not None
         assert proc.last_kwargs["max_length"] == 512
 
@@ -169,9 +165,7 @@ class TestBatchShape:
             max_length_seconds=30.0,
             max_length=None,
         )
-        collator(
-            [{"audio_blob_sha": "a" * 64, "audio_path": str(wav_16k), "text": "x"}]
-        )
+        collator([{"audio_blob_sha": "a" * 64, "audio_path": str(wav_16k), "text": "x"}])
         assert proc.last_kwargs is not None
         assert "max_length" not in proc.last_kwargs
 
@@ -180,9 +174,7 @@ class TestLabelMasking:
     def test_pad_positions_masked_to_neg_100(self, wav_16k: Path) -> None:
         proc = _StubProcessor()
         collator = _make_collator(proc)
-        batch = collator(
-            [{"audio_blob_sha": "a" * 64, "audio_path": str(wav_16k), "text": "x"}]
-        )
+        batch = collator([{"audio_blob_sha": "a" * 64, "audio_path": str(wav_16k), "text": "x"}])
         labels = batch["labels"]
         input_ids = batch["input_ids"]
         # Non-pad positions: labels == input_ids.
@@ -235,9 +227,7 @@ class TestWaveformLoading:
             max_length_seconds=0.5,
             max_length=None,
         )
-        collator(
-            [{"audio_blob_sha": "a" * 64, "audio_path": str(path), "text": "x"}]
-        )
+        collator([{"audio_blob_sha": "a" * 64, "audio_path": str(path), "text": "x"}])
         assert proc.last_kwargs is not None
         waveform = proc.last_kwargs["audios"][0]
         assert waveform.shape[0] == 8_000  # 0.5 × 16 000
@@ -259,9 +249,7 @@ class TestSampleRateRefusal:
             )
         assert proc.calls == 0
 
-    def test_mismatched_rate_mentions_auto_resample_in_error(
-        self, wav_48k: Path
-    ) -> None:
+    def test_mismatched_rate_mentions_auto_resample_in_error(self, wav_48k: Path) -> None:
         """User-facing error must name the opt-in so the fix is obvious."""
         proc = _StubProcessor()
         collator = _make_collator(proc)
@@ -288,9 +276,7 @@ class TestAutoResample:
         # doesn't depend on soxr / scipy being installed in the dev env.
         calls: list[tuple[int, int]] = []
 
-        def fake_resample(
-            waveform: np.ndarray, *, src_sr: int, dst_sr: int
-        ) -> np.ndarray:
+        def fake_resample(waveform: np.ndarray, *, src_sr: int, dst_sr: int) -> np.ndarray:
             calls.append((src_sr, dst_sr))
             # Return a waveform at the target rate (same duration).
             out_len = int(waveform.shape[0] * dst_sr / src_sr)
@@ -329,9 +315,7 @@ class TestAutoResample:
         """auto_resample=True with matched SR still skips the resampler."""
         calls: list[tuple[int, int]] = []
 
-        def fake_resample(
-            waveform: np.ndarray, *, src_sr: int, dst_sr: int
-        ) -> np.ndarray:
+        def fake_resample(waveform: np.ndarray, *, src_sr: int, dst_sr: int) -> np.ndarray:
             calls.append((src_sr, dst_sr))
             return waveform
 
@@ -401,9 +385,7 @@ class TestCollatorConstruction:
 class TestWaveformCacheIntegration:
     """Deferred-item follow-up: WaveformCache skips repeat decodes."""
 
-    def test_second_call_hits_cache(
-        self, wav_16k: Path, tmp_path: Path
-    ) -> None:
+    def test_second_call_hits_cache(self, wav_16k: Path, tmp_path: Path) -> None:
         from dlm.data.audio_cache import WaveformCache
 
         proc = _StubProcessor()
@@ -435,9 +417,7 @@ class TestWaveformCacheIntegration:
         collator([row])
         assert proc.calls == 2  # processor runs both times (expected)
 
-    def test_cache_key_disambiguates_sample_rate(
-        self, wav_16k: Path, tmp_path: Path
-    ) -> None:
+    def test_cache_key_disambiguates_sample_rate(self, wav_16k: Path, tmp_path: Path) -> None:
         """Same blob at different sample rates → different cache entries."""
         from dlm.data.audio_cache import WaveformCache
 
@@ -458,9 +438,7 @@ class TestWaveformCacheIntegration:
         # Only one cache entry exists for (a*64, 16000, 30000).
         assert len(list(cache.root.rglob("*.npz"))) == 1
 
-    def test_no_cache_when_not_configured(
-        self, wav_16k: Path, tmp_path: Path
-    ) -> None:
+    def test_no_cache_when_not_configured(self, wav_16k: Path, tmp_path: Path) -> None:
         """waveform_cache=None bypasses the cache entirely (default behavior)."""
         proc = _StubProcessor()
         collator = AudioLmCollator(
@@ -482,9 +460,7 @@ class TestWaveformCacheIntegration:
         )
         assert not list(tmp_path.rglob("*.npz"))
 
-    def test_cache_skipped_when_blob_sha_missing(
-        self, wav_16k: Path, tmp_path: Path
-    ) -> None:
+    def test_cache_skipped_when_blob_sha_missing(self, wav_16k: Path, tmp_path: Path) -> None:
         """Row without audio_blob_sha → decodes but doesn't cache.
 
         Rows from pre-35.2 codepaths (or ad-hoc construction) may lack

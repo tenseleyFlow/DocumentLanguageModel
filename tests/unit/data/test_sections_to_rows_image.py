@@ -96,9 +96,7 @@ class TestImageRowShape:
         self, blob_store: BlobStore, red_image: tuple[Section, bytes]
     ) -> None:
         section, _ = red_image
-        rows = sections_to_rows(
-            [section], blob_store=blob_store, image_token="<|image|>"
-        )
+        rows = sections_to_rows([section], blob_store=blob_store, image_token="<|image|>")
         assert rows[0]["text"] == "<|image|>"
 
     def test_bytes_round_trip_match_blob(
@@ -109,7 +107,10 @@ class TestImageRowShape:
         section, data = red_image
         rows = sections_to_rows([section], blob_store=blob_store)
         pil = rows[0]["images"][0]
-        assert pil.tobytes() == Image.open(blob_store.get(section.media_blob_sha or "")).convert("RGB").tobytes()
+        assert (
+            pil.tobytes()
+            == Image.open(blob_store.get(section.media_blob_sha or "")).convert("RGB").tobytes()
+        )
 
 
 class TestImageRowProvenance:
@@ -143,7 +144,8 @@ class TestImageRowMixedBatch:
         img, _ = red_image
         rows = sections_to_rows([prose, img], blob_store=blob_store)
         assert len(rows) == 2
-        assert "text" in rows[0] and "images" not in rows[0]
+        assert "text" in rows[0]
+        assert "images" not in rows[0]
         assert rows[1]["text"] == "<image>"
         assert "images" in rows[1]
 

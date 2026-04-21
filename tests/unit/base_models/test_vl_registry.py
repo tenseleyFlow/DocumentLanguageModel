@@ -199,10 +199,7 @@ class TestQwen2VlRegistryEntry:
         assert plan.num_image_tokens == 576
 
     def test_architecture_is_qwen2vl_conditional_generation(self) -> None:
-        assert (
-            BASE_MODELS["qwen2-vl-2b-instruct"].architecture
-            == "Qwen2VLForConditionalGeneration"
-        )
+        assert BASE_MODELS["qwen2-vl-2b-instruct"].architecture == "Qwen2VLForConditionalGeneration"
 
     def test_template_dialect(self) -> None:
         assert BASE_MODELS["qwen2-vl-2b-instruct"].template == "qwen2-vl"
@@ -269,9 +266,7 @@ class TestCountVlRegistryEntries:
     """Defend against accidental regression to the PaliGemma-only state."""
 
     def test_at_least_three_vl_bases_registered(self) -> None:
-        vl_count = sum(
-            1 for s in BASE_MODELS.values() if s.modality == "vision-language"
-        )
+        vl_count = sum(1 for s in BASE_MODELS.values() if s.modality == "vision-language")
         assert vl_count >= 3
 
 

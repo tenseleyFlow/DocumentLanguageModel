@@ -110,7 +110,4 @@ def test_paligemma_gguf_roundtrip(
     # below fills in. For now the SUPPORTED gate above skips every
     # invocation on the current vendored tag, so the scaffold doesn't
     # drag in PaliGemma weights on CI.
-    pytest.skip(
-        "VL GGUF round-trip body awaits llama.cpp PaliGemma support. "
-        "See sprint 35.4 T7."
-    )
+    pytest.skip("VL GGUF round-trip body awaits llama.cpp PaliGemma support. See sprint 35.4 T7.")

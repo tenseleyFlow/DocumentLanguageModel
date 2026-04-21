@@ -211,9 +211,7 @@ class TestTrainingConfigAudioSubfield:
 
     def test_rejects_unknown_field(self) -> None:
         with pytest.raises(ValidationError):
-            TrainingConfig.model_validate(
-                {"audio": {"auto_resample": True, "unknown": 1}}
-            )
+            TrainingConfig.model_validate({"audio": {"auto_resample": True, "unknown": 1}})
 
 
 class TestTrainingConfigPreferenceSubfield:

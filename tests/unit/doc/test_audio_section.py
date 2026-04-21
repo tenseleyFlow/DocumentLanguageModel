@@ -67,25 +67,18 @@ class TestAudioFenceGrammar:
             parse_text(text)
 
     def test_unknown_attribute(self) -> None:
-        text = _doc(
-            '::audio path="x.wav" transcript="t" sample_rate="16000"::\n'
-        )
+        text = _doc('::audio path="x.wav" transcript="t" sample_rate="16000"::\n')
         with pytest.raises(FenceError, match="unknown attribute"):
             parse_text(text)
 
     def test_transcript_with_punctuation(self) -> None:
-        text = _doc(
-            "::audio "
-            'path="clips/q.wav" transcript="Question: is this clear?"::\n'
-        )
+        text = _doc('::audio path="clips/q.wav" transcript="Question: is this clear?"::\n')
         parsed = parse_text(text)
         assert parsed.sections[0].media_transcript == "Question: is this clear?"
 
     def test_transcript_with_embedded_quotes_rejected_at_parse(self) -> None:
         # Parser's attribute regex rejects `"` inside values.
-        text = _doc(
-            '::audio path="x.wav" transcript="She said "hello""::\n'
-        )
+        text = _doc('::audio path="x.wav" transcript="She said "hello""::\n')
         # Won't match the attribute-fence regex → falls through as
         # prose content. No AUDIO section produced.
         parsed = parse_text(text)
@@ -170,9 +163,7 @@ class TestAudioSerializer:
         assert serialize(parsed) == text
 
     def test_roundtrip_with_caption(self) -> None:
-        text = _doc(
-            '::audio path="a.wav" transcript="hi"::\nRecorded indoors.\n'
-        )
+        text = _doc('::audio path="a.wav" transcript="hi"::\nRecorded indoors.\n')
         parsed = parse_text(text)
         assert serialize(parsed) == text
 
@@ -243,11 +234,7 @@ class TestAudioMixedWithOtherTypes:
         assert types == [SectionType.AUDIO, SectionType.INSTRUCTION]
 
     def test_audio_and_image_in_same_doc(self) -> None:
-        body = (
-            '::image path="fig.png"::\n'
-            "\n"
-            '::audio path="a.wav" transcript="hi"::\n'
-        )
+        body = '::image path="fig.png"::\n\n::audio path="a.wav" transcript="hi"::\n'
         parsed = parse_text(_doc(body))
         types = [s.type for s in parsed.sections]
         assert types == [SectionType.IMAGE, SectionType.AUDIO]
