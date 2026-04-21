@@ -1325,19 +1325,24 @@ def _dispatch_vl_snapshot_export(
             "to the HF-snapshot path."
         )
 
-    # Loading the processor for save_pretrained is deferred to the
-    # real call site so this dispatcher stays testable without HF.
-    # The processor lives with the base weights, not the adapter.
-    processor: Any | None = None
+    # Loading the processor is required for a usable snapshot — a
+    # VL snapshot without processor/ is unloadable by the recipient,
+    # and silent degradation is worse than failing fast. Any HF /
+    # network / gated-repo error at load time surfaces here as exit 1
+    # rather than shipping an incomplete tarball.
     try:
         from dlm.train.loader import load_processor  # pragma: no cover — heavy
 
         processor = load_processor(spec)  # pragma: no cover
-    except Exception as exc:  # pragma: no cover — fall through to no-processor
+    except Exception as exc:  # pragma: no cover — surfaced to CLI
         console.print(
-            f"[yellow]export:[/yellow] could not load processor ({type(exc).__name__}); "
-            "snapshot will ship without a processor/ dir."
+            f"[red]export:[/red] could not load processor for "
+            f"{spec.key!r} ({type(exc).__name__}: {exc}). "
+            "The HF-snapshot export needs the processor to be "
+            "loadable — verify license acceptance + network + cache, "
+            "then re-run."
         )
+        raise typer.Exit(code=1) from exc
 
     try:
         result = run_vl_snapshot_export(
