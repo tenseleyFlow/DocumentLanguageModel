@@ -17,10 +17,14 @@ This means:
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MappingProxyType
 
 from dlm.io.text import normalize_for_hashing
+
+_EMPTY_TAGS: Mapping[str, str] = MappingProxyType({})
 
 
 class SectionType(StrEnum):
@@ -52,12 +56,19 @@ class Section:
     part of `section_id`: moving a section between adapters is a routing
     change, not a content change, and retention snapshots key off the
     content hash.
+
+    `tags` is the optional free-form metadata map flowed from
+    `.dlm/training.yaml` (Sprint 30). Consumers (weighting, filtering,
+    sway probes) read these; the trainer's row-production path
+    ignores them. Like `adapter`, tags are **not** part of `section_id`
+    — metadata churn doesn't invalidate replay identity.
     """
 
     type: SectionType
     content: str
     start_line: int = 0
     adapter: str | None = None
+    tags: Mapping[str, str] = field(default_factory=lambda: _EMPTY_TAGS)
 
     @property
     def section_id(self) -> str:
