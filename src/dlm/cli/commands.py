@@ -258,7 +258,16 @@ Your example answer.
 
 
 def train_cmd(
-    path: Annotated[Path, typer.Argument(help=".dlm file to train.")],
+    path: Annotated[
+        Path,
+        typer.Argument(
+            help=(
+                ".dlm file to train. Or a directory — when passed a directory, "
+                "`dlm train` auto-scaffolds `<dir>/.dlm/corpus.dlm` on first run "
+                "(with --base) and reuses it on subsequent runs."
+            ),
+        ),
+    ],
     resume: Annotated[bool, typer.Option("--resume", help="Resume from last checkpoint.")] = False,
     fresh: Annotated[bool, typer.Option("--fresh", help="Discard prior adapter state.")] = False,
     seed: Annotated[int | None, typer.Option("--seed", help="Override training seed.")] = None,
@@ -354,6 +363,85 @@ def train_cmd(
             ),
         ),
     ] = False,
+    base: Annotated[
+        str | None,
+        typer.Option(
+            "--base",
+            help=(
+                "Base model key for auto-scaffold. Required on first run when "
+                "`path` is a directory without an existing .dlm/ config. "
+                "Accepts registry keys (smollm2-135m, qwen2.5-coder-1.5b, ...) "
+                "or `hf:<org>/<name>` for off-registry models."
+            ),
+        ),
+    ] = None,
+    include: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--include",
+            help=(
+                "Glob pattern for files to train on (auto-scaffold only). "
+                "Repeatable. Default: '**/*' with --recursive, '*' without. "
+                "Examples: '**/*.py', '**/*.f90', '**/*.{md,rst}'."
+            ),
+        ),
+    ] = None,
+    exclude: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude",
+            help=(
+                "Glob pattern for files to skip (auto-scaffold only). "
+                "Repeatable. Defaults (secrets, VCS, lockfiles, binaries) "
+                "apply on top via the descent protocol."
+            ),
+        ),
+    ] = None,
+    recursive: Annotated[
+        bool,
+        typer.Option(
+            "--recursive/--no-recursive",
+            "-r/-R",
+            help=(
+                "Auto-scaffold include patterns descend into subdirectories. "
+                "Default True. --no-recursive limits the default include to "
+                "top-level files only."
+            ),
+        ),
+    ] = True,
+    name: Annotated[
+        str,
+        typer.Option(
+            "--name",
+            help=(
+                "Adapter name for auto-scaffold → `<dir>/.dlm/<name>.dlm`. "
+                "Default 'corpus'. Lets a single tree host multiple adapters."
+            ),
+        ),
+    ] = "corpus",
+    policy: Annotated[
+        str,
+        typer.Option(
+            "--policy",
+            help=(
+                "Auto-scaffold sources_policy: 'strict' (default; confines "
+                "training to the target directory) or 'permissive' (allows "
+                "absolute paths anywhere)."
+            ),
+        ),
+    ] = "strict",
+    rescaffold: Annotated[
+        bool,
+        typer.Option(
+            "--rescaffold",
+            help=(
+                "Rewrite an existing scaffolded .dlm in place with the new "
+                "--base/--include/--exclude/--policy flags. Keeps the same "
+                "dlm_id (store stays intact). Without it, re-running with "
+                "frontmatter-editing flags refuses to shadow-edit."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
     import sys
@@ -427,6 +515,41 @@ def train_cmd(
         lock_mode = "update"
     elif ignore_lock:
         lock_mode = "ignore"
+
+    if policy not in ("permissive", "strict"):
+        console.print(
+            f"[red]error:[/red] --policy must be 'permissive' or 'strict', got {policy!r}"
+        )
+        raise typer.Exit(code=2)
+    policy_literal: Literal["permissive", "strict"] = policy  # type: ignore[assignment]
+
+    # Sprint 30: directory targets → auto-scaffold `<dir>/.dlm/corpus.dlm`
+    # (or reuse an existing one). After this block, `path` always points
+    # at an actual `.dlm` file that the rest of the flow can parse.
+    if path.is_dir():
+        from dlm.cli.scaffold import ScaffoldError, scaffold_train_target
+
+        try:
+            scaffold_result = scaffold_train_target(
+                path,
+                base=base,
+                include=tuple(include or ()),
+                exclude=tuple(exclude or ()),
+                recursive=recursive,
+                name=name,
+                policy=policy_literal,
+                rescaffold=rescaffold,
+            )
+        except ScaffoldError as exc:
+            console.print(f"[red]scaffold:[/red] {exc.message}")
+            raise typer.Exit(code=1) from exc
+
+        if scaffold_result.scaffolded:
+            console.print(
+                f"[cyan]scaffolded:[/cyan] {scaffold_result.dlm_path} "
+                f"(dlm_id={scaffold_result.dlm_id})"
+            )
+        path = scaffold_result.dlm_path
 
     try:
         parsed = parse_file(path)
@@ -1522,7 +1645,9 @@ def show_cmd(
         raise typer.Exit(code=1) from exc
 
     store = for_dlm(parsed.frontmatter.dlm_id)
-    training_sources = _summarize_training_sources(parsed, path.resolve().parent)
+    training_sources, discovered_configs = (
+        _summarize_training_sources_and_discovered(parsed, path.resolve().parent)
+    )
     # Store may not exist yet (no `dlm train` run). Treat that as an
     # informational state rather than an error — useful after `dlm init`.
     if not store.manifest.exists():
@@ -1535,6 +1660,8 @@ def show_cmd(
             }
             if training_sources is not None:
                 payload["training_sources"] = training_sources
+            if discovered_configs:
+                payload["discovered_training_configs"] = discovered_configs
             sys.stdout.write(_json.dumps(payload, indent=2) + "\n")
         else:
             out_console.print(f"[bold]{path}[/bold]")
@@ -1555,6 +1682,8 @@ def show_cmd(
         payload_full = _inspection_to_dict(inspection)
         if training_sources is not None:
             payload_full["training_sources"] = training_sources
+        if discovered_configs:
+            payload_full["discovered_training_configs"] = discovered_configs
         # Write JSON to raw stdout — Rich's Console wraps lines at the
         # terminal width and would corrupt the JSON.
         sys.stdout.write(_json.dumps(payload_full, indent=2, default=str) + "\n")
@@ -1660,13 +1789,28 @@ def _summarize_training_sources(
     paths, policy escapes) fall back to declared-only records so the
     show output stays useful for debugging a misconfigured directive.
     """
+    records, _ = _summarize_training_sources_and_discovered(parsed, base_path)
+    return records
+
+
+def _summarize_training_sources_and_discovered(
+    parsed: object, base_path: Path
+) -> tuple[list[dict[str, object]] | None, list[dict[str, object]]]:
+    """Like `_summarize_training_sources` but also returns the per-anchor
+    `.dlm/training.yaml` + `.dlm/ignore` discovery records.
+
+    Returns `(training_sources, discovered_configs)`. `discovered_configs`
+    is always a list (empty when nothing was found or the expansion
+    failed); `training_sources` matches the single-value helper's
+    contract.
+    """
     from dlm.directives import DirectiveError, expand_sources
     from dlm.doc.parser import ParsedDlm
 
     assert isinstance(parsed, ParsedDlm)
     directives = parsed.frontmatter.training.sources
     if not directives:
-        return None
+        return None, []
 
     declared: list[dict[str, object]] = [
         {
@@ -1682,7 +1826,7 @@ def _summarize_training_sources(
     try:
         result = expand_sources(parsed, base_path=base_path)
     except (DirectiveError, OSError):
-        return declared
+        return declared, []
 
     records: list[dict[str, object]] = []
     for decl, prov in zip(declared, result.provenance, strict=False):
@@ -1700,7 +1844,24 @@ def _summarize_training_sources(
     # happen on success but defensive), pad with declared-only.
     if len(records) < len(declared):
         records.extend(declared[len(records) :])
-    return records
+
+    discovered_records: list[dict[str, object]] = []
+    for dc in result.discovered:
+        discovered_records.append(
+            {
+                "anchor": str(dc.anchor),
+                "has_training_yaml": dc.config is not None,
+                "has_ignore": bool(dc.ignore_rules),
+                "include": list(dc.config.include) if dc.config else [],
+                "exclude": list(dc.config.exclude) if dc.config else [],
+                "exclude_defaults": (
+                    dc.config.exclude_defaults if dc.config else True
+                ),
+                "metadata": dict(dc.config.metadata) if dc.config else {},
+                "ignore_rules": len(dc.ignore_rules),
+            }
+        )
+    return records, discovered_records
 
 
 def _render_training_sources_text(
