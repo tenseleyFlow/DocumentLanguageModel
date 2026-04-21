@@ -62,6 +62,8 @@ EXPORTS_DIR: Final = "exports"
 CACHE_DIR: Final = "cache"
 TOKENIZED_CACHE_DIR: Final = "tokenized-cache"
 CONTROLS_DIR: Final = "controls"
+BLOBS_DIR: Final = "blobs"
+VL_CACHE_DIR: Final = "vl-cache"
 LOGS_DIR: Final = "logs"
 
 # Under adapter/

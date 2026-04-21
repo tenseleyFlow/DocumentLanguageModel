@@ -28,6 +28,7 @@ from dlm.store.layout import (
     ADAPTER_DIR,
     ADAPTER_VERSIONS_DIR,
     ALWAYS_CREATE_DIRS,
+    BLOBS_DIR,
     CACHE_DIR,
     CONTROLS_DIR,
     EXPORTS_DIR,
@@ -40,6 +41,7 @@ from dlm.store.layout import (
     TOKENIZED_CACHE_DIR,
     TRAINING_STATE_FILENAME,
     TRAINING_STATE_SHA_FILENAME,
+    VL_CACHE_DIR,
 )
 
 STORE_SUBDIR: Final = "store"
@@ -174,6 +176,27 @@ class StorePath:
         clearing one doesn't nuke the other.
         """
         return self.root / TOKENIZED_CACHE_DIR
+
+    @property
+    def blob_dir(self) -> Path:
+        """Per-store content-addressed blob directory (Sprint 35 v1).
+
+        Layout: `blobs/<sha-prefix>/<sha>.<ext>` where `<sha-prefix>`
+        is the first two hex chars of the blob's sha256 (a 256-way
+        fan-out keeps any single directory from exploding). Lazy —
+        the blob store creates the subtree on first write.
+        """
+        return self.root / BLOBS_DIR
+
+    @property
+    def vl_cache_dir(self) -> Path:
+        """Per-store VL preprocessor tensor cache (Sprint 35 v1).
+
+        Keyed on `(blob_sha, processor_sha, target_size)` — orthogonal
+        to the tokenized-section cache, which keys on
+        `(section_id, tokenizer_sha, sequence_len)`. Lazy.
+        """
+        return self.root / VL_CACHE_DIR
 
     @property
     def controls_dir(self) -> Path:
