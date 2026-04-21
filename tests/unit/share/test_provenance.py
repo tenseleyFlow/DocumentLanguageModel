@@ -20,11 +20,10 @@ from dlm.share.provenance import (
     iso_utc_now,
     load_provenance_json,
     pubkey_fingerprint,
-    record_trusted_key,
     recompute_chain_consistency,
+    record_trusted_key,
     verify_provenance,
 )
-
 
 _SAMPLE_PUBKEY = (
     "untrusted comment: minisign public key ABCDEF1234567890\n"
@@ -151,8 +150,11 @@ class TestIsoUtcNow:
         s = iso_utc_now()
         # Pattern: `YYYY-MM-DDTHH:MM:SSZ`
         assert s.endswith("Z")
-        assert s[4] == "-" and s[7] == "-" and s[10] == "T"
-        assert s[13] == ":" and s[16] == ":"
+        assert s[4] == "-"
+        assert s[7] == "-"
+        assert s[10] == "T"
+        assert s[13] == ":"
+        assert s[16] == ":"
 
 
 class TestTrustedKeyRegistry:
@@ -168,9 +170,7 @@ class TestTrustedKeyRegistry:
         assert pubkey_fingerprint(_SAMPLE_PUBKEY) in target.name
 
     def test_record_with_label(self, tmp_path: Path) -> None:
-        target = record_trusted_key(
-            _SAMPLE_PUBKEY, trusted_keys_dir=tmp_path, label="alice"
-        )
+        target = record_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path, label="alice")
         assert target.name.startswith("alice-")
 
     def test_record_is_idempotent(self, tmp_path: Path) -> None:
@@ -180,15 +180,11 @@ class TestTrustedKeyRegistry:
 
     def test_find_matching_returns_path(self, tmp_path: Path) -> None:
         record_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path)
-        found = find_matching_trusted_key(
-            _SAMPLE_PUBKEY, trusted_keys_dir=tmp_path
-        )
+        found = find_matching_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path)
         assert found is not None
 
     def test_find_matching_returns_none_on_miss(self, tmp_path: Path) -> None:
-        found = find_matching_trusted_key(
-            _SAMPLE_PUBKEY, trusted_keys_dir=tmp_path
-        )
+        found = find_matching_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path)
         assert found is None
 
     def test_find_matching_handles_missing_dir(self, tmp_path: Path) -> None:
