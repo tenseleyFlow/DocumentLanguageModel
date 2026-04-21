@@ -141,7 +141,16 @@ def resolve(
         # Two forward passes per step plus the pair-loss backward.
         est_step *= 2.2
 
-    reason = _build_reason(precision, attn, use_qlora, gradient_checkpointing, phase=phase)
+    reason = _build_reason(
+        precision,
+        attn,
+        use_qlora,
+        gradient_checkpointing,
+        phase=phase,
+        adapter=training.adapter,
+        optimizer=training.optimizer,
+        base_params=base_params,
+    )
     quant_dtype = precision if use_qlora else None
 
     return TrainingPlan(
@@ -286,6 +295,9 @@ def _needs_gradient_checkpointing(
     return est_no_ckpt > (budget * 0.70)
 
 
+_GALORE_SMALL_BASE_THRESHOLD: Final = 1_000_000_000
+
+
 def _build_reason(
     precision: Precision,
     attn: AttnImpl,
@@ -293,12 +305,26 @@ def _build_reason(
     gradient_checkpointing: bool,
     *,
     phase: Phase = "sft",
+    adapter: str = "lora",
+    optimizer: str = "adamw_torch",
+    base_params: int = 0,
 ) -> str:
     parts = [f"precision={precision}", f"attn={attn}"]
     if use_qlora:
         parts.append("qlora=4bit-nf4")
     else:
         parts.append("qlora=off")
+    if adapter == "dora":
+        parts.append("adapter=dora")
+    if optimizer.startswith("galore_"):
+        parts.append(f"optim={optimizer}")
+        # Soft warning: the GaLore paper reports uplift at ≥ 7B; below
+        # ~1B the optimizer memory savings are real but the quality
+        # impact is frequently negative-to-neutral. Surface the caveat
+        # in the plan rather than blocking — operators may still want
+        # GaLore for its memory footprint on a constrained host.
+        if 0 < base_params < _GALORE_SMALL_BASE_THRESHOLD:
+            parts.append(f"warn=galore-small-base({base_params / 1e6:.0f}M<1B)")
     if gradient_checkpointing:
         parts.append("grad_ckpt=on")
     if phase == "dpo":
