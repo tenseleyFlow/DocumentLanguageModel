@@ -526,6 +526,7 @@ def train_cmd(
     # Sprint 30: directory targets → auto-scaffold `<dir>/.dlm/corpus.dlm`
     # (or reuse an existing one). After this block, `path` always points
     # at an actual `.dlm` file that the rest of the flow can parse.
+    just_scaffolded = False
     if path.is_dir():
         from dlm.cli.scaffold import ScaffoldError, scaffold_train_target
 
@@ -549,6 +550,7 @@ def train_cmd(
                 f"[cyan]scaffolded:[/cyan] {scaffold_result.dlm_path} "
                 f"(dlm_id={scaffold_result.dlm_id})"
             )
+            just_scaffolded = True
         path = scaffold_result.dlm_path
 
     try:
@@ -587,6 +589,32 @@ def train_cmd(
 
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
+
+    # Audit-09 B1: dlm init writes a manifest as part of store provisioning;
+    # train_cmd's scaffold-dir branch did not, so the next load_manifest
+    # crashed with ManifestCorruptError. When we just scaffolded a fresh
+    # .dlm, mirror init_cmd's manifest write. Guarded by exists() so
+    # --rescaffold (same dlm_id, prior store) preserves training history.
+    if just_scaffolded and not store.manifest.exists():
+        from dlm.base_models import is_gated
+        from dlm.base_models.license import require_acceptance
+        from dlm.store.manifest import Manifest, save_manifest
+
+        acceptance = (
+            require_acceptance(spec, accept_license=True, via="cli_flag")
+            if is_gated(spec)
+            else None
+        )
+        save_manifest(
+            store.manifest,
+            Manifest(
+                dlm_id=parsed.frontmatter.dlm_id,
+                base_model=spec.key,
+                base_model_revision=spec.revision,
+                source_path=path.resolve(),
+                license_acceptance=acceptance,
+            ),
+        )
 
     try:
         phase_results = run_phases(
