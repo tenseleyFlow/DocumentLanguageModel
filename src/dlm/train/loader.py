@@ -47,12 +47,26 @@ def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:  # pragma: 
         "attn_implementation": plan.attn_implementation,
     }
 
+    # Spec-level opt-in for bases whose HF class lives in the model's
+    # own repo (e.g. InternVL2's `InternVLChatModel`). Only flows
+    # through when explicitly declared `True` on the registry entry —
+    # never inferred, never user-toggled at runtime.
+    if spec.trust_remote_code:
+        kwargs["trust_remote_code"] = True
+
     if plan.use_qlora:
         kwargs["quantization_config"] = _build_bnb_config(plan)
 
     if spec.modality == "vision-language":
-        from transformers import AutoModelForImageTextToText
+        # Bases with `trust_remote_code=True` often aren't registered
+        # with AutoModelForImageTextToText (that's the whole reason —
+        # their class lives in the repo, not transformers). Fall back
+        # to `AutoModel.from_pretrained(trust_remote_code=True)` which
+        # reads the repo's config + dispatches to the custom class.
+        from transformers import AutoModel, AutoModelForImageTextToText
 
+        if spec.trust_remote_code:
+            return AutoModel.from_pretrained(spec.hf_id, **kwargs)
         return AutoModelForImageTextToText.from_pretrained(spec.hf_id, **kwargs)
 
     if spec.modality == "audio-language":
@@ -74,6 +88,9 @@ def load_processor(spec: BaseModelSpec) -> Any:  # pragma: no cover
     bundles the tokenizer + modality-specific feature extractor +
     chat template. Text-modality specs raise — callers should branch
     on `spec.modality` before reaching this path.
+
+    Threads `trust_remote_code=True` through when the spec opts in
+    (e.g. InternVL2's processor lives in the model repo too).
     """
     if spec.modality not in ("vision-language", "audio-language"):
         raise ValueError(
@@ -82,7 +99,10 @@ def load_processor(spec: BaseModelSpec) -> Any:  # pragma: no cover
         )
     from transformers import AutoProcessor
 
-    return AutoProcessor.from_pretrained(spec.hf_id, revision=spec.revision)
+    kwargs: dict[str, Any] = {"revision": spec.revision}
+    if spec.trust_remote_code:
+        kwargs["trust_remote_code"] = True
+    return AutoProcessor.from_pretrained(spec.hf_id, **kwargs)
 
 
 _AUDIO_MODEL_CLASSES: dict[str, str] = {
