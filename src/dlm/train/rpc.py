@@ -178,9 +178,7 @@ class ProbeRpcServer:
         if not token:
             raise ValueError("bearer token cannot be empty; set DLM_PROBE_TOKEN")
         self._queue = queue
-        handler_cls = make_handler(
-            queue=queue, token=token, next_cycle_eta_s=next_cycle_eta_s
-        )
+        handler_cls = make_handler(queue=queue, token=token, next_cycle_eta_s=next_cycle_eta_s)
         self._httpd = HTTPServer((host, port), handler_cls)
         self._thread: threading.Thread | None = None
 

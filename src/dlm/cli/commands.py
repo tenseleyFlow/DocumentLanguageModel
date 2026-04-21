@@ -10,6 +10,7 @@ which is why `src/dlm/cli/commands.py` has a ruff per-file-ignore for
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
@@ -457,6 +458,30 @@ def train_cmd(
             ),
         ),
     ] = False,
+    listen_rpc: Annotated[
+        str | None,
+        typer.Option(
+            "--listen-rpc",
+            help=(
+                "Open a JSON-RPC endpoint at <host:port> (e.g. `127.0.0.1:7429`) "
+                "that accepts `inject_probe` pushes from sway-style eval "
+                "harnesses. Probes enter the queue and drain at the next "
+                "training-cycle boundary. Requires --watch or --max-cycles. "
+                "Bearer token from DLM_PROBE_TOKEN."
+            ),
+        ),
+    ] = None,
+    max_cycles: Annotated[
+        int,
+        typer.Option(
+            "--max-cycles",
+            help=(
+                "Convergence stop for --listen-rpc without --watch: cap the "
+                "probe-driven retrain loop at N cycles. Ignored without "
+                "--listen-rpc."
+            ),
+        ),
+    ] = 0,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
     import sys
@@ -537,6 +562,37 @@ def train_cmd(
         )
         raise typer.Exit(code=2)
     policy_literal: Literal["permissive", "strict"] = policy  # type: ignore[assignment]
+
+    # --listen-rpc requires a loop to drain the queue — either --watch
+    # (file-change cycles) or --max-cycles N (bounded retrain loop).
+    # Without one, the server would accept probes that never train. We
+    # also need the bearer token up front so the user sees the refusal
+    # before we spend time downloading weights.
+    rpc_config: tuple[str, int, str] | None = None
+    if listen_rpc is not None:
+        if not watch and max_cycles <= 0:
+            console.print(
+                "[red]error:[/red] --listen-rpc requires --watch or --max-cycles N "
+                "(the probe queue needs a drain cadence)"
+            )
+            raise typer.Exit(code=2)
+        token = os.environ.get("DLM_PROBE_TOKEN", "").strip()
+        if not token:
+            console.print(
+                "[red]error:[/red] --listen-rpc needs a bearer token; "
+                "export DLM_PROBE_TOKEN=<secret>"
+            )
+            raise typer.Exit(code=2)
+        host, _, port_s = listen_rpc.rpartition(":")
+        if not host or not port_s:
+            console.print(f"[red]error:[/red] --listen-rpc expects host:port, got {listen_rpc!r}")
+            raise typer.Exit(code=2)
+        try:
+            port = int(port_s)
+        except ValueError:
+            console.print(f"[red]error:[/red] --listen-rpc port must be an integer, got {port_s!r}")
+            raise typer.Exit(code=2) from None
+        rpc_config = (host, port, token)
 
     # Sprint 30: directory targets → auto-scaffold `<dir>/.dlm/corpus.dlm`
     # (or reuse an existing one). After this block, `path` always points
@@ -720,6 +776,29 @@ def train_cmd(
         from dlm.watch.status import WatchStatus, render_status
 
         status = WatchStatus(doc_path=str(path), sections=len(parsed.sections))
+
+        # Start the probe-RPC server if --listen-rpc was requested. The
+        # queue is exposed; end-to-end flow into `build_dataset` at the
+        # next cycle boundary is the follow-up consumer task — for now
+        # the server accepts and buffers probes so sway sinks can be
+        # wired + tested against a live endpoint.
+        rpc_server = None
+        if rpc_config is not None:
+            from dlm.train.inject import InjectedProbeQueue
+            from dlm.train.rpc import ProbeRpcServer
+
+            rpc_host, rpc_port, rpc_token = rpc_config
+            probe_queue = InjectedProbeQueue()
+            rpc_server = ProbeRpcServer(
+                host=rpc_host, port=rpc_port, token=rpc_token, queue=probe_queue
+            )
+            rpc_server.start()
+            bound_host, bound_port = rpc_server.address
+            console.print(
+                f"[dim]rpc:[/dim] listening on {bound_host}:{bound_port} "
+                f"(queue capacity {probe_queue.capacity})"
+            )
+
         console.print(
             f"[dim]watch:[/dim] {render_status(status)}; "
             f"max_steps={watch_max_steps}, debounce_ms={watch_debounce_ms}"
@@ -751,9 +830,25 @@ def train_cmd(
                 on_cycle=_log_cycle,
             )
         except KeyboardInterrupt:
+            if rpc_server is not None:
+                rpc_server.stop()
             console.print("[dim]watch:[/dim] Ctrl-C received, exiting")
             raise typer.Exit(code=0)  # noqa: B904
+        finally:
+            if rpc_server is not None:
+                rpc_server.stop()
         raise typer.Exit(code=exit_code)
+
+    # --max-cycles without --watch: the bounded-loop cycle driver is
+    # the next consumer-side integration step. Accept the flags, refuse
+    # execution until the loop lands.
+    if rpc_config is not None and not watch:
+        console.print(
+            "[red]train:[/red] --listen-rpc --max-cycles (without --watch) is "
+            "scaffolded; the bounded cycle loop is the follow-up. Use "
+            "--watch for now."
+        )
+        raise typer.Exit(code=2)
 
 
 def _maybe_dispatch_multi_gpu(
