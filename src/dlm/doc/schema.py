@@ -22,7 +22,7 @@ _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 # Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
 _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 4
+CURRENT_SCHEMA_VERSION: Final[int] = 5
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
@@ -140,6 +140,15 @@ class TrainingConfig(BaseModel):
     optimizer: Literal["adamw_torch", "adamw_bnb_8bit", "paged_adamw_8bit"] = "adamw_torch"
     lr_scheduler: Literal["cosine", "linear", "constant"] = "cosine"
     warmup_ratio: float = Field(0.1, ge=0.0, le=0.5)
+    # Advanced: override the hardware doctor's auto-picked precision.
+    # `None` (default) lets the planner pick per backend — bf16 on
+    # Ampere+, fp16 on older CUDA, fp32 on MPS (the last pin is
+    # defensive: MPS fp16 attention kernels produce NaN LoRA weights
+    # on tiny-data runs; see `.docs/bugs/01-nan-adapter-on-mps.md`).
+    # Users who want fp16 on MPS for memory (e.g. running an 8B base
+    # on a 24 GB unified-memory budget) can opt in here, accepting
+    # the stability risk on small datasets.
+    precision: Literal["bf16", "fp16", "fp32"] | None = None
     seed: int = 42
     preference: PreferenceConfig = Field(default_factory=_default_preference)
     cpt: CptConfig = Field(default_factory=_default_cpt)
