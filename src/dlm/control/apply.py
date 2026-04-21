@@ -44,26 +44,39 @@ if TYPE_CHECKING:
 def _resolve_layer(model: Any, layer_index: int) -> Any:
     """Locate the residual-stream module at `layer_index`.
 
-    HF decoder-only models all expose `model.model.layers[i]` (Llama,
-    Qwen, SmolLM, Phi — the canonical path). We try that first, then
-    fall back to `model.layers[i]` for models that expose layers at
-    the top level. `layer_index` can be negative (`-1` is the last
-    layer, matching list-indexing semantics).
+    HF decoder-only models expose `model.model.layers[i]` (Llama,
+    Qwen, SmolLM, Phi — the canonical path). PEFT wraps that under a
+    `base_model.model.model.layers[i]` chain (`PeftModel.base_model`
+    is a `LoraModel` whose `.model` is the HF model). Rather than
+    hard-code two shapes, we walk down repeated `base_model` / `model`
+    hops — the first node that exposes a `layers` attribute wins.
+    `layer_index` can be negative (`-1` is the last layer).
 
-    Raises `ControlApplyError` if neither attribute exists or the
-    index is out of bounds.
+    Raises `ControlApplyError` when the walker can't find a `layers`
+    attribute anywhere down the chain or when the index is out of
+    bounds.
     """
     layers = None
-    inner = getattr(model, "model", None)
-    if inner is not None:
-        layers = getattr(inner, "layers", None)
-    if layers is None:
-        layers = getattr(model, "layers", None)
+    node: Any = model
+    # Cap the walk so a pathological graph can't spin forever; real
+    # wrappers are at most 2-3 deep (PEFT adds 2, a rare Accelerate
+    # wrapper adds 1).
+    for _ in range(6):
+        layers = getattr(node, "layers", None)
+        if layers is not None:
+            break
+        next_node = getattr(node, "base_model", None) or getattr(node, "model", None)
+        if next_node is None or next_node is node:
+            break
+        node = next_node
+
     if layers is None:
         raise ControlApplyError(
-            "model has neither `model.layers` nor `layers` — don't know "
-            "where to attach the forward hook. Pass a HF decoder-only "
-            "model, or open an issue with the model class for wiring."
+            "model exposes no `layers` attribute along the "
+            "`base_model` / `model` chain — don't know where to "
+            "attach the forward hook. Pass a HF decoder-only model "
+            "(or a PEFT-wrapped one), or file an issue with the model "
+            "class for wiring."
         )
     try:
         return layers[layer_index]
