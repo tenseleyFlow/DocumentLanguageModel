@@ -36,6 +36,48 @@ class TestPrecisionPicker:
         plan = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048)
         assert plan.precision == "fp32"
 
+    def test_mps_fp16_override_honored(self, caplog: object) -> None:
+        # Frontmatter `training.precision: fp16` on MPS wins over the
+        # default fp32 pin (see .docs/bugs/01-nan-adapter-on-mps.md —
+        # user is opting in to the known NaN risk for memory headroom).
+        import logging
+
+        with force_mps():
+            caps = probe()
+        with caplog.at_level(logging.WARNING, logger="dlm.hardware.plan"):  # type: ignore[attr-defined]
+            plan = resolve(
+                _cfg(precision="fp16"), caps, base_params=8_000_000_000, seq_len=2048
+            )
+        assert plan.precision == "fp16"
+        # The caller must see the risk explicitly — silent fp16 on MPS
+        # is what caused the original bug.
+        messages = " ".join(r.message for r in caplog.records)  # type: ignore[attr-defined]
+        assert "fp16 on MPS" in messages
+        assert "NaN" in messages
+
+    def test_mps_bf16_override_silent(self, caplog: object) -> None:
+        # bf16 on MPS is user-asserted; no warning, since bf16 doesn't
+        # have the fp16 attention-kernel issue.
+        import logging
+
+        with force_mps():
+            caps = probe()
+        with caplog.at_level(logging.WARNING, logger="dlm.hardware.plan"):  # type: ignore[attr-defined]
+            plan = resolve(
+                _cfg(precision="bf16"), caps, base_params=1_500_000_000, seq_len=2048
+            )
+        assert plan.precision == "bf16"
+        assert caplog.records == []  # type: ignore[attr-defined]
+
+    def test_cuda_override_fp32_honored(self) -> None:
+        # CUDA default is bf16 (Ampere+) — override to fp32 honored.
+        with force_cuda(sm=(8, 0)):
+            caps = probe()
+        plan = resolve(
+            _cfg(precision="fp32"), caps, base_params=1_500_000_000, seq_len=2048
+        )
+        assert plan.precision == "fp32"
+
 
 class TestAttentionPicker:
     def test_cuda_without_flash_falls_back_to_sdpa(self) -> None:

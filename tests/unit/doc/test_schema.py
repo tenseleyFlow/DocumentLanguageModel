@@ -34,6 +34,7 @@ class TestTrainingConfigDefaults:
         assert t.optimizer == "adamw_torch"
         assert t.lr_scheduler == "cosine"
         assert t.warmup_ratio == pytest.approx(0.1)
+        assert t.precision is None
         assert t.seed == 42
 
     def test_frozen_model_rejects_mutation(self) -> None:
@@ -71,6 +72,19 @@ class TestTrainingConfigConstraints:
     def test_warmup_ratio_out_of_range(self, bad: float) -> None:
         with pytest.raises(ValidationError):
             TrainingConfig(warmup_ratio=bad)
+
+    @pytest.mark.parametrize("value", ["bf16", "fp16", "fp32"])
+    def test_precision_accepts_valid_values(self, value: str) -> None:
+        t = TrainingConfig(precision=value)  # type: ignore[arg-type]
+        assert t.precision == value
+
+    def test_precision_defaults_to_none(self) -> None:
+        assert TrainingConfig().precision is None
+
+    @pytest.mark.parametrize("bad", ["float32", "FP16", "int8", ""])
+    def test_precision_rejects_invalid(self, bad: str) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig(precision=bad)  # type: ignore[arg-type]
 
     def test_adapter_literal_rejects_unknown(self) -> None:
         with pytest.raises(ValidationError):
@@ -387,7 +401,7 @@ class TestDlmFrontmatterForwardVersion:
 class TestDlmFrontmatter:
     def test_minimal_valid(self) -> None:
         fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="smollm2-135m")
-        assert fm.dlm_version == 4
+        assert fm.dlm_version == 5
         assert fm.training == TrainingConfig()
         assert fm.export == ExportConfig()
         assert fm.system_prompt is None
