@@ -1,7 +1,7 @@
-"""PEFT safetensors → MLX-LM `.npz` LoRA-adapter converter.
+"""PEFT safetensors → MLX-LM LoRA-adapter converter.
 
-Sprint 21 ships MLX as a second inference backend on Apple Silicon.
-PEFT writes LoRA weights as `adapter_model.safetensors` with keys like:
+Ships MLX as a second inference backend on Apple Silicon. PEFT writes
+LoRA weights as `adapter_model.safetensors` with keys like:
 
     base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight
     base_model.model.model.layers.0.self_attn.q_proj.lora_B.weight
@@ -14,23 +14,26 @@ PEFT writes LoRA weights as `adapter_model.safetensors` with keys like:
 (no `base_model` prefix, lowercase `lora_a`/`lora_b`, `.weight` stripped
 because mlx-lm adapter files store bare tensors under the final segment).
 
-The converter is split so the key-mapping logic is pure and
-unit-testable; the tensor I/O layer is a thin wrapper around
-`safetensors.torch.load_file` + `numpy.savez`. We write `.npz` via
-numpy (not `mx.savez`) so conversion itself does not require MLX to
-be importable — the artifact is still MLX-loadable because `mx.load`
-understands numpy's `.npz` format.
+**Output format: `adapters.safetensors`.** Current mlx-lm
+(`tuner/utils.py:137`) hardcodes `model.load_weights(adapters.safetensors)`
+— the `.npz` path worked on earlier mlx_lm releases but no longer.
+We write safetensors directly. Conversion itself doesn't require MLX
+to be importable — the safetensors file is written via the pure
+`safetensors.torch` dependency.
+
+**mlx-lm `adapter_config.json` schema.** mlx-lm's loader builds a
+`types.SimpleNamespace` from the file and reads `config.num_layers` +
+`config.lora_parameters`. PEFT's config has neither. `build_mlx_adapter_config`
+translates PEFT-shape into mlx-lm-shape using the HF base config's
+`num_hidden_layers` + PEFT's `r` / `lora_alpha` / `lora_dropout` /
+`target_modules`.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
-
+from typing import Any
 
 _PEFT_PREFIX = re.compile(r"^base_model\.model\.")
 """PEFT wraps the HF base in a double `base_model.model.` — the outer
@@ -93,11 +96,15 @@ def map_all_keys(peft_keys: list[str]) -> dict[str, str]:
     return mapping
 
 
-def peft_safetensors_to_mlx_npz(  # pragma: no cover - I/O + torch deps
+def peft_safetensors_to_mlx_safetensors(  # pragma: no cover - I/O + torch deps
     peft_adapter_dir: Path,
-    mlx_npz_path: Path,
+    mlx_safetensors_path: Path,
 ) -> dict[str, str]:
-    """Convert `<adapter>/adapter_model.safetensors` → `<mlx_npz_path>`.
+    """Convert `<adapter>/adapter_model.safetensors` → `<mlx_safetensors_path>`.
+
+    mlx-lm's current loader reads `adapters.safetensors` (not `.npz`);
+    we write safetensors with MLX-shaped keys so `model.load_weights`
+    accepts the file without further translation.
 
     Returns the key mapping actually written (peft_key → mlx_key) so
     callers can log it when `--verbose`.
@@ -105,8 +112,7 @@ def peft_safetensors_to_mlx_npz(  # pragma: no cover - I/O + torch deps
     Pragma'd: exercised end-to-end by the slow parity integration test
     (covered via `map_all_keys` unit tests for the logic).
     """
-    import numpy as np
-    from safetensors.torch import load_file
+    from safetensors.torch import load_file, save_file
 
     src = peft_adapter_dir / "adapter_model.safetensors"
     if not src.exists():
@@ -115,13 +121,66 @@ def peft_safetensors_to_mlx_npz(  # pragma: no cover - I/O + torch deps
     tensors = load_file(str(src))
     mapping = map_all_keys(list(tensors.keys()))
 
-    np_tensors: dict[str, NDArray[np.float32]] = {}
-    for peft_key, mlx_key in mapping.items():
-        tensor = tensors[peft_key]
-        # safetensors.torch.load_file returns torch.Tensor; .numpy()
-        # is the standard bridge. fp16 is preserved across the write.
-        np_tensors[mlx_key] = tensor.detach().cpu().numpy()
+    mlx_tensors = {mlx_key: tensors[peft_key] for peft_key, mlx_key in mapping.items()}
 
-    mlx_npz_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(str(mlx_npz_path), **np_tensors)  # type: ignore[arg-type]
+    mlx_safetensors_path.parent.mkdir(parents=True, exist_ok=True)
+    save_file(mlx_tensors, str(mlx_safetensors_path))
     return mapping
+
+
+def build_mlx_adapter_config(
+    peft_config: dict[str, Any],
+    base_num_hidden_layers: int,
+) -> dict[str, Any]:
+    """Translate a PEFT `adapter_config.json` into mlx-lm's schema.
+
+    mlx-lm's `load_adapters` (tuner/utils.py) reads:
+
+    - `config.num_layers` — how many trailing layers receive LoRA
+      (matches mlx-lm convention: -1 = all; a positive N = last N).
+      We emit the base model's `num_hidden_layers` so every layer
+      gets the adapter — matches PEFT default when `layers_to_transform`
+      isn't set.
+    - `config.lora_parameters.rank` ← PEFT `r`
+    - `config.lora_parameters.scale` ← PEFT `lora_alpha / r`
+    - `config.lora_parameters.dropout` ← PEFT `lora_dropout`
+    - `config.lora_parameters.keys` ← PEFT `target_modules`
+    - `config.fine_tune_type` — "lora" unless PEFT `use_dora=True`,
+      in which case "dora".
+
+    Fails loud (`MlxConversionError`) when the PEFT config is missing
+    fields we cannot substitute — `r` and `target_modules` in particular
+    are load-bearing.
+    """
+    try:
+        rank = int(peft_config["r"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise MlxConversionError(
+            f"PEFT adapter_config.json missing or non-integer 'r' (LoRA rank): {exc}"
+        ) from exc
+    target_modules = peft_config.get("target_modules")
+    if not isinstance(target_modules, list) or not target_modules:
+        raise MlxConversionError(
+            "PEFT adapter_config.json 'target_modules' must be a non-empty list; got "
+            f"{target_modules!r}. mlx-lm needs this to wire LoRA into the right ops."
+        )
+    lora_alpha = float(peft_config.get("lora_alpha", rank))
+    lora_dropout = float(peft_config.get("lora_dropout", 0.0))
+    use_dora = bool(peft_config.get("use_dora", False))
+
+    if base_num_hidden_layers < 1:
+        raise MlxConversionError(
+            f"base model reports num_hidden_layers={base_num_hidden_layers} (expected >=1); "
+            "cannot stage mlx adapter without a valid layer count"
+        )
+
+    return {
+        "fine_tune_type": "dora" if use_dora else "lora",
+        "num_layers": int(base_num_hidden_layers),
+        "lora_parameters": {
+            "rank": rank,
+            "scale": lora_alpha / rank if rank else float(lora_alpha),
+            "dropout": lora_dropout,
+            "keys": list(target_modules),
+        },
+    }
