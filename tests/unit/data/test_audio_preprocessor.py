@@ -115,6 +115,52 @@ class TestPreprocessAudioNoCache:
             )
         assert proc.calls == 0
 
+    def test_sample_rate_mismatch_hint_mentions_auto_resample(
+        self, tiny_wav_48k: Path
+    ) -> None:
+        """Error guides the user to the opt-in flag."""
+        proc = _StubProcessor()
+        with pytest.raises(AudioSampleRateMismatch, match="auto_resample"):
+            preprocess_audio(
+                blob_path=tiny_wav_48k,
+                blob_sha="a" * 64,
+                processor=proc,
+                sample_rate=16_000,
+                max_length_seconds=30.0,
+                cache=None,
+            )
+
+    def test_auto_resample_routes_through_resampler(
+        self, tiny_wav_48k: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """auto_resample=True on a mismatch calls dlm.data.audio_resample.resample."""
+        calls: list[tuple[int, int]] = []
+
+        def fake_resample(
+            waveform: np.ndarray, *, src_sr: int, dst_sr: int
+        ) -> np.ndarray:
+            calls.append((src_sr, dst_sr))
+            out_len = int(waveform.shape[0] * dst_sr / src_sr)
+            return np.zeros(out_len, dtype=np.float32)
+
+        from dlm.data import audio_resample as rs_mod
+
+        monkeypatch.setattr(rs_mod, "resample", fake_resample)
+
+        proc = _StubProcessor()
+        result = preprocess_audio(
+            blob_path=tiny_wav_48k,
+            blob_sha="a" * 64,
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            cache=None,
+            auto_resample=True,
+        )
+        assert calls == [(48_000, 16_000)]
+        assert proc.calls == 1
+        assert result.cache_hit is False
+
     def test_truncates_to_max_length(self, tmp_path: Path) -> None:
         # 2-second clip, cap at 0.5 s → processor should see 8000 samples.
         path = tmp_path / "long.wav"
@@ -241,6 +287,42 @@ class TestPreprocessAudioWithCache:
             cache=cache,
         )
         assert proc.calls == 2
+
+    def test_auto_resample_key_disjoint_from_native_key(
+        self,
+        tiny_wav_16k: Path,
+        tmp_path: Path,
+    ) -> None:
+        """auto_resample=True vs =False write to separate cache entries.
+
+        Guards the correctness invariant: an entry cached without
+        resampling must not satisfy a later call that asked to resample
+        (and vice versa) — the processor input was different.
+        """
+        proc = _StubProcessor()
+        cache = AudioCache(tmp_path / "audio")
+        preprocess_audio(
+            blob_path=tiny_wav_16k,
+            blob_sha="a" * 64,
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            cache=cache,
+            auto_resample=False,
+        )
+        preprocess_audio(
+            blob_path=tiny_wav_16k,
+            blob_sha="a" * 64,
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            cache=cache,
+            auto_resample=True,
+        )
+        # Two separate cache entries → processor ran twice.
+        assert proc.calls == 2
+        entries = list(cache.root.rglob("*.npz"))
+        assert len(entries) == 2
 
 
 class TestPreprocessAudioMonoMix:

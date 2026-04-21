@@ -67,6 +67,21 @@ class TestAudioCacheKey:
         with pytest.raises(AttributeError):
             key.blob_sha = "x" * 64  # type: ignore[misc]
 
+    def test_auto_resample_default_false_absent_from_filename(self) -> None:
+        """Default False → filename stays v11-compatible (no `.rs` suffix).
+
+        Guards backward-compat: an existing cache populated before the
+        auto_resample field lands still hits on the same filename when
+        the caller doesn't opt in.
+        """
+        assert ".rs" not in _key().as_filename()
+
+    def test_auto_resample_true_adds_suffix(self) -> None:
+        a = _key(auto_resample=False)
+        b = _key(auto_resample=True)
+        assert a.as_filename() != b.as_filename()
+        assert ".rs" in b.as_filename()
+
 
 class TestAudioCacheRoundTrip:
     def test_miss_on_empty(self, tmp_path: Path) -> None:
@@ -211,6 +226,15 @@ class TestWaveformCacheKey:
         k = _wkey()
         with pytest.raises(AttributeError):
             k.blob_sha = "x" * 64  # type: ignore[misc]
+
+    def test_auto_resample_default_false_absent_from_filename(self) -> None:
+        assert ".rs" not in _wkey().as_filename()
+
+    def test_auto_resample_true_adds_suffix(self) -> None:
+        a = _wkey(auto_resample=False)
+        b = _wkey(auto_resample=True)
+        assert a.as_filename() != b.as_filename()
+        assert ".rs" in b.as_filename()
 
 
 class TestWaveformCacheRoundTrip:

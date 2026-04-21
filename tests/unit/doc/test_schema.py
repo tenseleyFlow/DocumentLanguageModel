@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from dlm.doc.schema import (
     CURRENT_SCHEMA_VERSION,
     AdapterConfig,
+    AudioConfig,
     CptConfig,
     DlmFrontmatter,
     ExportConfig,
@@ -175,6 +176,44 @@ class TestPreferenceConfig:
     def test_extra_fields_forbidden(self) -> None:
         with pytest.raises(ValidationError):
             PreferenceConfig.model_validate({"enabled": True, "rubbish": 1})
+
+
+class TestAudioConfig:
+    """v12 training.audio.auto_resample — default False preserves v11 behavior."""
+
+    def test_default_instance_refuses_resample(self) -> None:
+        a = AudioConfig()
+        assert a.auto_resample is False
+
+    def test_accepts_true(self) -> None:
+        a = AudioConfig(auto_resample=True)
+        assert a.auto_resample is True
+
+    def test_frozen(self) -> None:
+        a = AudioConfig()
+        with pytest.raises(ValidationError):
+            a.auto_resample = True  # type: ignore[misc]
+
+    def test_extra_fields_forbidden(self) -> None:
+        with pytest.raises(ValidationError):
+            AudioConfig.model_validate({"auto_resample": False, "sr": 16_000})
+
+
+class TestTrainingConfigAudioSubfield:
+    def test_default_training_has_audio_disabled(self) -> None:
+        t = TrainingConfig()
+        assert isinstance(t.audio, AudioConfig)
+        assert t.audio.auto_resample is False
+
+    def test_accepts_nested_dict(self) -> None:
+        t = TrainingConfig.model_validate({"audio": {"auto_resample": True}})
+        assert t.audio.auto_resample is True
+
+    def test_rejects_unknown_field(self) -> None:
+        with pytest.raises(ValidationError):
+            TrainingConfig.model_validate(
+                {"audio": {"auto_resample": True, "unknown": 1}}
+            )
 
 
 class TestTrainingConfigPreferenceSubfield:

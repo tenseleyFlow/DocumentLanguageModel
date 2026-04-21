@@ -259,6 +259,105 @@ class TestSampleRateRefusal:
             )
         assert proc.calls == 0
 
+    def test_mismatched_rate_mentions_auto_resample_in_error(
+        self, wav_48k: Path
+    ) -> None:
+        """User-facing error must name the opt-in so the fix is obvious."""
+        proc = _StubProcessor()
+        collator = _make_collator(proc)
+        with pytest.raises(ValueError, match="auto_resample"):
+            collator(
+                [
+                    {
+                        "audio_blob_sha": "a" * 64,
+                        "audio_path": str(wav_48k),
+                        "text": "x",
+                    }
+                ]
+            )
+
+
+class TestAutoResample:
+    """auto_resample=True routes mismatched rates through the resampler."""
+
+    def test_mismatched_rate_resampled_when_opted_in(
+        self, wav_48k: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With auto_resample=True, the collator calls into audio_resample."""
+        # Monkey-patch resample() to a deterministic stub so the test
+        # doesn't depend on soxr / scipy being installed in the dev env.
+        calls: list[tuple[int, int]] = []
+
+        def fake_resample(
+            waveform: np.ndarray, *, src_sr: int, dst_sr: int
+        ) -> np.ndarray:
+            calls.append((src_sr, dst_sr))
+            # Return a waveform at the target rate (same duration).
+            out_len = int(waveform.shape[0] * dst_sr / src_sr)
+            return np.zeros(out_len, dtype=np.float32)
+
+        from dlm.data import audio_resample as rs_mod
+
+        monkeypatch.setattr(rs_mod, "resample", fake_resample)
+
+        proc = _StubProcessor()
+        collator = AudioLmCollator(
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            max_length=None,
+            auto_resample=True,
+        )
+        collator(
+            [
+                {
+                    "audio_blob_sha": "a" * 64,
+                    "audio_path": str(wav_48k),
+                    "text": "x",
+                }
+            ]
+        )
+        assert calls == [(48_000, 16_000)]
+        # Processor ran once on the resampled waveform.
+        assert proc.calls == 1
+        assert proc.last_kwargs is not None
+        assert proc.last_kwargs["audios"][0].dtype == np.float32
+
+    def test_matched_rate_bypasses_resampler(
+        self, wav_16k: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """auto_resample=True with matched SR still skips the resampler."""
+        calls: list[tuple[int, int]] = []
+
+        def fake_resample(
+            waveform: np.ndarray, *, src_sr: int, dst_sr: int
+        ) -> np.ndarray:
+            calls.append((src_sr, dst_sr))
+            return waveform
+
+        from dlm.data import audio_resample as rs_mod
+
+        monkeypatch.setattr(rs_mod, "resample", fake_resample)
+
+        proc = _StubProcessor()
+        collator = AudioLmCollator(
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            auto_resample=True,
+        )
+        collator(
+            [
+                {
+                    "audio_blob_sha": "a" * 64,
+                    "audio_path": str(wav_16k),
+                    "text": "x",
+                }
+            ]
+        )
+        # No resample call — rates agreed.
+        assert calls == []
+
 
 class TestCollatorConstruction:
     def test_missing_tokenizer_refused(self) -> None:
