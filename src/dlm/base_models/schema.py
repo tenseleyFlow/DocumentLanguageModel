@@ -60,6 +60,28 @@ class VlPreprocessorPlan(BaseModel):
         return value
 
 
+class AudioPreprocessorPlan(BaseModel):
+    """Per-base audio-preprocessing parameters (Sprint 35.2).
+
+    Mirrors `VlPreprocessorPlan` — pinned at registry-build time so
+    the audio cache key stays stable. Sprint 35.2 v1 refuses audio at
+    non-target `sample_rate`; resampling lands as a follow-up.
+
+    `sample_rate` is the model's training rate in Hz (Qwen2-Audio:
+    16000). `max_length_seconds` caps the per-clip duration the
+    processor sees; longer clips are truncated (the processor's
+    built-in policy). `audio_token` is the textual placeholder that
+    expands into the model's fixed audio-token window.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    sample_rate: int = Field(..., gt=0, description="Hz — refuse on mismatch")
+    max_length_seconds: float = Field(..., gt=0.0)
+    audio_token: str = Field(..., min_length=1, description="Placeholder token string")
+    num_audio_tokens: int = Field(..., gt=0, description="Tokens reserved per clip")
+
+
 class BaseModelSpec(BaseModel):
     """Curated registry metadata for one base model."""
 
@@ -73,7 +95,7 @@ class BaseModelSpec(BaseModel):
     architecture: str = Field(..., description="transformers `config.architectures[0]` value.")
     params: int = Field(..., gt=0, description="Parameter count; drives hardware doctor.")
     target_modules: list[str] = Field(..., min_length=1)
-    template: Literal["chatml", "llama3", "phi3", "mistral", "paligemma"]
+    template: Literal["chatml", "llama3", "phi3", "mistral", "paligemma", "qwen2-audio"]
     gguf_arch: str = Field(..., min_length=1, description="Name llama.cpp's converter uses.")
     tokenizer_pre: str = Field(..., min_length=1, description="Pre-tokenizer label.")
 
@@ -91,25 +113,51 @@ class BaseModelSpec(BaseModel):
     context_length: int = Field(..., gt=0)
     recommended_seq_len: int = Field(..., gt=0)
 
-    # Modality + VL preprocessing (schema v10; Sprint 35 v1).
-    # Text bases leave `modality="text"` + `vl_preprocessor_plan=None`;
-    # a `modality="vision-language"` spec must also pin a preprocessing
-    # plan so cache keys stay stable.
-    modality: Literal["text", "vision-language"] = "text"
+    # Modality + multi-modal preprocessing (schema v10 + v11).
+    # Text bases leave `modality="text"` with both plans None;
+    # `modality="vision-language"` requires a `vl_preprocessor_plan`
+    # and rejects an audio plan; `modality="audio-language"` requires
+    # an `audio_preprocessor_plan` and rejects a vl plan. Every
+    # invariant is enforced below at validate time.
+    modality: Literal["text", "vision-language", "audio-language"] = "text"
     vl_preprocessor_plan: VlPreprocessorPlan | None = None
+    audio_preprocessor_plan: AudioPreprocessorPlan | None = None
 
     @model_validator(mode="after")
-    def _vl_requires_preprocessor_plan(self) -> BaseModelSpec:
-        if self.modality == "vision-language" and self.vl_preprocessor_plan is None:
-            raise ValueError(
-                f"base {self.key!r}: modality='vision-language' requires "
-                "a vl_preprocessor_plan (pinned image size + token shape)"
-            )
-        if self.modality == "text" and self.vl_preprocessor_plan is not None:
-            raise ValueError(
-                f"base {self.key!r}: vl_preprocessor_plan only valid with "
-                "modality='vision-language'"
-            )
+    def _modality_matches_plan(self) -> BaseModelSpec:
+        if self.modality == "vision-language":
+            if self.vl_preprocessor_plan is None:
+                raise ValueError(
+                    f"base {self.key!r}: modality='vision-language' requires "
+                    "a vl_preprocessor_plan (pinned image size + token shape)"
+                )
+            if self.audio_preprocessor_plan is not None:
+                raise ValueError(
+                    f"base {self.key!r}: audio_preprocessor_plan is invalid "
+                    "on a vision-language base"
+                )
+        elif self.modality == "audio-language":
+            if self.audio_preprocessor_plan is None:
+                raise ValueError(
+                    f"base {self.key!r}: modality='audio-language' requires "
+                    "an audio_preprocessor_plan (pinned sample_rate + token shape)"
+                )
+            if self.vl_preprocessor_plan is not None:
+                raise ValueError(
+                    f"base {self.key!r}: vl_preprocessor_plan is invalid "
+                    "on an audio-language base"
+                )
+        else:  # "text"
+            if self.vl_preprocessor_plan is not None:
+                raise ValueError(
+                    f"base {self.key!r}: vl_preprocessor_plan only valid with "
+                    "modality='vision-language'"
+                )
+            if self.audio_preprocessor_plan is not None:
+                raise ValueError(
+                    f"base {self.key!r}: audio_preprocessor_plan only valid "
+                    "with modality='audio-language'"
+                )
         return self
 
     @field_validator("revision")
