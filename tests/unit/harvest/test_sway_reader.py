@@ -173,6 +173,23 @@ class TestMalformed:
         with pytest.raises(MalformedSwayReportError, match="newer than this reader"):
             read_sway_report(report)
 
+    def test_supported_schema_pinned_to_current_sway_version(self) -> None:
+        """Cross-repo bump-gate: `_SUPPORTED_SWAY_SCHEMA` must match sway's.
+
+        Sway's shipping schema is v1. If a sway bump lands but we forget
+        to bump this constant (or vice versa), any operator harvesting
+        newer sway output hits `test_newer_schema_refused`'s refusal
+        path. This test pins the constant itself so a casual edit to
+        the reader can't silently drop the support floor — the golden
+        fails and forces a code review.
+        """
+        from dlm.harvest.sway_reader import _SUPPORTED_SWAY_SCHEMA
+
+        assert _SUPPORTED_SWAY_SCHEMA == 1, (
+            "sway schema pin changed — verify `sway/src/dlm_sway/suite/report.py` "
+            "still emits this version and bump the docs pointer in `dlm.lock`"
+        )
+
     def test_missing_probes_array(self, tmp_path: Path) -> None:
         report = _write(tmp_path, {"schema_version": 1, "sway_version": "0.1"})
         with pytest.raises(MalformedSwayReportError, match="`probes` array"):
