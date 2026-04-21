@@ -168,12 +168,12 @@ class TestVlModelfileRender:
 
 
 class TestStopsFallback:
-    def test_missing_tokenizer_config_uses_vl_defaults(self, tmp_path: Path) -> None:
-        """Without `tokenizer_config.json` the fallback stop set applies."""
+    def test_paligemma_uses_gemma_style_stop(self, tmp_path: Path) -> None:
+        """PaliGemma's fallback is Gemma's `<eos>` alone — not im_end."""
         adapter_dir = tmp_path / "adapter"
         adapter_dir.mkdir()  # no tokenizer_config.json inside
         ctx = VlModelfileContext(
-            spec=_fake_vl_spec(),
+            spec=_fake_vl_spec(),  # PaliGemmaForConditionalGeneration
             plan=_fake_plan(),
             adapter_dir=adapter_dir,
             base_gguf_name="base.Q4_K_M.gguf",
@@ -182,6 +182,47 @@ class TestStopsFallback:
             adapter_version=1,
         )
         out = render_vl_modelfile(ctx)
-        # VL fallback stops land as PARAMETER stop lines.
+        assert 'PARAMETER stop "<eos>"' in out
+        # chatml-style stops must NOT appear on a PaliGemma Modelfile —
+        # otherwise Ollama would pre-emptively stop on a token the
+        # Gemma tokenizer never emits.
+        assert 'PARAMETER stop "<|im_end|>"' not in out
+
+    def test_qwen2_vl_uses_chatml_stops(self, tmp_path: Path) -> None:
+        """Qwen2-VL uses chatml: `<|im_end|>` + `<|endoftext|>`."""
+        spec = _fake_vl_spec()
+        object.__setattr__(spec, "architecture", "Qwen2VLForConditionalGeneration")
+        adapter_dir = tmp_path / "adapter"
+        adapter_dir.mkdir()
+        ctx = VlModelfileContext(
+            spec=spec,
+            plan=_fake_plan(),
+            adapter_dir=adapter_dir,
+            base_gguf_name="base.Q4_K_M.gguf",
+            adapter_gguf_name=None,
+            dlm_id="01JZZZZZZZZZZZZZZZZZZZZZZZ",
+            adapter_version=1,
+        )
+        out = render_vl_modelfile(ctx)
+        assert 'PARAMETER stop "<|im_end|>"' in out
+        assert 'PARAMETER stop "<|endoftext|>"' in out
+        assert 'PARAMETER stop "<eos>"' not in out
+
+    def test_unknown_arch_falls_back_to_union(self, tmp_path: Path) -> None:
+        """Unknown architectures fall back to the safe union."""
+        spec = _fake_vl_spec()
+        object.__setattr__(spec, "architecture", "SomeNewVLModel")
+        adapter_dir = tmp_path / "adapter"
+        adapter_dir.mkdir()
+        ctx = VlModelfileContext(
+            spec=spec,
+            plan=_fake_plan(),
+            adapter_dir=adapter_dir,
+            base_gguf_name="base.Q4_K_M.gguf",
+            adapter_gguf_name=None,
+            dlm_id="01JZZZZZZZZZZZZZZZZZZZZZZZ",
+            adapter_version=1,
+        )
+        out = render_vl_modelfile(ctx)
         assert 'PARAMETER stop "<|im_end|>"' in out
         assert 'PARAMETER stop "<eos>"' in out
