@@ -603,10 +603,26 @@ def _build_real_trainer(  # pragma: no cover
 
     from dlm.data import build_dataset, make_formatting_func, prepare_tokenizer
     from dlm.data.weighted_rows import merge_weights_maps
+    from dlm.store.blobs import BlobStore
     from dlm.train.adapter import build_or_resume_adapter
-    from dlm.train.loader import load_base_model
+    from dlm.train.loader import load_base_model, load_processor
 
     base_model = load_base_model(spec, plan)
+
+    # Vision-language path (Sprint 35 v1): also load the processor and
+    # route blob-bytes through the dataset builder. The tokenizer still
+    # bubbles up via the processor's `.tokenizer` attribute, which both
+    # our downstream helpers and TRL's VL collator understand.
+    is_vl = spec.modality == "vision-language"
+    vl_processor: Any | None = None
+    blob_store: BlobStore | None = None
+    image_token = "<image>"
+    if is_vl:
+        vl_processor = load_processor(spec)
+        blob_store = BlobStore(store.blob_dir)
+        if spec.vl_preprocessor_plan is not None:
+            image_token = spec.vl_preprocessor_plan.image_token
+
     tok_bringup = prepare_tokenizer(spec.hf_id, spec.revision)
 
     replay_rows = _sample_replay_rows(
@@ -630,6 +646,8 @@ def _build_real_trainer(  # pragma: no cover
         val_frac=0.1,
         replay_rows=replay_rows or None,
         weights=merged_weights or None,
+        blob_store=blob_store,
+        image_token=image_token,
     )
 
     resume_path = (
@@ -754,25 +772,40 @@ def _build_real_trainer(  # pragma: no cover
     # ``"input_ids" in column_names`` and skips its own chat-template /
     # EOS / tokenize passes when true. Cache hits on subsequent runs
     # skip the tokenizer call entirely — the whole point of Sprint 31.
-    train_ds, val_ds, tokenization_stats = _maybe_pretokenize_datasets(
-        train_ds=train_ds,
-        val_ds=val_ds,
-        parsed=parsed,
-        store=store,
-        tokenizer=tok_bringup.tokenizer,
-    )
+    #
+    # Sprint 35 v1: VL bases skip this pass entirely. The VL row shape
+    # carries PIL.Image objects whose pixel tensors come from the
+    # processor at collate time (TRL 1.2's `DataCollatorForVisionLanguageModeling`
+    # detects "images" in the row dict and auto-dispatches). Pre-
+    # tokenizing VL rows would strip the image before the collator
+    # ever saw it.
+    if is_vl:
+        tokenization_stats = None
+    else:
+        train_ds, val_ds, tokenization_stats = _maybe_pretokenize_datasets(
+            train_ds=train_ds,
+            val_ds=val_ds,
+            parsed=parsed,
+            store=store,
+            tokenizer=tok_bringup.tokenizer,
+        )
     # The ``formatting_func`` is only consulted on the non-pre-processed
     # path. When we pre-tokenize, TRL skips it (and logs a warning if
     # both are present). Drop it on the cached path to keep the logs
-    # clean and make the intent explicit.
-    use_formatting_func = tokenization_stats is None
+    # clean and make the intent explicit. VL bases skip it unconditionally —
+    # the VL collator reads `row["text"]` directly and owns the prompt-
+    # assembly semantics per-processor.
+    use_formatting_func = tokenization_stats is None and not is_vl
 
     from dlm.eval import build_callback
 
     # Newer TRL releases (>=0.9) renamed `tokenizer` → `processing_class`.
+    # For VL bases we hand TRL the full `AutoProcessor` (ProcessorMixin)
+    # so `DataCollatorForVisionLanguageModeling` can drive pixel + text
+    # preprocessing together. Text bases keep the tokenizer path.
     trainer_kwargs: dict[str, Any] = {
         "model": peft_model,
-        "processing_class": tok_bringup.tokenizer,
+        "processing_class": vl_processor if is_vl else tok_bringup.tokenizer,
         "train_dataset": train_ds,
         "args": sft_config,
     }
