@@ -112,15 +112,17 @@ class GateEvent:
     adapter the gate learned to prefer on average. ``mean_weight`` is
     the softmax average across supervising samples; ``sample_count``
     is how many sections trained that adapter. ``mode`` is ``trained``
-    when the gate trained normally or ``uniform`` when the cold-start
-    fallback fired.
+    when the gate trained normally, ``uniform`` when the cold-start
+    fallback fired, or ``diverged`` when gate training produced a
+    non-finite loss and the store fell back to gate-less routing —
+    ``mean_weight`` and ``sample_count`` are both 0 for diverged rows.
     """
 
     run_id: int
     adapter_name: str
     mean_weight: float
     sample_count: int
-    mode: str  # "trained" | "uniform"
+    mode: str  # "trained" | "uniform" | "diverged"
     at: str = ""
 
     def __post_init__(self) -> None:
