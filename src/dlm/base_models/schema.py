@@ -24,9 +24,40 @@ from __future__ import annotations
 import re
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _SHA_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
+
+
+class VlPreprocessorPlan(BaseModel):
+    """Per-base vision-preprocessing parameters.
+
+    Pinned at registry-build time so `dlm export` + the VL cache key
+    stay stable across reruns. HF's `AutoProcessor` is the source of
+    truth at runtime; this block records the *expected* shape for
+    preflight checks + cache keying.
+
+    `target_size` is `(height, width)` in pixels. `resize_policy`
+    defaults to `"fixed"` because that's what Sprint 35 v1 ships —
+    Qwen2-VL's dynamic resolution lands in 35.3. `image_token` is the
+    textual placeholder inserted into prompts before the processor
+    expands it into `num_image_tokens` copies.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    target_size: tuple[int, int] = Field(..., description="(height, width) in pixels")
+    resize_policy: Literal["fixed", "dynamic"] = "fixed"
+    image_token: str = Field(..., min_length=1, description="Placeholder token string")
+    num_image_tokens: int = Field(..., gt=0, description="Tokens consumed per image")
+
+    @field_validator("target_size")
+    @classmethod
+    def _validate_target_size(cls, value: tuple[int, int]) -> tuple[int, int]:
+        h, w = value
+        if h <= 0 or w <= 0:
+            raise ValueError(f"target_size must be positive, got {value!r}")
+        return value
 
 
 class BaseModelSpec(BaseModel):
@@ -42,7 +73,7 @@ class BaseModelSpec(BaseModel):
     architecture: str = Field(..., description="transformers `config.architectures[0]` value.")
     params: int = Field(..., gt=0, description="Parameter count; drives hardware doctor.")
     target_modules: list[str] = Field(..., min_length=1)
-    template: Literal["chatml", "llama3", "phi3", "mistral"]
+    template: Literal["chatml", "llama3", "phi3", "mistral", "paligemma"]
     gguf_arch: str = Field(..., min_length=1, description="Name llama.cpp's converter uses.")
     tokenizer_pre: str = Field(..., min_length=1, description="Pre-tokenizer label.")
 
@@ -59,6 +90,27 @@ class BaseModelSpec(BaseModel):
     size_gb_fp16: float = Field(..., gt=0)
     context_length: int = Field(..., gt=0)
     recommended_seq_len: int = Field(..., gt=0)
+
+    # Modality + VL preprocessing (schema v10; Sprint 35 v1).
+    # Text bases leave `modality="text"` + `vl_preprocessor_plan=None`;
+    # a `modality="vision-language"` spec must also pin a preprocessing
+    # plan so cache keys stay stable.
+    modality: Literal["text", "vision-language"] = "text"
+    vl_preprocessor_plan: VlPreprocessorPlan | None = None
+
+    @model_validator(mode="after")
+    def _vl_requires_preprocessor_plan(self) -> BaseModelSpec:
+        if self.modality == "vision-language" and self.vl_preprocessor_plan is None:
+            raise ValueError(
+                f"base {self.key!r}: modality='vision-language' requires "
+                "a vl_preprocessor_plan (pinned image size + token shape)"
+            )
+        if self.modality == "text" and self.vl_preprocessor_plan is not None:
+            raise ValueError(
+                f"base {self.key!r}: vl_preprocessor_plan only valid with "
+                "modality='vision-language'"
+            )
+        return self
 
     @field_validator("revision")
     @classmethod
