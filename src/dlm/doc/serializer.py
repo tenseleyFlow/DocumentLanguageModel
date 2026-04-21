@@ -90,12 +90,22 @@ def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
     """
     pad = " " * indent
     lines: list[str] = []
-    defaults = model.__class__()  # instance with all defaults
-    # model_fields preserves declaration order.
-    for field_name in model.__class__.model_fields:
+    # model_fields preserves declaration order. Required fields (no
+    # default / default_factory) must always emit; optional fields are
+    # suppressed when they equal their schema default. Constructing
+    # `model.__class__()` would fail for models with required fields
+    # (e.g. SourceDirective.path).
+    from pydantic_core import PydanticUndefined
+
+    for field_name, field_info in model.__class__.model_fields.items():
         value = getattr(model, field_name)
-        default_value = getattr(defaults, field_name)
-        if value == default_value:
+        if field_info.default is not PydanticUndefined and value == field_info.default:
+            continue
+        if (
+            field_info.default is PydanticUndefined
+            and field_info.default_factory is not None
+            and value == field_info.default_factory()  # type: ignore[call-arg]
+        ):
             continue
         if isinstance(value, BaseModel):
             nested = _emit_nested_mapping(value, indent=indent + 2)
@@ -123,6 +133,28 @@ def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
                     # YAML has a valid mapping value rather than bare key.
                     lines[-1] = f"{pad}  {k}: {{}}"
             continue
+        if (
+            isinstance(value, list | tuple)
+            and value
+            and all(isinstance(v, BaseModel) for v in value)
+        ):
+            # `tuple[BaseModel, ...]` / `list[BaseModel]` (e.g.
+            # training.sources). YAML list of nested mappings — each
+            # entry's first field emits with the `-` marker, subsequent
+            # fields indent aligned.
+            lines.append(f"{pad}{field_name}:")
+            for item in value:
+                nested = _emit_nested_mapping(item, indent=indent + 4)
+                if not nested:
+                    lines.append(f"{pad}  - {{}}")
+                    continue
+                # Replace the first-field indent with `  - ` to start
+                # the list item; keep the rest at `indent + 4`.
+                first = nested[0]
+                prefix = f"{pad}  - "
+                lines.append(prefix + first[len(pad) + 4 :])
+                lines.extend(nested[1:])
+            continue
         lines.append(f"{pad}{field_name}: {_scalar(value)}")
     return lines
 
@@ -147,7 +179,7 @@ def _scalar(value: object) -> str:
         return _format_number(value)
     if isinstance(value, str):
         return _format_string(value)
-    if isinstance(value, list):
+    if isinstance(value, list | tuple):
         return _format_list(value)
     if value is None:
         return "null"
