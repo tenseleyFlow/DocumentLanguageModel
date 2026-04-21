@@ -96,6 +96,20 @@ class TestStorePathAccessors:
         with pytest.raises(ValueError):
             store.export_quant_dir("")
 
+    def test_blob_dir(self, store: StorePath) -> None:
+        assert store.blob_dir.name == "blobs"
+        assert store.blob_dir.parent == store.root
+
+    def test_vl_cache_dir(self, store: StorePath) -> None:
+        assert store.vl_cache_dir.name == "vl-cache"
+        assert store.vl_cache_dir.parent == store.root
+
+    def test_blob_and_vl_cache_lazy(self, tmp_path: Path) -> None:
+        sp = for_dlm(VALID_ID, home=tmp_path)
+        sp.ensure_layout()
+        assert not sp.blob_dir.exists()
+        assert not sp.vl_cache_dir.exists()
+
 
 class TestEnsureLayout:
     @pytest.fixture
