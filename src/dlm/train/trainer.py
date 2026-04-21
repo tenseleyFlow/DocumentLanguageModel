@@ -159,6 +159,14 @@ def run(
     log_path = log_path_for(store.logs, run_id)
     versions = capture_runtime_versions()
 
+    # 3b. Expand frontmatter `training.sources` directives into
+    #     synthesized PROSE sections (Sprint 29). The resulting list
+    #     merges with `parsed.sections` so every downstream consumer —
+    #     diff, dataset builder, retention — treats directive-sourced
+    #     and in-body sections identically. Provenance is captured
+    #     for the training summary.
+    parsed, directive_provenance = _expand_directives(parsed)
+
     # 4. Content-delta against the previous manifest (audit-04 M1/M2):
     #    feeds replay sampling before training; `change_set.new` is
     #    appended to the corpus + `content_hashes` after training.
@@ -394,6 +402,7 @@ def run(
             early_stopped=early_stopped,
             duration_seconds=elapsed,
             determinism=determinism,
+            source_directives=directive_provenance,
         )
 
         # 11. Append the training-run summary + refresh `content_hashes`
@@ -885,14 +894,32 @@ def _write_training_summary(
     determinism: DeterminismSummary,
     val_loss_cpt: float | None = None,
     val_loss_sft: float | None = None,
+    source_directives: tuple[Any, ...] = (),
 ) -> Path:
     """Write `logs/train-*.summary.json` next to the JSONL log."""
-    from dlm.eval import TrainingSummary, save_summary, summary_path_for
+    from dlm.eval import (
+        SourceProvenanceRecord,
+        TrainingSummary,
+        save_summary,
+        summary_path_for,
+    )
 
     # Re-derive the timestamp portion from the log filename so summary + log share a stem.
     stem = log_path.stem  # "train-000001-2026-04-18T10:15:23"
     ts = stem.split("-", 2)[-1] if "-" in stem else ""
     summary_path = summary_path_for(store.logs, run_id, ts)
+
+    records = [
+        SourceProvenanceRecord(
+            path=p.path,
+            file_count=p.file_count,
+            total_bytes=p.total_bytes,
+            skipped_binary=p.skipped_binary,
+            skipped_encoding=p.skipped_encoding,
+            skipped_over_size=p.skipped_over_size,
+        )
+        for p in source_directives
+    ]
 
     summary = TrainingSummary(
         run_id=run_id,
@@ -907,6 +934,7 @@ def _write_training_summary(
         early_stopped=early_stopped,
         duration_seconds=duration_seconds,
         determinism_class=determinism.class_,
+        source_directives=records,
     )
     save_summary(summary_path, summary)
     return summary_path
@@ -1200,6 +1228,50 @@ def _maybe_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _expand_directives(
+    parsed: ParsedDlm,
+) -> tuple[ParsedDlm, tuple[Any, ...]]:
+    """Resolve `training.sources` directives into synthesized sections.
+
+    Returns a (possibly-new) `ParsedDlm` whose `sections` include both
+    the original in-body sections and the directive-sourced ones, plus
+    the per-directive provenance tuple for the training summary.
+
+    When the frontmatter declares no `training.sources`, returns the
+    input parsed unchanged and an empty provenance tuple — zero-cost
+    fast path for the common case.
+
+    Directive expansion needs a filesystem anchor. We use
+    `parsed.source_path.parent` when the parser saw an on-disk file;
+    for synthesized `ParsedDlm` values (unit tests, in-memory
+    pipelines) with `source_path=None` we fall back to the current
+    working directory. That keeps tests that don't touch directives
+    unaffected.
+    """
+    import dataclasses
+
+    from dlm.directives import expand_sources
+
+    if parsed.frontmatter.training.sources is None:
+        return parsed, ()
+
+    base_path = (
+        parsed.source_path.parent if parsed.source_path is not None else Path.cwd()
+    )
+    result = expand_sources(parsed, base_path=base_path)
+    if not result.sections:
+        return parsed, result.provenance
+
+    merged = tuple(parsed.sections) + result.sections
+    new_parsed = dataclasses.replace(parsed, sections=merged)
+    _LOG.info(
+        "directives: expanded %d file(s) across %d source(s)",
+        len(result.sections),
+        len(result.provenance),
+    )
+    return new_parsed, result.provenance
 
 
 # Re-export the state-sidecar filenames so callers (e.g., pack tooling)
