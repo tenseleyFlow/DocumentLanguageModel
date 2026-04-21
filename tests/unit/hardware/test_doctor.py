@@ -9,7 +9,9 @@ import sys
 from typer.testing import CliRunner
 
 from dlm.cli.app import app
-from dlm.hardware import doctor, render_text
+from dlm.hardware import DoctorResult, TrainingPlan, doctor, render_text
+from dlm.hardware.backend import Backend
+from dlm.hardware.capabilities import Capabilities
 from tests.fixtures.hardware_mocks import force_cpu, force_cuda, force_mps
 
 
@@ -75,6 +77,94 @@ class TestRender:
         text = render_text(result)
         assert "Plan refused:" in text
         assert "MPS" in text
+
+    def test_cuda_render_surfaces_sm_vram_and_cuda_suffix(self) -> None:
+        caps = Capabilities(
+            backend=Backend.CUDA,
+            device_name="RTX 4090",
+            sm=(8, 9),
+            rocm_arch=None,
+            vram_gb=23.9,
+            unified_memory_gb=None,
+            cpu_cores=16,
+            ram_gb=64.0,
+            supports_bf16=True,
+            supports_fp16=True,
+            has_flash_attention=True,
+            has_xformers=False,
+            has_bitsandbytes=True,
+            has_triton=True,
+            has_mlx=False,
+            torch_version="2.11.0",
+            accelerate_version="1.2.0",
+            cuda_version="12.4",
+            rocm_version=None,
+            platform="Linux 6.8",
+            determinism_class="strong",
+            telemetry_posture={},
+        )
+        plan = TrainingPlan(
+            precision="bf16",
+            attn_implementation="flash_attention_2",
+            use_qlora=False,
+            quant_compute_dtype=None,
+            micro_batch_size=2,
+            grad_accum=4,
+            effective_batch_size=8,
+            gradient_checkpointing=False,
+            est_peak_vram_gb=7.5,
+            est_step_seconds=0.8,
+            reason="test",
+            world_size=1,
+        )
+        text = render_text(DoctorResult(capabilities=caps, plan=plan, plan_error=None))
+        assert "SM 8.9" in text
+        assert "23.9 GB VRAM free" in text
+        assert "Torch:          2.11.0 (CUDA 12.4)" in text
+
+    def test_rocm_render_surfaces_arch_suffix_and_qlora_summary(self) -> None:
+        caps = Capabilities(
+            backend=Backend.ROCM,
+            device_name="Radeon 7900 XTX",
+            sm=(11, 0),
+            rocm_arch="gfx1100",
+            vram_gb=15.5,
+            unified_memory_gb=None,
+            cpu_cores=16,
+            ram_gb=64.0,
+            supports_bf16=True,
+            supports_fp16=True,
+            has_flash_attention=False,
+            has_xformers=False,
+            has_bitsandbytes=False,
+            has_triton=True,
+            has_mlx=False,
+            torch_version="2.11.0",
+            accelerate_version=None,
+            cuda_version=None,
+            rocm_version="6.0",
+            platform="Linux 6.8",
+            determinism_class="best-effort",
+            telemetry_posture={},
+        )
+        plan = TrainingPlan(
+            precision="bf16",
+            attn_implementation="sdpa",
+            use_qlora=True,
+            quant_compute_dtype="bf16",
+            micro_batch_size=1,
+            grad_accum=8,
+            effective_batch_size=8,
+            gradient_checkpointing=True,
+            est_peak_vram_gb=8.2,
+            est_step_seconds=1.2,
+            reason="test",
+            world_size=1,
+        )
+        text = render_text(DoctorResult(capabilities=caps, plan=plan, plan_error=None))
+        assert "arch gfx1100" in text
+        assert "Torch:          2.11.0 (ROCm 6.0)" in text
+        assert "adapter:         qlora (4-bit NF4, compute bf16)" in text
 
 
 class TestCliDoctor:
