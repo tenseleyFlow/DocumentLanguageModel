@@ -41,6 +41,7 @@ def build_dataset(
     weights: Mapping[str, Mapping[str, float]] | None = None,
     blob_store: BlobStore | None = None,
     image_token: str = "<image>",
+    audio_token: str = "<|AUDIO|>",
 ) -> tuple[Dataset, Dataset]:
     """Build a (train, val) `Dataset` pair from parsed `.dlm` sections.
 
@@ -53,11 +54,17 @@ def build_dataset(
     decision. The expansion applies to both in-document and replay
     rows so retention behaves uniformly.
 
-    `blob_store` + `image_token` flow through to `sections_to_rows` for
-    IMAGE-section emission (Sprint 35 v1). Callers with VL bases must
-    supply the store; text-only documents leave the defaults.
+    `blob_store` + `image_token` + `audio_token` flow through to
+    `sections_to_rows` for media-section emission. Callers with
+    vision-language or audio-language bases must supply the store;
+    text-only documents leave the defaults.
     """
-    rows = sections_to_rows(sections, blob_store=blob_store, image_token=image_token)
+    rows = sections_to_rows(
+        sections,
+        blob_store=blob_store,
+        image_token=image_token,
+        audio_token=audio_token,
+    )
     if replay_rows is not None:
         rows.extend(replay_rows)
 
