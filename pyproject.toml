@@ -197,7 +197,7 @@ disable_error_code = ["no-untyped-call"]
 testpaths = ["tests"]
 addopts = [
     "-ra",
-    "-m", "not slow and not gpu and not online and not vl and not audio",
+    "-m", "not slow and not gpu and not online and not vl and not audio and not ollama",
 ]
 markers = [
     "slow: expensive; deselected by default",
@@ -205,4 +205,5 @@ markers = [
     "online: touches the network; skipped in offline CI",
     "vl: vision-language; requires a GPU + VL HF weights; deselected by default",
     "audio: audio-language; requires a GPU + audio HF weights; deselected by default",
+    "ollama: requires a local Ollama install (0.4+); deselected by default",
 ]
