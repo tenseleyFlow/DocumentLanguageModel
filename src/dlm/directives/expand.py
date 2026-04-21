@@ -47,11 +47,23 @@ from dlm.store.blobs import BlobStore
 _LOG = logging.getLogger(__name__)
 
 # File extensions dispatched to the blob store as IMAGE sections.
-# Kept lowercase; comparison lowers the observed suffix. Audio
-# extensions (.wav, .mp3, .flac) land via Sprint 35.2.
+# Kept lowercase; comparison lowers the observed suffix.
 _IMAGE_EXTENSIONS: Final[frozenset[str]] = frozenset(
     {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
 )
+
+# File extensions dispatched to the blob store as AUDIO sections
+# (Sprint 35.2). `.mp3` / `.m4a` deferred — soundfile can't decode
+# them without libsndfile MP3 support, which isn't in the v1 runtime
+# dep tree. Users with mp3 corpora re-encode to wav/flac first.
+_AUDIO_EXTENSIONS: Final[frozenset[str]] = frozenset({".wav", ".flac", ".ogg"})
+
+# Sidecar transcript filename suffix: `clips/hello.wav` pairs with
+# `clips/hello.txt`. Missing the sidecar is a hard refusal — audio
+# without text supervision has no training signal, so we surface the
+# gap immediately rather than emitting a section that'd fail at
+# row-emission time.
+_TRANSCRIPT_SIDECAR_SUFFIX: Final[str] = ".txt"
 
 
 @dataclass(frozen=True)
@@ -61,13 +73,15 @@ class SourceProvenance:
     `path` is the directive's raw path (user-facing, before ~ or
     symlink resolution) so it matches the frontmatter on disk.
     `file_count` / `total_bytes` reflect text sections that made it
-    into the Section list. `image_count` / `image_bytes` reflect IMAGE
-    sections ingested through the blob store. `skipped_binary` /
-    `skipped_encoding` / `skipped_over_size` / `skipped_by_descent`
-    break down the drops — if a directive yields zero sections, the
-    skip counts let the user see why. `skipped_image_no_store` counts
-    image-extension hits that were dropped because no BlobStore was
-    passed to `expand_sources` (tests, `dlm show`).
+    into the Section list. `image_count` / `image_bytes` /
+    `audio_count` / `audio_bytes` reflect media sections ingested
+    through the blob store. `skipped_binary` / `skipped_encoding` /
+    `skipped_over_size` / `skipped_by_descent` break down the drops —
+    if a directive yields zero sections, the skip counts let the user
+    see why. `skipped_image_no_store` / `skipped_audio_no_store`
+    count media hits dropped because no BlobStore was passed to
+    `expand_sources` (tests, `dlm show`). `skipped_audio_no_transcript`
+    counts audio files missing their `<stem>.txt` sidecar.
     """
 
     path: str
@@ -75,11 +89,15 @@ class SourceProvenance:
     total_bytes: int
     image_count: int = 0
     image_bytes: int = 0
+    audio_count: int = 0
+    audio_bytes: int = 0
     skipped_binary: int = 0
     skipped_encoding: int = 0
     skipped_over_size: int = 0
     skipped_by_descent: int = 0
     skipped_image_no_store: int = 0
+    skipped_audio_no_store: int = 0
+    skipped_audio_no_transcript: int = 0
 
 
 @dataclass(frozen=True)
@@ -175,11 +193,15 @@ def _expand_one(
     total_bytes = 0
     image_count = 0
     image_bytes = 0
+    audio_count = 0
+    audio_bytes = 0
     skipped_binary = 0
     skipped_encoding = 0
     skipped_over_size = 0
     skipped_by_descent = 0
     skipped_image_no_store = 0
+    skipped_audio_no_store = 0
+    skipped_audio_no_transcript = 0
 
     # Anchor for relpath-in-header. For a single-file directive the
     # header uses the file name; for a directory the relpath is the
@@ -255,6 +277,46 @@ def _expand_one(
             image_bytes += handle.size
             continue
 
+        # Audio-extension dispatch (Sprint 35.2). Same shape as image
+        # but requires a `<stem>.txt` sidecar for the transcript —
+        # audio without text has no training signal. Missing sidecar
+        # is a skip (with an explicit counter), not a hard raise,
+        # because a mixed corpus may have both "for-training" audio
+        # (has .txt) and "reference" audio (no .txt) side by side.
+        if file_path.suffix.lower() in _AUDIO_EXTENSIONS:
+            if blob_store is None:
+                _LOG.info(
+                    "directive: %s is audio but no blob_store supplied; skipping",
+                    file_path,
+                )
+                skipped_audio_no_store += 1
+                continue
+            transcript = _read_audio_transcript(file_path)
+            if transcript is None:
+                _LOG.info(
+                    "directive: %s has no %s sidecar; skipping "
+                    "(audio without transcript has no training signal)",
+                    file_path,
+                    _TRANSCRIPT_SIDECAR_SUFFIX,
+                )
+                skipped_audio_no_transcript += 1
+                continue
+            handle = blob_store.put(file_path)
+            relpath = file_path.relative_to(header_root).as_posix()
+            sections.append(
+                Section(
+                    type=SectionType.AUDIO,
+                    content="",
+                    media_path=relpath,
+                    media_blob_sha=handle.sha,
+                    media_transcript=transcript,
+                    tags=effective.tags,
+                ),
+            )
+            audio_count += 1
+            audio_bytes += handle.size
+            continue
+
         try:
             raw = file_path.read_bytes()
         except OSError as exc:
@@ -278,19 +340,60 @@ def _expand_one(
         sections.append(Section(type=SectionType.PROSE, content=content, tags=effective.tags))
         total_bytes += len(raw)
 
-    text_sections = sum(1 for s in sections if s.type != SectionType.IMAGE)
+    # Count prose-bearing sections separately from media so the
+    # per-modality counters don't collide. PROSE + INSTRUCTION +
+    # PREFERENCE → file_count; IMAGE → image_count; AUDIO →
+    # audio_count.
+    text_sections = sum(
+        1 for s in sections if s.type not in (SectionType.IMAGE, SectionType.AUDIO)
+    )
     return sections, SourceProvenance(
         path=directive.path,
         file_count=text_sections,
         total_bytes=total_bytes,
         image_count=image_count,
         image_bytes=image_bytes,
+        audio_count=audio_count,
+        audio_bytes=audio_bytes,
         skipped_binary=skipped_binary,
         skipped_encoding=skipped_encoding,
         skipped_over_size=skipped_over_size,
         skipped_by_descent=skipped_by_descent,
         skipped_image_no_store=skipped_image_no_store,
+        skipped_audio_no_store=skipped_audio_no_store,
+        skipped_audio_no_transcript=skipped_audio_no_transcript,
     )
+
+
+def _read_audio_transcript(audio_path: Path) -> str | None:
+    """Read the sibling `<stem>.txt` transcript, or return None.
+
+    Sidecar is `<stem><_TRANSCRIPT_SIDECAR_SUFFIX>` in the same
+    directory as the audio file — `clips/hello.wav` pairs with
+    `clips/hello.txt`. The transcript is stripped of leading/trailing
+    whitespace and re-UTF-8-decoded through `dlm.io.text.read_text`
+    so it matches the encoding contract the rest of the pipeline
+    uses for ingested text.
+
+    Returns None (not empty string) when the sidecar is missing — the
+    caller treats "no sidecar" and "empty sidecar" differently: the
+    former is a skip, the latter is an author bug surfaced at train
+    time via a loud refusal (an empty transcript has no training
+    signal either).
+    """
+    sidecar = audio_path.with_suffix(_TRANSCRIPT_SIDECAR_SUFFIX)
+    if not sidecar.exists():
+        return None
+    try:
+        text = read_text(sidecar)
+    except (OSError, DlmEncodingError) as exc:
+        _LOG.warning(
+            "directive: transcript sidecar %s is unreadable: %s; skipping audio",
+            sidecar,
+            exc,
+        )
+        return None
+    return text.strip()
 
 
 def _section_cap_reached(sections: list[Section], max_files: int) -> bool:
