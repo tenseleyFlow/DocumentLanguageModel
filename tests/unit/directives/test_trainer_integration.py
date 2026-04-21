@@ -28,9 +28,10 @@ body prose
 
 def test_no_directives_is_passthrough(tmp_path: Path) -> None:
     parsed = _make_parsed("  precision: fp32\n", tmp_path)
-    new_parsed, provenance = _expand_directives(parsed)
+    new_parsed, provenance, discovered = _expand_directives(parsed)
     assert new_parsed is parsed
     assert provenance == ()
+    assert discovered == ()
 
 
 def test_directives_merge_sections(tmp_path: Path) -> None:
@@ -42,7 +43,7 @@ def test_directives_merge_sections(tmp_path: Path) -> None:
         tmp_path,
     )
     original_count = len(parsed.sections)
-    new_parsed, provenance = _expand_directives(parsed)
+    new_parsed, provenance, _discovered = _expand_directives(parsed)
 
     # Original sections preserved, directive section appended.
     assert len(new_parsed.sections) == original_count + 1
@@ -65,7 +66,7 @@ def test_empty_directive_yields_empty_provenance_but_keeps_parsed(tmp_path: Path
         "  sources:\n    - path: empty\n      include: ['**/*.py']\n",
         tmp_path,
     )
-    new_parsed, provenance = _expand_directives(parsed)
+    new_parsed, provenance, _discovered = _expand_directives(parsed)
     # No files matched → no sections added → parsed returned as-is
     # with provenance recording the empty result.
     assert new_parsed is parsed

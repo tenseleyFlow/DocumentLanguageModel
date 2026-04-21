@@ -165,7 +165,7 @@ def run(
     #     diff, dataset builder, retention — treats directive-sourced
     #     and in-body sections identically. Provenance is captured
     #     for the training summary.
-    parsed, directive_provenance = _expand_directives(parsed)
+    parsed, directive_provenance, directive_discovered = _expand_directives(parsed)
 
     # 4. Content-delta against the previous manifest (audit-04 M1/M2):
     #    feeds replay sampling before training; `change_set.new` is
@@ -254,6 +254,7 @@ def run(
             replay=replay,
             adapter_version_for_rng=prior_manifest.adapter_version,
             adapter_name=adapter_name,
+            directive_discovered=directive_discovered,
         )
 
         # 6. Run the training loop.
@@ -529,6 +530,7 @@ def _build_trainer(
     replay: ReplayStore,
     adapter_version_for_rng: int,
     adapter_name: str | None = None,
+    directive_discovered: tuple[Any, ...] = (),
 ) -> Any:
     """Assemble model + tokenizer + dataset + SFTTrainer.
 
@@ -550,6 +552,7 @@ def _build_trainer(
             replay=replay,
             adapter_version_for_rng=adapter_version_for_rng,
             adapter_name=adapter_name,
+            directive_discovered=directive_discovered,
         )
 
     # Exercised by the slow-marked integration test
@@ -567,6 +570,7 @@ def _build_trainer(
         replay=replay,
         adapter_version_for_rng=adapter_version_for_rng,
         adapter_name=adapter_name,
+        directive_discovered=directive_discovered,
     )
 
 
@@ -583,11 +587,13 @@ def _build_real_trainer(  # pragma: no cover
     replay: ReplayStore,
     adapter_version_for_rng: int,
     adapter_name: str | None = None,
+    directive_discovered: tuple[Any, ...] = (),
 ) -> Any:
     # Deferred imports — heavy ML stack only touched on the real path.
     from trl import SFTConfig, SFTTrainer  # type: ignore[attr-defined]
 
     from dlm.data import build_dataset, make_formatting_func, prepare_tokenizer
+    from dlm.data.weighted_rows import merge_weights_maps
     from dlm.train.adapter import build_or_resume_adapter
     from dlm.train.loader import load_base_model
 
@@ -601,11 +607,20 @@ def _build_real_trainer(  # pragma: no cover
         adapter_version=adapter_version_for_rng,
     )
 
+    # Compose per-tag weights from discovered `.dlm/training.yaml`
+    # files (shallowest-first → deepest wins per `(tag_key, tag_value)`).
+    # Empty when no descent happened or none of the discovered configs
+    # declared a `weights` block — zero-cost for the common case.
+    merged_weights = merge_weights_maps(
+        tuple(d.config.weights for d in directive_discovered if d.config is not None)
+    )
+
     train_ds, val_ds = build_dataset(
         list(parsed.sections),
         seed=seed,
         val_frac=0.1,
         replay_rows=replay_rows or None,
+        weights=merged_weights or None,
     )
 
     resume_path = (
@@ -1393,16 +1408,18 @@ def _maybe_float(value: Any) -> float | None:
 
 def _expand_directives(
     parsed: ParsedDlm,
-) -> tuple[ParsedDlm, tuple[Any, ...]]:
+) -> tuple[ParsedDlm, tuple[Any, ...], tuple[Any, ...]]:
     """Resolve `training.sources` directives into synthesized sections.
 
     Returns a (possibly-new) `ParsedDlm` whose `sections` include both
-    the original in-body sections and the directive-sourced ones, plus
-    the per-directive provenance tuple for the training summary.
+    the original in-body sections and the directive-sourced ones, the
+    per-directive provenance tuple for the training summary, and the
+    tuple of discovered `.dlm/training.yaml` configs so callers can
+    resolve per-subtree knobs (e.g., tag-weighted corpus weights).
 
     When the frontmatter declares no `training.sources`, returns the
-    input parsed unchanged and an empty provenance tuple — zero-cost
-    fast path for the common case.
+    input parsed unchanged and empty tuples — zero-cost fast path for
+    the common case.
 
     Directive expansion needs a filesystem anchor. We use
     `parsed.source_path.parent` when the parser saw an on-disk file;
@@ -1416,12 +1433,12 @@ def _expand_directives(
     from dlm.directives import expand_sources
 
     if parsed.frontmatter.training.sources is None:
-        return parsed, ()
+        return parsed, (), ()
 
     base_path = parsed.source_path.parent if parsed.source_path is not None else Path.cwd()
     result = expand_sources(parsed, base_path=base_path)
     if not result.sections:
-        return parsed, result.provenance
+        return parsed, result.provenance, result.discovered
 
     merged = tuple(parsed.sections) + result.sections
     new_parsed = dataclasses.replace(parsed, sections=merged)
@@ -1430,7 +1447,7 @@ def _expand_directives(
         len(result.sections),
         len(result.provenance),
     )
-    return new_parsed, result.provenance
+    return new_parsed, result.provenance, result.discovered
 
 
 # Re-export the state-sidecar filenames so callers (e.g., pack tooling)
