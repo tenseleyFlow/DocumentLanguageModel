@@ -649,6 +649,10 @@ def _build_real_trainer(  # pragma: no cover
         parsed, adapter_name
     )
 
+    # DoRA (Sprint 36.5) wires through as `use_dora=True` on
+    # `peft.LoraConfig`. Multi-adapter docs carry the adapter type
+    # per-adapter; single-adapter docs carry it on `training`.
+    eff_adapter = _resolve_adapter_type(parsed, adapter_name)
     peft_model = build_or_resume_adapter(
         base_model,
         spec,
@@ -659,6 +663,7 @@ def _build_real_trainer(  # pragma: no cover
         mode=mode,
         resume_path=resume_path,
         use_qlora=plan.use_qlora,
+        use_dora=eff_adapter == "dora",
         gradient_checkpointing=plan.gradient_checkpointing,
     )
 
@@ -686,6 +691,14 @@ def _build_real_trainer(  # pragma: no cover
         "lr_scheduler_type": parsed.frontmatter.training.lr_scheduler,
         "warmup_ratio": parsed.frontmatter.training.warmup_ratio,
         "max_steps": max_steps if max_steps is not None else -1,
+        # Honor the frontmatter `optimizer` choice. transformers picks
+        # the right backend: `adamw_torch` → torch native, `adamw_bnb_8bit`
+        # / `paged_adamw_8bit` → bitsandbytes 8-bit Adam, `galore_adamw`
+        # / `galore_adamw_8bit` → GaLore gradient-projected optimizer
+        # (trl/transformers 5.x). Default remains `adamw_torch` so the
+        # determinism golden under the flat-defaults fixture is
+        # unchanged.
+        "optim": parsed.frontmatter.training.optimizer,
         # Honor the frontmatter `sequence_len` (default 2048) instead
         # of TRL's built-in 1024 default. Also the value the tokenized-
         # section cache keys on — a silent mismatch between SFTConfig's
@@ -1034,6 +1047,20 @@ def _resolve_adapter_hparams(
         training.lora_dropout,
         training.learning_rate,
     )
+
+
+def _resolve_adapter_type(parsed: ParsedDlm, adapter_name: str | None) -> str:
+    """Return the effective adapter type — `"lora"` / `"qlora"` / `"dora"`.
+
+    Multi-adapter docs carry the choice per-adapter; single-adapter docs
+    carry it on `training.adapter`.
+    """
+    training = parsed.frontmatter.training
+    if adapter_name is not None and training.adapters is not None:
+        cfg = training.adapters.get(adapter_name)
+        if cfg is not None:
+            return cfg.adapter
+    return training.adapter
 
 
 def _sample_replay_rows(
