@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 from dlm.cli.app import app
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 def _write_minimal_dlm(path: Path) -> None:
@@ -21,6 +24,11 @@ def _write_minimal_dlm(path: Path) -> None:
         "body\n",
         encoding="utf-8",
     )
+
+
+def _normalized_output(result: object) -> str:
+    text = getattr(result, "output", "") + getattr(result, "stderr", "")
+    return " ".join(_ANSI_RE.sub("", text).split())
 
 
 def test_no_cache_flag_sets_env_var(tmp_path: Path) -> None:
@@ -80,8 +88,9 @@ def test_no_cache_flag_help_text(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["train", "--help"])
     assert result.exit_code == 0
-    assert "--no-cache" in result.output
-    assert "tokenized" in result.output.lower()
+    normalized = _normalized_output(result)
+    assert "--no-cache" in normalized
+    assert "tokenized" in normalized.lower()
 
 
 def test_no_cache_absent_leaves_env_unset(tmp_path: Path) -> None:

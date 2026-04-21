@@ -9,6 +9,7 @@ forwarding in.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ import pytest
 from typer.testing import CliRunner
 
 from dlm.cli.app import app
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 def _write_minimal_dlm(path: Path) -> None:
@@ -29,6 +32,11 @@ def _write_minimal_dlm(path: Path) -> None:
         "body\n",
         encoding="utf-8",
     )
+
+
+def _normalized_output(result: object) -> str:
+    text = getattr(result, "output", "") + getattr(result, "stderr", "")
+    return " ".join(_ANSI_RE.sub("", text).split())
 
 
 class _ResolveCaptureError(Exception):
@@ -94,4 +102,4 @@ class TestTrainSkipExportProbes:
         runner = CliRunner()
         result = runner.invoke(app, ["train", "--help"])
         assert result.exit_code == 0
-        assert "--skip-export-probes" in result.output
+        assert "--skip-export-probes" in _normalized_output(result)

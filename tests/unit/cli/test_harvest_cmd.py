@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -12,6 +13,7 @@ from dlm.cli.app import app
 _FRONTMATTER = (
     "---\ndlm_id: 01KPQ9X1000000000000000000\ndlm_version: 7\nbase_model: smollm2-135m\n---\n"
 )
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 def _write_dlm(path: Path, body: str = "") -> None:
@@ -31,6 +33,11 @@ def _write_sway(path: Path, probes: list[dict]) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _normalized_output(result: object) -> str:
+    text = getattr(result, "output", "") + getattr(result, "stderr", "")
+    return " ".join(_ANSI_RE.sub("", text).split())
 
 
 _FAIL_WITH_REF = {
@@ -120,7 +127,7 @@ class TestHarvestCmd:
             app, ["--home", str(tmp_path), "harvest", str(doc), "--sway-json", str(sway)]
         )
         assert result.exit_code == 1, result.output
-        assert "not valid JSON" in result.output
+        assert "not valid JSON" in _normalized_output(result)
 
     def test_missing_reference_strict_exit_1(self, tmp_path: Path) -> None:
         doc = tmp_path / "doc.dlm"
