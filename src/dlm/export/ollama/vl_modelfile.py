@@ -7,26 +7,15 @@ the VL variant: a dialect-agnostic template that prepends an image
 slot before the user's prompt, plus the standard PARAMETER block
 from the text path.
 
-Sprint 35.4 scope: scaffold + unit-test the renderer so the day VL
-GGUF conversion lands in llama.cpp, the emitter is ready. The
-current vendored tag doesn't fully support PaliGemma or InternVL2
-GGUF export (see `dlm.export.arch_probe`), so this module produces
-output that isn't exercised end-to-end today — only the render path
-is covered.
+Shared directive builders live in `modelfile_shared.py` — header,
+stops resolution, param block, system/license lines, num_ctx cap.
+This module only owns the VL-specific TEMPLATE shape and sampling
+defaults.
 
-Reuses the following from `modelfile.py`:
-- `_build_header`, `_build_param_lines`, `_build_system_line`,
-  `_build_license_line` — the non-template directives are identical
-  across text + VL Modelfiles.
-- `_resolve_stops`, `_resolve_num_ctx` — stops + context come from
-  the same adapter-tokenizer sources regardless of modality.
-
-What's different:
-- No chat-dialect template row lookup; the TEMPLATE block is a fixed
-  VL shape with `{{ .System }} {{ .Image }} {{ .Prompt }}`.
-- `base_gguf_name` points at the full VL GGUF (LM + vision tower) —
-  the caller is responsible for handling the single-file-vs-mmproj
-  split when it matters.
+Today's vendored llama.cpp tag doesn't fully support PaliGemma or
+InternVL2 GGUF export (see `dlm.export.arch_probe`), so this module
+produces output that isn't exercised end-to-end — only the render
+path is covered.
 """
 
 from __future__ import annotations
@@ -35,13 +24,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from dlm.export.ollama.modelfile import (
-    _build_header,
-    _build_license_line,
-    _build_param_lines,
-    _build_system_line,
-    _resolve_num_ctx,
-    _resolve_stops,
+from dlm.export.ollama.modelfile_shared import (
+    build_header,
+    build_license_line,
+    build_param_lines,
+    build_system_line,
+    resolve_num_ctx,
+    resolve_stops,
 )
 from dlm.export.ollama.template_registry import DialectTemplate
 
@@ -85,7 +74,7 @@ _VL_DEFAULT_TOP_P: float = 0.9
 
 # Ollama 0.4+ accepts `{{ .Image }}` to inject image bytes into the
 # prompt. Earlier versions silently drop it — the doctor's
-# `ollama --version` check belongs to Sprint 35.4's DoD but is
+# `ollama --version` check belongs to the VL export DoD but is
 # tracked separately; this template assumes 0.4+.
 _VL_TEMPLATE_BODY: str = "{{ if .System }}{{ .System }}\n\n{{ end }}{{ .Image }}\n{{ .Prompt }}"
 
@@ -105,27 +94,36 @@ def render_vl_modelfile(ctx: VlModelfileContext) -> str:
     directory supplies stop tokens + chat template just like the text
     path.
     """
-    stops = _resolve_stops(ctx.adapter_dir, _vl_template_row())
-    header = _build_header(_as_modelfile_ctx(ctx))
+    stops = resolve_stops(ctx.adapter_dir, _vl_template_row())
+    header = build_header(
+        dlm_version=ctx.dlm_version,
+        dlm_id=ctx.dlm_id,
+        adapter_version=ctx.adapter_version,
+        base_key=ctx.spec.key,
+        base_revision=ctx.spec.revision,
+        quant=ctx.plan.quant,
+        merged=ctx.plan.merged,
+        source_dlm_path=ctx.source_dlm_path,
+    )
     from_line = f"FROM ./{ctx.base_gguf_name}"
     adapter_line = f"ADAPTER ./{ctx.adapter_gguf_name}" if ctx.adapter_gguf_name else None
     template_block = f'TEMPLATE """{_VL_TEMPLATE_BODY}"""'
-    num_ctx = _resolve_num_ctx(_as_modelfile_ctx(ctx))
+    num_ctx = resolve_num_ctx(ctx.training_sequence_len, ctx.spec.context_length)
     temperature = (
         ctx.override_temperature
         if ctx.override_temperature is not None
         else _VL_DEFAULT_TEMPERATURE
     )
     top_p = ctx.override_top_p if ctx.override_top_p is not None else _VL_DEFAULT_TOP_P
-    param_lines = _build_param_lines(
+    param_lines = build_param_lines(
         stops=stops,
         temperature=temperature,
         top_p=top_p,
         num_ctx=num_ctx,
         draft_model=None,
     )
-    system_line = _build_system_line(ctx.system_prompt)
-    license_line = _build_license_line(ctx.spec)
+    system_line = build_system_line(ctx.system_prompt)
+    license_line = build_license_line(ctx.spec)
 
     parts: list[str] = [header, "", from_line]
     if adapter_line is not None:
@@ -140,7 +138,7 @@ def render_vl_modelfile(ctx: VlModelfileContext) -> str:
 
 
 def _vl_template_row() -> DialectTemplate:
-    """Fallback DialectTemplate used by `_resolve_stops` for VL bases.
+    """Fallback DialectTemplate used by `resolve_stops` for VL bases.
 
     The existing stops resolver reads from the adapter's
     `special_tokens_map.json` first, then falls back to the dialect
@@ -149,37 +147,10 @@ def _vl_template_row() -> DialectTemplate:
     fallback set.
     """
     return DialectTemplate(
-        dialect="chatml",  # placeholder — _resolve_stops only reads defaults
+        dialect="chatml",  # placeholder — resolve_stops only reads defaults
         template_path=Path("/dev/null"),
         default_stops=_VL_FALLBACK_STOPS,
         default_temperature=_VL_DEFAULT_TEMPERATURE,
         default_top_p=_VL_DEFAULT_TOP_P,
         extra_stop_hints=(),
-    )
-
-
-def _as_modelfile_ctx(ctx: VlModelfileContext):  # type: ignore[no-untyped-def]
-    """Adapter → the text ModelfileContext shape for shared helpers.
-
-    `_build_header`, `_build_param_lines`, etc. accept ModelfileContext.
-    Constructing one with the same field values lets us reuse the
-    helpers without duplicating their logic here. The dialect field
-    isn't read by those helpers — only the header + params blocks.
-    """
-    from dlm.export.ollama.modelfile import ModelfileContext
-
-    return ModelfileContext(
-        spec=ctx.spec,
-        plan=ctx.plan,
-        adapter_dir=ctx.adapter_dir,
-        base_gguf_name=ctx.base_gguf_name,
-        adapter_gguf_name=ctx.adapter_gguf_name,
-        dlm_id=ctx.dlm_id,
-        adapter_version=ctx.adapter_version,
-        system_prompt=ctx.system_prompt,
-        source_dlm_path=ctx.source_dlm_path,
-        dlm_version=ctx.dlm_version,
-        training_sequence_len=ctx.training_sequence_len,
-        override_temperature=ctx.override_temperature,
-        override_top_p=ctx.override_top_p,
     )
