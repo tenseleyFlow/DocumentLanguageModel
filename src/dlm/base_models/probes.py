@@ -402,7 +402,7 @@ def probe_vl_image_token(spec: BaseModelSpec) -> ProbeResult:
     fixed `num_image_tokens` slots and training silently runs on
     text-only rows.
 
-    Text-modality bases skip this probe cleanly.
+    Non-VL bases skip this probe cleanly.
     """
     if spec.modality != "vision-language" or spec.vl_preprocessor_plan is None:
         return ProbeResult(
@@ -469,6 +469,80 @@ def probe_vl_image_token(spec: BaseModelSpec) -> ProbeResult:
     )
 
 
+def probe_audio_token(spec: BaseModelSpec) -> ProbeResult:
+    """Verify the processor exposes the spec's audio-placeholder token.
+
+    Parallel to `probe_vl_image_token` — for `modality="audio-language"`
+    bases the preprocessor plan pins `audio_token` (e.g. `"<|AUDIO|>"`).
+    `AutoProcessor.from_pretrained` must expose it as a single known
+    token; otherwise the custom audio collator can't locate the
+    insertion point when expanding the placeholder into the model's
+    fixed audio-token window.
+
+    Non-audio bases skip this probe cleanly.
+    """
+    if spec.modality != "audio-language" or spec.audio_preprocessor_plan is None:
+        return ProbeResult(
+            name="audio_token",
+            passed=True,
+            detail="skipped: spec is not an audio-language base",
+            skipped=True,
+        )
+
+    try:
+        from huggingface_hub.errors import GatedRepoError
+        from transformers import AutoProcessor
+    except ImportError as exc:  # pragma: no cover
+        return ProbeResult(
+            name="audio_token",
+            passed=True,
+            detail=f"skipped: transformers unavailable ({exc})",
+            skipped=True,
+        )
+
+    try:
+        processor = AutoProcessor.from_pretrained(spec.hf_id, revision=spec.revision)
+    except GatedRepoError as exc:
+        raise GatedModelError(spec.hf_id, spec.license_url) from exc
+    except Exception as exc:
+        return ProbeResult(
+            name="audio_token",
+            passed=False,
+            detail=f"processor load failed: {type(exc).__name__}: {exc}",
+        )
+
+    placeholder = spec.audio_preprocessor_plan.audio_token
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is None:
+        return ProbeResult(
+            name="audio_token",
+            passed=False,
+            detail="processor has no `.tokenizer` attribute",
+        )
+    try:
+        token_ids = tokenizer.encode(placeholder, add_special_tokens=False)
+    except Exception as exc:
+        return ProbeResult(
+            name="audio_token",
+            passed=False,
+            detail=f"tokenizer rejected placeholder {placeholder!r}: {exc}",
+        )
+    if len(token_ids) != 1:
+        return ProbeResult(
+            name="audio_token",
+            passed=False,
+            detail=(
+                f"placeholder {placeholder!r} tokenized to "
+                f"{len(token_ids)} tokens (expected 1)"
+            ),
+        )
+    return ProbeResult(
+        name="audio_token",
+        passed=True,
+        detail=f"placeholder {placeholder!r} resolves to token id {token_ids[0]}",
+    )
+
+
 # --- aggregate ---------------------------------------------------------------
 
 
@@ -491,13 +565,17 @@ def run_all(spec: BaseModelSpec, *, skip_export_probes: bool = False) -> ProbeRe
     core: tuple[ProbeResult, ...] = (probe_architecture(spec),)
     if spec.modality == "vision-language":
         core = (*core, probe_vl_image_token(spec))
+    elif spec.modality == "audio-language":
+        core = (*core, probe_audio_token(spec))
     else:
         core = (*core, probe_chat_template(spec))
 
-    # VL bases bypass the llama.cpp-converter probes: converter support
-    # for VL archs is Sprint 35.4's scope. The export path refuses
-    # cleanly without probing a converter that doesn't know the arch.
-    if skip_export_probes or spec.modality == "vision-language":
+    # Media bases (VL + audio) bypass the llama.cpp-converter probes:
+    # converter support for VL archs is Sprint 35.4's scope, and audio
+    # archs are not on any llama.cpp roadmap yet. The export path
+    # refuses GGUF cleanly for both and emits an HF snapshot instead.
+    is_media = spec.modality in ("vision-language", "audio-language")
+    if skip_export_probes or is_media:
         return ProbeReport(hf_id=spec.hf_id, results=core)
     results = (
         *core,
