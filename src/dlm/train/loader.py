@@ -28,13 +28,16 @@ def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:  # pragma: 
     """Return an HF `PreTrainedModel` loaded per `plan`.
 
     Text bases load via `AutoModelForCausalLM`; vision-language bases
-    (Sprint 35 v1) load via `AutoModelForImageTextToText`, which is the
-    modern AutoClass that replaces the deprecated `AutoModelForVision2Seq`.
-    Both share the quantization + dtype + attention wiring — the only
-    delta is the AutoClass itself.
+    load via `AutoModelForImageTextToText`. Audio-language bases lack
+    a generic `AutoModelFor*TextToText` class in transformers 5.x, so
+    they load via the architecture-class named on the spec
+    (`spec.architecture`) — e.g. `Qwen2AudioForConditionalGeneration`.
 
-    Covered by the slow-marked integration test in Sprint 09 / 35 v1
-    rather than unit tests: instantiating even a tiny HF model is >2 s.
+    All three share the quantization + dtype + attention wiring — the
+    only delta is which class is imported + instantiated.
+
+    Covered by the slow-marked integration tests; instantiating even a
+    tiny HF model is >2 s so this stays out of the unit suite.
     """
     dtype = _resolve_torch_dtype(plan.precision)
 
@@ -52,28 +55,61 @@ def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:  # pragma: 
 
         return AutoModelForImageTextToText.from_pretrained(spec.hf_id, **kwargs)
 
+    if spec.modality == "audio-language":
+        # No AutoModelForAudioTextToText in transformers 5.x; resolve
+        # the class name from `spec.architecture` so adding a new audio
+        # base is a registry edit, not a loader patch.
+        model_cls = _resolve_audio_model_class(spec.architecture)
+        return model_cls.from_pretrained(spec.hf_id, **kwargs)
+
     from transformers import AutoModelForCausalLM
 
     return AutoModelForCausalLM.from_pretrained(spec.hf_id, **kwargs)
 
 
 def load_processor(spec: BaseModelSpec) -> Any:  # pragma: no cover
-    """Return the HF `ProcessorMixin` for a vision-language base.
+    """Return the HF `ProcessorMixin` for a media-modality base.
 
-    Raises `ValueError` if called on a text-modality spec — callers
-    should branch on `spec.modality` before reaching this path. The
-    processor bundles the tokenizer + image processor + chat template
-    and is what TRL 1.2's `DataCollatorForVisionLanguageModeling`
-    consumes to generate pixel_values + input_ids on-the-fly.
+    Both VL and audio-language bases carry an `AutoProcessor` that
+    bundles the tokenizer + modality-specific feature extractor +
+    chat template. Text-modality specs raise — callers should branch
+    on `spec.modality` before reaching this path.
     """
-    if spec.modality != "vision-language":
+    if spec.modality not in ("vision-language", "audio-language"):
         raise ValueError(
             f"load_processor: {spec.key!r} is modality='{spec.modality}'; "
-            "processors are only loaded for vision-language bases"
+            "processors are only loaded for media bases (vision-language / audio-language)"
         )
     from transformers import AutoProcessor
 
     return AutoProcessor.from_pretrained(spec.hf_id, revision=spec.revision)
+
+
+_AUDIO_MODEL_CLASSES: dict[str, str] = {
+    # Maps `BaseModelSpec.architecture` → transformers class name.
+    # Sprint 35.2 v1 ships Qwen2-Audio only; add new entries here when
+    # more audio-LM families land in the registry.
+    "Qwen2AudioForConditionalGeneration": "Qwen2AudioForConditionalGeneration",
+}
+
+
+def _resolve_audio_model_class(architecture: str) -> Any:  # pragma: no cover
+    """Import the architecture-class named on the spec.
+
+    Deferred import so the module stays cheap for text-only callers.
+    Unknown archs raise — the registry drift check should catch this
+    before the trainer does, but we surface a readable error in case
+    a new entry landed without a loader update.
+    """
+    if architecture not in _AUDIO_MODEL_CLASSES:
+        raise ValueError(
+            f"load_base_model: no audio-LM loader wired for architecture "
+            f"{architecture!r}; add a mapping to _AUDIO_MODEL_CLASSES"
+        )
+    import transformers
+
+    cls_name = _AUDIO_MODEL_CLASSES[architecture]
+    return getattr(transformers, cls_name)
 
 
 def _build_bnb_config(plan: TrainingPlan) -> Any:  # pragma: no cover
