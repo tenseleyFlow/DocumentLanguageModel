@@ -997,6 +997,17 @@ def prompt_cmd(
             ),
         ),
     ] = "auto",
+    image: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--image",
+            help=(
+                "Attach an image file to the prompt. Repeat for multiple "
+                "images; each expands to the base's image-token placeholder. "
+                "Requires a vision-language base (Sprint 35 v1: PaliGemma)."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run inference against the trained adapter."""
     import sys
@@ -1021,6 +1032,10 @@ def prompt_cmd(
             f"[red]prompt:[/red] --backend must be `auto`, `pytorch`, or `mlx` (got {backend!r})."
         )
         raise typer.Exit(code=2)
+
+    # Typer passes None when the option was never given; normalize early so
+    # downstream branching can just check truthiness + len().
+    image_paths: list[Path] = list(image or [])
 
     from dlm.base_models import GatedModelError
 
@@ -1060,6 +1075,39 @@ def prompt_cmd(
         raise typer.Exit(code=1) from exc
     caps = doctor().capabilities
 
+    # --- VL path (Sprint 35 v1) ---------------------------------------
+    # The VL branch has its own model / processor / adapter loader and
+    # its own generate function. `--image` and vision-language bases
+    # must appear together; each alone is a usage error.
+    is_vl_spec = spec.modality == "vision-language"
+    if image_paths and not is_vl_spec:
+        console.print(
+            f"[red]prompt:[/red] --image is only valid with vision-language bases; "
+            f"base {spec.key!r} is modality='{spec.modality}'."
+        )
+        raise typer.Exit(code=2)
+    if is_vl_spec and not image_paths:
+        console.print(
+            f"[red]prompt:[/red] base {spec.key!r} is vision-language; "
+            "pass at least one --image PATH to prompt it."
+        )
+        raise typer.Exit(code=2)
+    if is_vl_spec:
+        _dispatch_vl_prompt(
+            console=console,
+            spec=spec,
+            store=store,
+            caps=caps,
+            adapter_name=adapter,
+            image_paths=image_paths,
+            query=query,
+            max_tokens=max_tokens,
+            temp=temp,
+            top_p=top_p,
+            verbose=verbose,
+        )
+        return
+
     try:
         backend_name = select_backend(backend, caps)  # type: ignore[arg-type]
     except UnsupportedBackendError as exc:
@@ -1084,6 +1132,77 @@ def prompt_cmd(
 
     response = backend_obj.generate(
         query,
+        max_new_tokens=max_tokens,
+        temperature=temp,
+        top_p=top_p,
+    )
+    sys.stdout.write(response + "\n")
+
+
+def _dispatch_vl_prompt(  # pragma: no cover
+    *,
+    console: Any,
+    spec: Any,
+    store: Any,
+    caps: Any,
+    adapter_name: str | None,
+    image_paths: list[Path],
+    query: str | None,
+    max_tokens: int,
+    temp: float,
+    top_p: float | None,
+    verbose: bool,
+) -> None:
+    """Run the VL generate path. Keeps `prompt_cmd` readable.
+
+    Pragma'd from unit coverage because it calls the VL HF stack.
+    Covered by the slow-marked Sprint 35 v1 integration test (T12).
+    """
+    import sys
+
+    import typer
+
+    from dlm.inference import (
+        AdapterNotFoundError,
+        generate_vl,
+        load_for_vl_inference,
+        load_images,
+    )
+
+    if verbose:
+        console.print(f"[dim]vl-backend:[/dim] pytorch (AutoModelForImageTextToText)")
+
+    try:
+        loaded = load_for_vl_inference(store, spec, caps, adapter_name=adapter_name)
+    except AdapterNotFoundError as exc:
+        console.print(f"[red]prompt:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    try:
+        images = load_images(image_paths)
+    except FileNotFoundError as exc:
+        console.print(f"[red]prompt:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+
+    if query is None:
+        query = sys.stdin.read().strip()
+    if not query:
+        console.print("[red]prompt:[/red] empty query (pass a string or pipe on stdin)")
+        raise typer.Exit(code=2)
+
+    # Every VL spec in the registry must declare a preprocessor plan
+    # (schema validator); the fallback is defensive for the hf: escape
+    # hatch, which could in principle skip one.
+    image_token = "<image>"
+    if spec.vl_preprocessor_plan is not None:
+        image_token = spec.vl_preprocessor_plan.image_token
+
+    response = generate_vl(
+        loaded.model,
+        loaded.processor,
+        query,
+        images,
+        image_token=image_token,
         max_new_tokens=max_tokens,
         temperature=temp,
         top_p=top_p,
