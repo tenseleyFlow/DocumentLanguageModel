@@ -86,6 +86,16 @@ class TestColdStartFallback:
                 input_dim=4,
             )
 
+    def test_duplicate_adapter_names_refused(self, tmp_path: Path) -> None:
+        store = _store(tmp_path)
+        with pytest.raises(GateConfigError, match="unique adapter names"):
+            train_gate(
+                store,  # type: ignore[arg-type]
+                [],
+                adapter_names=["a", "b", "a"],
+                input_dim=4,
+            )
+
     def test_wrong_embedding_dim_refused(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
         samples = _synthetic_samples(per_class=5, input_dim=4)
