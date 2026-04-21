@@ -133,6 +133,70 @@ class TestInitializedStore:
         assert expected_keys.issubset(payload.keys())
 
 
+class TestTrainingSources:
+    """`training.sources` directives surface in `dlm show --json` output."""
+
+    def _write_doc_with_sources(self, tmp_path: Path) -> Path:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.py").write_text("print(1)\n")
+        (src / "b.py").write_text("print(2)\n")
+        doc = tmp_path / "doc.dlm"
+        doc.write_text(
+            "---\n"
+            "dlm_id: 01HRSHWA" + "0" * 18 + "\n"
+            "dlm_version: 6\n"
+            "base_model: smollm2-135m\n"
+            "training:\n"
+            "  sources:\n"
+            "    - path: src\n"
+            "      include: ['**/*.py']\n"
+            "---\n"
+            "body\n",
+            encoding="utf-8",
+        )
+        return doc
+
+    def test_json_reports_training_sources(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DLM_HOME", str(tmp_path / "fresh-home"))
+        doc = self._write_doc_with_sources(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(app, ["show", str(doc), "--json"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert "training_sources" in payload
+        sources = payload["training_sources"]
+        assert len(sources) == 1
+        assert sources[0]["path"] == "src"
+        assert sources[0]["file_count"] == 2
+
+    def test_human_output_lists_sources(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DLM_HOME", str(tmp_path / "fresh-home"))
+        doc = self._write_doc_with_sources(tmp_path)
+        # Populate store to get through to the inspection path.
+        from dlm.doc.parser import parse_file
+        from dlm.store.manifest import Manifest, save_manifest
+        from dlm.store.paths import for_dlm
+
+        parsed = parse_file(doc)
+        store = for_dlm(parsed.frontmatter.dlm_id)
+        store.ensure_layout()
+        save_manifest(
+            store.manifest,
+            Manifest(dlm_id=parsed.frontmatter.dlm_id, base_model="smollm2-135m"),
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["show", str(doc)])
+        assert result.exit_code == 0, result.output
+        assert "training sources" in result.output
+        assert "src" in result.output
+
+
 class TestBadInput:
     def test_missing_file_exits_nonzero(self, tmp_path: Path) -> None:
         runner = CliRunner()

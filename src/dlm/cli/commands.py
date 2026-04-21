@@ -1522,27 +1522,27 @@ def show_cmd(
         raise typer.Exit(code=1) from exc
 
     store = for_dlm(parsed.frontmatter.dlm_id)
+    training_sources = _summarize_training_sources(parsed, path.resolve().parent)
     # Store may not exist yet (no `dlm train` run). Treat that as an
     # informational state rather than an error — useful after `dlm init`.
     if not store.manifest.exists():
         if json_out:
-            sys.stdout.write(
-                _json.dumps(
-                    {
-                        "dlm_id": parsed.frontmatter.dlm_id,
-                        "base_model": parsed.frontmatter.base_model,
-                        "store_initialized": False,
-                        "source_path": str(path.resolve()),
-                    },
-                    indent=2,
-                )
-                + "\n"
-            )
+            payload: dict[str, object] = {
+                "dlm_id": parsed.frontmatter.dlm_id,
+                "base_model": parsed.frontmatter.base_model,
+                "store_initialized": False,
+                "source_path": str(path.resolve()),
+            }
+            if training_sources is not None:
+                payload["training_sources"] = training_sources
+            sys.stdout.write(_json.dumps(payload, indent=2) + "\n")
         else:
             out_console.print(f"[bold]{path}[/bold]")
             out_console.print(f"  dlm_id:       {parsed.frontmatter.dlm_id}")
             out_console.print(f"  base_model:   {parsed.frontmatter.base_model}")
             out_console.print("  store:        [dim]not yet initialized (run `dlm train`)[/dim]")
+            if training_sources:
+                _render_training_sources_text(out_console, training_sources)
         return
 
     try:
@@ -1552,12 +1552,17 @@ def show_cmd(
         raise typer.Exit(code=1) from exc
 
     if json_out:
+        payload_full = _inspection_to_dict(inspection)
+        if training_sources is not None:
+            payload_full["training_sources"] = training_sources
         # Write JSON to raw stdout — Rich's Console wraps lines at the
         # terminal width and would corrupt the JSON.
-        sys.stdout.write(_json.dumps(_inspection_to_dict(inspection), indent=2, default=str) + "\n")
+        sys.stdout.write(_json.dumps(payload_full, indent=2, default=str) + "\n")
         return
 
     _render_inspection_text(out_console, path, inspection)
+    if training_sources:
+        _render_training_sources_text(out_console, training_sources)
 
 
 def _inspection_to_dict(inspection: object) -> dict[str, object]:
@@ -1643,6 +1648,77 @@ def _human_size(n: int) -> str:
             return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
         n //= 1024
     return f"{n} PB"
+
+
+def _summarize_training_sources(
+    parsed: object, base_path: Path
+) -> list[dict[str, object]] | None:
+    """Best-effort resolution of `training.sources` for `dlm show`.
+
+    Returns None when the frontmatter declares no directives; returns
+    a list of per-source dicts otherwise. Failures to expand (missing
+    paths, policy escapes) fall back to declared-only records so the
+    show output stays useful for debugging a misconfigured directive.
+    """
+    from dlm.directives import DirectiveError, expand_sources
+    from dlm.doc.parser import ParsedDlm
+
+    assert isinstance(parsed, ParsedDlm)
+    directives = parsed.frontmatter.training.sources
+    if not directives:
+        return None
+
+    declared: list[dict[str, object]] = [
+        {
+            "path": d.path,
+            "include": list(d.include),
+            "exclude": list(d.exclude),
+            "max_files": d.max_files,
+            "max_bytes_per_file": d.max_bytes_per_file,
+        }
+        for d in directives
+    ]
+
+    try:
+        result = expand_sources(parsed, base_path=base_path)
+    except (DirectiveError, OSError):
+        return declared
+
+    records: list[dict[str, object]] = []
+    for decl, prov in zip(declared, result.provenance, strict=False):
+        records.append(
+            {
+                **decl,
+                "file_count": prov.file_count,
+                "total_bytes": prov.total_bytes,
+                "skipped_binary": prov.skipped_binary,
+                "skipped_encoding": prov.skipped_encoding,
+                "skipped_over_size": prov.skipped_over_size,
+            }
+        )
+    # If the expander returned fewer entries than declared (shouldn't
+    # happen on success but defensive), pad with declared-only.
+    if len(records) < len(declared):
+        records.extend(declared[len(records) :])
+    return records
+
+
+def _render_training_sources_text(
+    console: object, records: list[dict[str, object]]
+) -> None:
+    from rich.console import Console
+
+    assert isinstance(console, Console)
+    console.print("  training sources:")
+    for rec in records:
+        path = rec["path"]
+        fc = rec.get("file_count")
+        tb = rec.get("total_bytes")
+        if fc is None:
+            console.print(f"    {path}  [dim](not expanded)[/dim]")
+        else:
+            size = int(tb) if isinstance(tb, int) else 0
+            console.print(f"    {path}  {fc} file(s), {_human_size(size)}")
 
 
 def migrate_cmd(
