@@ -133,6 +133,17 @@ _templates_app = typer.Typer(
 _templates_app.command("list")(commands.templates_list_cmd)
 app.add_typer(_templates_app, name="templates")
 
+# Sprint 31: `dlm cache show|prune|clear` — per-store tokenized-section
+# cache maintenance.
+_cache_app = typer.Typer(
+    help="Inspect and manage the per-store tokenized-section cache (Sprint 31).",
+    no_args_is_help=True,
+)
+_cache_app.command("show")(commands.cache_show_cmd)
+_cache_app.command("prune")(commands.cache_prune_cmd)
+_cache_app.command("clear")(commands.cache_clear_cmd)
+app.add_typer(_cache_app, name="cache")
+
 
 def main() -> None:
     """Installed entry point (`dlm` on PATH).

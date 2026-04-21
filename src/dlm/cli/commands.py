@@ -1678,12 +1678,16 @@ def show_cmd(
         console.print(f"[red]show:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
+    training_cache = _summarize_training_cache(store.tokenized_cache_dir, store.root)
+
     if json_out:
         payload_full = _inspection_to_dict(inspection)
         if training_sources is not None:
             payload_full["training_sources"] = training_sources
         if discovered_configs:
             payload_full["discovered_training_configs"] = discovered_configs
+        if training_cache is not None:
+            payload_full["training_cache"] = training_cache
         # Write JSON to raw stdout — Rich's Console wraps lines at the
         # terminal width and would corrupt the JSON.
         sys.stdout.write(_json.dumps(payload_full, indent=2, default=str) + "\n")
@@ -1692,6 +1696,8 @@ def show_cmd(
     _render_inspection_text(out_console, path, inspection)
     if training_sources:
         _render_training_sources_text(out_console, training_sources)
+    if training_cache is not None and training_cache.get("entry_count", 0):
+        _render_training_cache_text(out_console, training_cache)
 
 
 def _inspection_to_dict(inspection: object) -> dict[str, object]:
@@ -1862,6 +1868,47 @@ def _summarize_training_sources_and_discovered(
             }
         )
     return records, discovered_records
+
+
+def _summarize_training_cache(
+    cache_dir: Path, store_root: Path
+) -> dict[str, object] | None:
+    """Return a JSON-friendly snapshot of the tokenized-section cache.
+
+    None when the cache dir doesn't exist (store never trained with
+    the cache, or pre-Sprint-31 layout). Cheap — reads the manifest
+    only, not the entry files.
+    """
+    if not cache_dir.is_dir():
+        return None
+    from dlm.directives.cache import TokenizedCache
+    from dlm.metrics import queries as _queries
+
+    cache = TokenizedCache.open(cache_dir)
+    last = _queries.latest_tokenization(store_root)
+    return {
+        "path": str(cache_dir),
+        "entry_count": cache.entry_count,
+        "bytes": cache.total_bytes,
+        "last_run_hit_rate": last.hit_rate if last else None,
+        "last_run_id": last.run_id if last else None,
+    }
+
+
+def _render_training_cache_text(console: object, snap: dict[str, object]) -> None:
+    from rich.console import Console
+
+    assert isinstance(console, Console)
+    ec_raw = snap.get("entry_count", 0)
+    by_raw = snap.get("bytes", 0)
+    entry_count = ec_raw if isinstance(ec_raw, int) else 0
+    byte_count = by_raw if isinstance(by_raw, int) else 0
+    console.print("  tokenized cache:")
+    console.print(f"    entries:        {entry_count}")
+    console.print(f"    size:           {_human_size(byte_count)}")
+    rate = snap.get("last_run_hit_rate")
+    if isinstance(rate, (int, float)):
+        console.print(f"    last hit rate:  {float(rate):.1%}")
 
 
 def _render_training_sources_text(
@@ -2198,3 +2245,161 @@ def serve_cmd(
 
         shutil.rmtree(tmp_dir, ignore_errors=True)
     console.print("[dim]stopped.[/dim]")
+
+
+# ---- Sprint 31: dlm cache show | prune | clear -----------------------
+
+
+def cache_show_cmd(
+    path: Annotated[Path, typer.Argument(help=".dlm file to inspect the cache for.")],
+    json_out: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
+) -> None:
+    """Show tokenized-section cache size, entry count, last-run hit rate."""
+    import json as _json
+    import sys as _sys
+
+    from rich.console import Console
+
+    from dlm.directives.cache import TokenizedCache
+    from dlm.doc.errors import DlmParseError
+    from dlm.doc.parser import parse_file
+    from dlm.metrics import queries as _queries
+    from dlm.store.paths import for_dlm
+
+    console = Console(stderr=True)
+    out_console = Console()
+
+    try:
+        parsed = parse_file(path)
+    except (DlmParseError, OSError) as exc:
+        console.print(f"[red]cache:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    store = for_dlm(parsed.frontmatter.dlm_id)
+    cache = TokenizedCache.open(store.tokenized_cache_dir)
+    last = _queries.latest_tokenization(store.root)
+
+    payload: dict[str, object] = {
+        "dlm_id": parsed.frontmatter.dlm_id,
+        "cache_path": str(store.tokenized_cache_dir),
+        "entry_count": cache.entry_count,
+        "bytes": cache.total_bytes,
+        "last_run_hit_rate": last.hit_rate if last else None,
+        "last_run_id": last.run_id if last else None,
+    }
+    if json_out:
+        _sys.stdout.write(_json.dumps(payload, indent=2) + "\n")
+        return
+
+    out_console.print(f"[bold]Cache for {parsed.frontmatter.dlm_id}[/bold]")
+    out_console.print(f"  path:              {store.tokenized_cache_dir}")
+    out_console.print(f"  entries:           {cache.entry_count}")
+    out_console.print(f"  size:              {_human_size(cache.total_bytes)}")
+    if last is not None:
+        out_console.print(
+            f"  last-run hit rate: {last.hit_rate:.1%} "
+            f"({last.cache_hits}/{last.cache_hits + last.cache_misses})"
+        )
+    else:
+        out_console.print("  last-run hit rate: [dim]no tokenization runs yet[/dim]")
+
+
+def cache_prune_cmd(
+    path: Annotated[Path, typer.Argument(help=".dlm file to prune the cache for.")],
+    older_than: Annotated[
+        str,
+        typer.Option(
+            "--older-than",
+            help=(
+                "Drop entries not accessed in this duration. "
+                "Format: `30d`, `12h`, `45m`. Default `90d`."
+            ),
+        ),
+    ] = "90d",
+) -> None:
+    """Remove tokenized-cache entries not accessed within a cutoff."""
+    from rich.console import Console
+
+    from dlm.directives.cache import TokenizedCache
+    from dlm.doc.errors import DlmParseError
+    from dlm.doc.parser import parse_file
+    from dlm.store.paths import for_dlm
+
+    console = Console(stderr=True)
+
+    seconds = _parse_duration(older_than)
+    if seconds is None:
+        console.print(
+            f"[red]cache:[/red] invalid --older-than {older_than!r} "
+            "(expected e.g. 30d, 12h, 45m)"
+        )
+        raise typer.Exit(code=2)
+
+    try:
+        parsed = parse_file(path)
+    except (DlmParseError, OSError) as exc:
+        console.print(f"[red]cache:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    store = for_dlm(parsed.frontmatter.dlm_id)
+    cache = TokenizedCache.open(store.tokenized_cache_dir)
+    removed = cache.prune(older_than_seconds=seconds)
+    cache.save_manifest()
+    console.print(f"[green]cache:[/green] pruned {removed} entr(y/ies) older than {older_than}")
+
+
+def cache_clear_cmd(
+    path: Annotated[Path, typer.Argument(help=".dlm file to wipe the cache for.")],
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Skip the confirmation prompt."),
+    ] = False,
+) -> None:
+    """Wipe every entry in the tokenized-section cache for this store."""
+    from rich.console import Console
+
+    from dlm.directives.cache import TokenizedCache
+    from dlm.doc.errors import DlmParseError
+    from dlm.doc.parser import parse_file
+    from dlm.store.paths import for_dlm
+
+    console = Console(stderr=True)
+
+    try:
+        parsed = parse_file(path)
+    except (DlmParseError, OSError) as exc:
+        console.print(f"[red]cache:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    store = for_dlm(parsed.frontmatter.dlm_id)
+    cache = TokenizedCache.open(store.tokenized_cache_dir)
+
+    if not force and cache.entry_count > 0:
+        confirmed = typer.confirm(
+            f"wipe {cache.entry_count} entries ({_human_size(cache.total_bytes)})?"
+        )
+        if not confirmed:
+            console.print("[yellow]cache:[/yellow] clear cancelled")
+            raise typer.Exit(code=0)
+
+    removed = cache.clear()
+    cache.save_manifest()
+    console.print(f"[green]cache:[/green] cleared {removed} entr(y/ies)")
+
+
+def _parse_duration(spec: str) -> float | None:
+    """Parse a duration like `30d`, `12h`, `45m` → seconds. None on
+    malformed input."""
+    if not spec or not spec[:-1].isdigit():
+        return None
+    n = int(spec[:-1])
+    unit = spec[-1].lower()
+    if unit == "s":
+        return float(n)
+    if unit == "m":
+        return float(n) * 60
+    if unit == "h":
+        return float(n) * 3600
+    if unit == "d":
+        return float(n) * 86400
+    return None
