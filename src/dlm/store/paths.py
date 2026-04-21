@@ -29,6 +29,7 @@ from dlm.store.layout import (
     ADAPTER_VERSIONS_DIR,
     ALWAYS_CREATE_DIRS,
     CACHE_DIR,
+    CONTROLS_DIR,
     EXPORTS_DIR,
     LOCK_FILENAME,
     LOGS_DIR,
@@ -173,6 +174,23 @@ class StorePath:
         clearing one doesn't nuke the other.
         """
         return self.root / TOKENIZED_CACHE_DIR
+
+    @property
+    def controls_dir(self) -> Path:
+        """Per-store control-vector artifacts.
+
+        Layout: `controls/<name>.safetensors` (the direction tensor)
+        + `controls/<name>.meta.json` (layer index, source section
+        ids, extractor version). Lazy — `dlm.control` creates the
+        subtree on first write.
+        """
+        return self.root / CONTROLS_DIR
+
+    def control_file(self, name: str) -> Path:
+        return self.controls_dir / f"{name}.safetensors"
+
+    def control_meta(self, name: str) -> Path:
+        return self.controls_dir / f"{name}.meta.json"
 
     @property
     def logs(self) -> Path:
