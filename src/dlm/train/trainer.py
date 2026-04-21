@@ -830,9 +830,12 @@ def _maybe_pretokenize_datasets(  # pragma: no cover — real path is covered by
     if training.sources is None:
         return train_ds, val_ds, None
 
-    # Opt-out escape hatch threaded from the CLI (Sprint 31.5 T5 wires
-    # the ``--no-cache`` flag as an env var fallback; once the plan
-    # struct carries the flag this reads from the plan instead).
+    # Sprint 31.6: frontmatter `training.cache.enabled` is the primary
+    # switch. `dlm train --no-cache` sets the env var as a per-run
+    # override so CLI flag + frontmatter both participate.
+    if not training.cache.enabled:
+        return train_ds, val_ds, None
+
     import os
 
     if os.environ.get("DLM_DISABLE_TOKENIZED_CACHE", "0") == "1":
@@ -844,7 +847,12 @@ def _maybe_pretokenize_datasets(  # pragma: no cover — real path is covered by
         from dlm.directives.cache import TokenizedCache
         from dlm.train.tokenization import pretokenize_rows
 
-        cache = TokenizedCache.open(store.tokenized_cache_dir)
+        # Sprint 31.6: `training.cache.max_bytes` overrides the cache
+        # module's 10 GiB default. Pre-v9 docs inherit the default via
+        # the CacheConfig factory.
+        cache = TokenizedCache.open(
+            store.tokenized_cache_dir, max_bytes=training.cache.max_bytes
+        )
         seq_len = training.sequence_len
 
         train_rows = [dict(r) for r in train_ds]
