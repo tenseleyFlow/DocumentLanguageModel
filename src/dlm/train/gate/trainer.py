@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from dlm.io.atomic import write_text as atomic_write_text
@@ -73,6 +73,11 @@ class GateTrainingResult:
     # Per-adapter supervising sample count — the cold-start gate reads
     # this map to decide the fallback.
     per_adapter_samples: dict[str, int]
+    # Mean softmax weight the trained gate produces across the full
+    # training set. Populated only for mode="trained"; empty for
+    # uniform-mode fallbacks (callers substitute 1/N per adapter).
+    # Lets `dlm show` report the gate's learned routing bias.
+    per_adapter_mean_weight: dict[str, float] = field(default_factory=dict)
 
 
 def _count_per_adapter(
@@ -244,6 +249,14 @@ def train_gate(  # noqa: PLR0913 — cycle driver has many deps by design
         adapter_names=adapter_names,
         entropy_lambda=entropy_lambda,
     )
+    # Mean softmax weight per adapter over the full training set —
+    # one forward pass, no gradient. Lets downstream consumers report
+    # calibrated routing statistics without re-running the gate later.
+    with torch.no_grad():
+        mean_probs = F.softmax(gate.module(xs), dim=-1).mean(dim=0)
+    per_adapter_mean_weight = {
+        name: float(mean_probs[i].item()) for i, name in enumerate(adapter_names)
+    }
     return GateTrainingResult(
         mode="trained",
         steps=steps,
@@ -251,6 +264,7 @@ def train_gate(  # noqa: PLR0913 — cycle driver has many deps by design
         final_entropy=last_entropy,
         sample_count=len(samples),
         per_adapter_samples=per_adapter,
+        per_adapter_mean_weight=per_adapter_mean_weight,
     )
 
 
