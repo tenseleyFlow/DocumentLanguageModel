@@ -609,19 +609,26 @@ def _build_real_trainer(  # pragma: no cover
 
     base_model = load_base_model(spec, plan)
 
-    # Vision-language path (Sprint 35 v1): also load the processor and
+    # Media paths (Sprint 35 v1 / 35.2): also load the processor and
     # route blob-bytes through the dataset builder. The tokenizer still
     # bubbles up via the processor's `.tokenizer` attribute, which both
-    # our downstream helpers and TRL's VL collator understand.
+    # our downstream helpers and TRL's VL collator understand. Audio
+    # bases carry a processor too but TRL has no auto-dispatch, so the
+    # audio branch hands the SFTTrainer a custom `AudioLmCollator`.
     is_vl = spec.modality == "vision-language"
-    vl_processor: Any | None = None
+    is_audio = spec.modality == "audio-language"
+    is_media = is_vl or is_audio
+    media_processor: Any | None = None
     blob_store: BlobStore | None = None
     image_token = "<image>"
-    if is_vl:
-        vl_processor = load_processor(spec)
+    audio_token = "<|AUDIO|>"
+    if is_media:
+        media_processor = load_processor(spec)
         blob_store = BlobStore(store.blob_dir)
-        if spec.vl_preprocessor_plan is not None:
+        if is_vl and spec.vl_preprocessor_plan is not None:
             image_token = spec.vl_preprocessor_plan.image_token
+        if is_audio and spec.audio_preprocessor_plan is not None:
+            audio_token = spec.audio_preprocessor_plan.audio_token
 
     tok_bringup = prepare_tokenizer(spec.hf_id, spec.revision)
 
@@ -648,6 +655,7 @@ def _build_real_trainer(  # pragma: no cover
         weights=merged_weights or None,
         blob_store=blob_store,
         image_token=image_token,
+        audio_token=audio_token,
     )
 
     resume_path = (
@@ -773,13 +781,13 @@ def _build_real_trainer(  # pragma: no cover
     # EOS / tokenize passes when true. Cache hits on subsequent runs
     # skip the tokenizer call entirely — the whole point of Sprint 31.
     #
-    # Sprint 35 v1: VL bases skip this pass entirely. The VL row shape
-    # carries PIL.Image objects whose pixel tensors come from the
-    # processor at collate time (TRL 1.2's `DataCollatorForVisionLanguageModeling`
-    # detects "images" in the row dict and auto-dispatches). Pre-
-    # tokenizing VL rows would strip the image before the collator
-    # ever saw it.
-    if is_vl:
+    # Sprint 35 v1 / 35.2: media bases skip this pass entirely. VL rows
+    # carry PIL.Image objects; audio rows carry file paths + transcripts.
+    # TRL 1.2's `DataCollatorForVisionLanguageModeling` auto-detects VL
+    # rows via the `images` key; our `AudioLmCollator` is passed
+    # explicitly below. Pre-tokenizing either would strip the media
+    # payload before the collator ever saw it.
+    if is_media:
         tokenization_stats = None
     else:
         train_ds, val_ds, tokenization_stats = _maybe_pretokenize_datasets(
@@ -792,23 +800,32 @@ def _build_real_trainer(  # pragma: no cover
     # The ``formatting_func`` is only consulted on the non-pre-processed
     # path. When we pre-tokenize, TRL skips it (and logs a warning if
     # both are present). Drop it on the cached path to keep the logs
-    # clean and make the intent explicit. VL bases skip it unconditionally —
-    # the VL collator reads `row["text"]` directly and owns the prompt-
-    # assembly semantics per-processor.
-    use_formatting_func = tokenization_stats is None and not is_vl
+    # clean and make the intent explicit. Media bases skip it
+    # unconditionally — their collators own prompt assembly per-processor.
+    use_formatting_func = tokenization_stats is None and not is_media
 
     from dlm.eval import build_callback
 
     # Newer TRL releases (>=0.9) renamed `tokenizer` → `processing_class`.
-    # For VL bases we hand TRL the full `AutoProcessor` (ProcessorMixin)
-    # so `DataCollatorForVisionLanguageModeling` can drive pixel + text
-    # preprocessing together. Text bases keep the tokenizer path.
+    # For media bases we hand TRL the full `AutoProcessor` (ProcessorMixin)
+    # so its tokenizer + feature-extractor stay paired; VL bases get
+    # TRL's built-in VL collator via auto-dispatch, audio bases get our
+    # explicit `AudioLmCollator` (TRL has no audio equivalent).
     trainer_kwargs: dict[str, Any] = {
         "model": peft_model,
-        "processing_class": vl_processor if is_vl else tok_bringup.tokenizer,
+        "processing_class": media_processor if is_media else tok_bringup.tokenizer,
         "train_dataset": train_ds,
         "args": sft_config,
     }
+    if is_audio and media_processor is not None and spec.audio_preprocessor_plan is not None:
+        from dlm.data.audio_collator import AudioLmCollator
+
+        trainer_kwargs["data_collator"] = AudioLmCollator(
+            processor=media_processor,
+            sample_rate=spec.audio_preprocessor_plan.sample_rate,
+            max_length_seconds=spec.audio_preprocessor_plan.max_length_seconds,
+            max_length=parsed.frontmatter.training.sequence_len,
+        )
     if use_formatting_func:
         trainer_kwargs["formatting_func"] = make_formatting_func(tok_bringup.tokenizer)
     callbacks: list[Any] = []
