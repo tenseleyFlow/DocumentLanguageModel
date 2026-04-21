@@ -98,18 +98,58 @@ caches are capped at the 10 GiB default.
 Orphaned entries stay on disk until `prune` or `clear` removes them,
 but `get()` never returns a stale entry — keys are exact.
 
-## Metrics
+## Measuring hit rate
 
-Every training run emits a `TokenizationEvent` into the per-store
-SQLite metrics DB (`metrics.sqlite`, Sprint 26). You can query it:
+The cache fires automatically during `dlm train` on any `.dlm` that
+declares `training.sources`. To see how well it's working on your
+corpus:
 
 ```bash
-dlm metrics /path/to/doc.dlm --json | jq '.runs[0]'
+# After a training run, inspect per-run tokenization stats.
+dlm show /path/to/doc.dlm --json | jq .training_cache
+# {
+#   "path": "~/.dlm/store/01KP.../tokenized-cache",
+#   "entry_count": 1247,
+#   "bytes": 327598080,
+#   "last_run_hit_rate": 0.984,
+#   "last_run_id": 3
+# }
+```
+
+The metrics DB keeps a row per run:
+
+```bash
+dlm metrics /path/to/doc.dlm --json | jq '.runs[0].tokenization'
 ```
 
 Fields on the event: `total_sections`, `cache_hits`, `cache_misses`,
-`total_tokenize_seconds`, `cache_bytes_after`. The cache's hit rate
-is the ratio `cache_hits / (cache_hits + cache_misses)`.
+`total_tokenize_seconds`, `cache_bytes_after`. Hit rate is
+`cache_hits / (cache_hits + cache_misses)`.
+
+**Reading the numbers.** A first run against a cold corpus is all
+misses — that's the tokenize cost you pay once. Every subsequent run
+against the same files should be all hits (rate → 1.0). If you see
+hit rate drop unexpectedly on the second run, something invalidated
+entries — check for a tokenizer upgrade (new `transformers`,
+different base model revision) or a `sequence_len` change.
+
+## Opting out
+
+Some scenarios want the legacy tokenize-per-run path:
+
+- debugging a suspected tokenization bug (is it the cache or the
+  tokenizer?),
+- cross-checking cached-vs-uncached determinism on the same seed.
+
+The `--no-cache` flag on `dlm train` bypasses the cache for that run
+without touching the on-disk entries:
+
+```bash
+dlm train /path/to/doc.dlm --no-cache
+```
+
+Entries from prior cached runs stay intact — the next run without
+the flag picks them back up. No frontmatter change required.
 
 ## Pitfalls
 
@@ -126,7 +166,7 @@ is the ratio `cache_hits / (cache_hits + cache_misses)`.
   via `--include` globs or plan for a `max_bytes` frontmatter knob
   in a follow-up sprint.
 
-## Scope of this sprint (v1)
+## What ships today
 
 - Cache module (`dlm.directives.cache`) with atomic writes, LRU
   eviction, tokenizer-sha invalidation.
@@ -134,18 +174,17 @@ is the ratio `cache_hits / (cache_hits + cache_misses)`.
 - Metrics wiring (`TokenizationEvent` → SQLite).
 - `dlm show --json` surfaces cache state.
 - Per-store layout under `<store>/tokenized-cache/`.
+- **Trainer integration.** `dlm train` pre-tokenizes directive-
+  sourced rows through the cache before handing a pre-processed
+  dataset to TRL's `SFTTrainer`. Tokenizer output is bit-identical
+  to TRL's own `_tokenize` path (guarded by an online parity test
+  against the reference tokenizer).
+- **`--no-cache` opt-out** on `dlm train` for debugging and
+  determinism cross-checks.
 
-Deferred to follow-up:
+Future follow-ups:
 
-- **Full trainer integration.** Wiring the cache into TRL's
-  SFTTrainer tokenization path requires bypassing TRL's on-the-fly
-  tokenization; v1 ships the cache infrastructure but not the
-  drop-in replacement. Users wanting the speedup today can pre-
-  tokenize via `TokenizedCache` and feed pre-tokenized
-  `datasets.Dataset` objects directly. The end-to-end
-  `dlm train --fresh` speedup test is a [~] deferral on the same
-  rationale.
-- **`training.cache.max_bytes` frontmatter knob** — schema bump
-  deferred to avoid v6→v7 churn this sprint.
+- **`training.cache.max_bytes` frontmatter knob** — per-`.dlm`
+  tuning of the default 10 GiB cap (schema v8→v9).
 - **Distributed / cross-store cache sharing** — explicit non-goal
-  for v1 (sprint scope §Out of scope).
+  today.

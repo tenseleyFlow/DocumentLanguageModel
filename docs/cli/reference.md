@@ -67,6 +67,7 @@ dlm train <path> [--resume|--fresh] [--seed N] [--max-steps N]
 | `--watch-max-steps N` | 100 | Per-cycle step cap for `--watch`. Keeps cycles responsive. |
 | `--watch-debounce-ms N` | 400 | Quiet interval before a burst of saves triggers a retrain. |
 | `--repl` | false | With `--watch`: also run `dlm repl` in the same process. **Scaffolded only** — threading integration is a followup; today the flag refuses with exit 2. |
+| `--no-cache` | false | Bypass the tokenized-section cache for this run. Default is cache-on when the `.dlm` declares `training.sources`. Use when debugging tokenization or cross-checking cached-vs-uncached determinism. Entries from prior runs stay on disk; the next run without the flag picks them back up. See [directive-cache](../cookbook/directive-cache.md). |
 
 The three lock flags are mutually exclusive. See [Determinism](../determinism.md)
 for the mismatch severity table.
