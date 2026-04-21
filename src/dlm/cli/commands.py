@@ -59,6 +59,17 @@ def init_cmd(
             ),
         ),
     ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Scaffold a vision-language .dlm with an `::image::` section. "
+                "Defaults --base to paligemma-3b-mix-224 and skips GGUF "
+                "export probes (Sprint 35.4 will add VL GGUF support)."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Bootstrap a new .dlm file with sensible defaults."""
 
@@ -81,6 +92,21 @@ def init_cmd(
             "Re-run with [bold]--force[/bold] to overwrite."
         )
         raise typer.Exit(code=1)
+
+    # --multimodal is mutually exclusive with --template (templates pin
+    # their own base + body shape; v1 doesn't ship a VL template yet).
+    if multimodal and template is not None:
+        console.print(
+            "[red]init:[/red] --multimodal and --template are mutually exclusive; "
+            "v1 doesn't ship a VL template (see `dlm templates list`)."
+        )
+        raise typer.Exit(code=2)
+
+    # --multimodal overrides the text-first --base default. A user who
+    # wants a different VL base (Qwen2-VL / InternVL2 land in Sprint 35.3)
+    # passes --base explicitly; we then verify the pick is VL below.
+    if multimodal and base == "qwen2.5-1.5b":
+        base = "paligemma-3b-mix-224"
 
     # --template resolves the base from the template's meta.yaml; the
     # --base default is kept for the no-template path only. Users who
@@ -105,6 +131,12 @@ def init_cmd(
             )
     else:
         resolved_base = base
+
+    # VL bases can't clear the GGUF-conversion probes (Sprint 35.4 adds
+    # the arch-support gate). Force-skip them so the probe suite doesn't
+    # false-fail the init.
+    if multimodal:
+        skip_export_probes = True
 
     try:
         spec = resolve_base_model(
@@ -160,11 +192,25 @@ def init_cmd(
         else None
     )
 
+    # --multimodal requires a VL base. Check after resolve so users
+    # pointing at an unknown or text-only hf:org/name get a clear
+    # explanation rather than a schema error deep in parse time.
+    if multimodal and spec.modality != "vision-language":
+        console.print(
+            f"[red]init:[/red] --multimodal requires a vision-language base; "
+            f"{spec.key!r} is modality='{spec.modality}'. "
+            "Pick --base paligemma-3b-mix-224 or drop --multimodal."
+        )
+        raise typer.Exit(code=2)
+
     if applied_result is not None:
         dlm_id = applied_result.dlm_id
     else:
         dlm_id = mint_ulid()
-        _write_init_scaffold(path, spec.key, dlm_id)
+        if multimodal:
+            _write_init_scaffold_multimodal(path, spec.key, dlm_id)
+        else:
+            _write_init_scaffold(path, spec.key, dlm_id)
 
     # Create the store + write the initial manifest so `dlm show` sees
     # the license record and `dlm train` has a prior manifest to diff
@@ -269,6 +315,43 @@ Your example question.
 
 ### A
 Your example answer.
+"""
+    path.write_text(scaffold, encoding="utf-8")
+
+
+def _write_init_scaffold_multimodal(path: Path, base_model_key: str, dlm_id: str) -> None:
+    """Write a VL-shaped .dlm file at `path` (Sprint 35 v1).
+
+    Body shows the `::image::` attribute fence + a caption so users
+    see the v10 grammar on first open. The placeholder path
+    `figures/your-image.png` is deliberately non-existent — first
+    `dlm train` will refuse with a clear file-missing error, prompting
+    the user to drop a real image in. This is friendlier than
+    committing an inert sample that users might not notice isn't theirs.
+
+    `dlm_version: 10` because IMAGE sections require schema v10.
+    """
+    scaffold = f"""---
+dlm_id: {dlm_id}
+dlm_version: 10
+base_model: {base_model_key}
+---
+
+# Your document title
+
+Write prose here. It will train via continued pretraining (CPT) loss.
+
+::image path="figures/your-image.png" alt="short description"::
+Caption text describing the image. Training rows bundle the image
+with this caption as `<image>\\n<caption>`.
+
+::instruction::
+
+### Q
+What is in this image?
+
+### A
+Describe what the image shows.
 """
     path.write_text(scaffold, encoding="utf-8")
 
