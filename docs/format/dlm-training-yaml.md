@@ -48,6 +48,17 @@ metadata:
   language: python
   domain: auth
   license: MIT
+
+# Optional — per-`(tag_key, tag_value)` row-exposure multipliers.
+# Integer factors duplicate rows; fractional factors drive a
+# deterministic keep/drop. Multiple matching tags multiply. See
+# `docs/cookbook/tag-weighted-corpus.md`.
+weights:
+  domain:
+    auth: 2.0         # auth rows appear twice
+  language:
+    python: 1.0       # no-op
+    generated: 0.1    # generated-tagged rows ~10% keep
 ```
 
 ## Fields
@@ -59,6 +70,7 @@ metadata:
 | `exclude` | list[str] | `[]` | POSIX-glob exclude patterns. Unioned with parent directive + `.dlm/ignore`. |
 | `exclude_defaults` | bool | `true` | Apply the curated default-exclude set at this subtree. |
 | `metadata` | dict[str, str] | `{}` | Free-form tags merged onto synthesized `Section.tags`. |
+| `weights` | dict[str, dict[str, float]] | `{}` | Per-`(tag_key, tag_value)` row-exposure multipliers. Negative values rejected; `0.0` drops rows. Deepest `.dlm/training.yaml` wins per `(tag_key, tag_value)`. |
 
 Unknown keys are rejected — the parser is `extra="forbid"`.
 
