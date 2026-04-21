@@ -16,6 +16,7 @@ from dlm.metrics.events import (
     RunStart,
     Status,
     StepEvent,
+    TokenizationEvent,
 )
 from dlm.metrics.recorder import MetricsRecorder
 
@@ -31,6 +32,7 @@ __all__ = [
     "RunStart",
     "Status",
     "StepEvent",
+    "TokenizationEvent",
     "connect",
     "ensure_schema",
     "metrics_db_path",

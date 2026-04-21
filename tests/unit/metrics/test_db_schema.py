@@ -25,7 +25,7 @@ class TestConnect:
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 )
             }
-        assert tables == {"runs", "steps", "evals", "exports"}
+        assert tables == {"runs", "steps", "evals", "exports", "tokenization"}
 
     def test_wal_mode_enabled(self, tmp_path: Path) -> None:
         with connect(tmp_path) as conn:

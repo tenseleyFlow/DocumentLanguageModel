@@ -52,6 +52,24 @@ class EvalRow:
     at: str
 
 
+@dataclass(frozen=True)
+class TokenizationRow:
+    """One row from the `tokenization` table (Sprint 31)."""
+
+    run_id: int
+    total_sections: int
+    cache_hits: int
+    cache_misses: int
+    total_tokenize_seconds: float
+    cache_bytes_after: int
+    at: str
+
+    @property
+    def hit_rate(self) -> float:
+        total = self.cache_hits + self.cache_misses
+        return self.cache_hits / total if total else 0.0
+
+
 def recent_runs(
     store_root: Path,
     *,
@@ -112,6 +130,46 @@ def evals_for_run(store_root: Path, run_id: int, *, since_step: int = 0) -> list
             (run_id, since_step),
         ).fetchall()
     return [EvalRow(*row) for row in rows]
+
+
+def tokenization_for_run(
+    store_root: Path, run_id: int
+) -> TokenizationRow | None:
+    """The tokenization row for `run_id`, or None when absent.
+
+    Returns None when the table is empty for this run (i.e. the run
+    predated Sprint 31 or didn't touch the directive cache).
+    """
+    try:
+        with connect(store_root) as conn:
+            row = conn.execute(
+                "SELECT run_id, total_sections, cache_hits, cache_misses, "
+                "total_tokenize_seconds, cache_bytes_after, at "
+                "FROM tokenization WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    return TokenizationRow(*row)
+
+
+def latest_tokenization(store_root: Path) -> TokenizationRow | None:
+    """The most-recent tokenization row (for `dlm show`). None when
+    empty or DB missing."""
+    try:
+        with connect(store_root) as conn:
+            row = conn.execute(
+                "SELECT run_id, total_sections, cache_hits, cache_misses, "
+                "total_tokenize_seconds, cache_bytes_after, at "
+                "FROM tokenization ORDER BY run_id DESC LIMIT 1"
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    return TokenizationRow(*row)
 
 
 def latest_run_id(store_root: Path) -> int | None:

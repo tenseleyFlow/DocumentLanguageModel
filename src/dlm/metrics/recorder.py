@@ -24,7 +24,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from dlm.metrics.db import connect
-from dlm.metrics.events import EvalEvent, ExportEvent, RunEnd, RunStart, StepEvent
+from dlm.metrics.events import (
+    EvalEvent,
+    ExportEvent,
+    RunEnd,
+    RunStart,
+    StepEvent,
+    TokenizationEvent,
+)
 
 if TYPE_CHECKING:
     pass
@@ -116,6 +123,26 @@ class MetricsRecorder:
                     event.val_loss,
                     event.perplexity,
                     event.retention,
+                    event.at,
+                ),
+            )
+
+        self._with_conn(_do)
+
+    def record_tokenization(self, event: TokenizationEvent) -> None:
+        def _do(conn: sqlite3.Connection) -> None:
+            conn.execute(
+                "INSERT OR REPLACE INTO tokenization "
+                "(run_id, total_sections, cache_hits, cache_misses, "
+                "total_tokenize_seconds, cache_bytes_after, at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    event.run_id,
+                    event.total_sections,
+                    event.cache_hits,
+                    event.cache_misses,
+                    event.total_tokenize_seconds,
+                    event.cache_bytes_after,
                     event.at,
                 ),
             )

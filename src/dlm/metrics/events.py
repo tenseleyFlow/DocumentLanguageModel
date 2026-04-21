@@ -83,6 +83,28 @@ class EvalEvent:
 
 
 @dataclass(frozen=True)
+class TokenizationEvent:
+    """Emitted from `trainer.run` at the end of directive expansion.
+
+    Tracks the tokenized-section cache (Sprint 31): how many lookups
+    hit the cache, how many missed and required tokenization, and
+    the cache's size on disk after the run.
+    """
+
+    run_id: int
+    total_sections: int
+    cache_hits: int
+    cache_misses: int
+    total_tokenize_seconds: float
+    cache_bytes_after: int
+    at: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.at:
+            object.__setattr__(self, "at", _utc_iso())
+
+
+@dataclass(frozen=True)
 class ExportEvent:
     """Emitted from `dlm export` on completion."""
 

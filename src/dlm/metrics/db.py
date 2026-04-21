@@ -74,6 +74,17 @@ _SCHEMA_SQL = [
         duration_s  REAL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS tokenization (
+        run_id                  INTEGER PRIMARY KEY REFERENCES runs(run_id),
+        total_sections          INTEGER NOT NULL,
+        cache_hits              INTEGER NOT NULL,
+        cache_misses            INTEGER NOT NULL,
+        total_tokenize_seconds  REAL NOT NULL,
+        cache_bytes_after       INTEGER NOT NULL,
+        at                      TEXT NOT NULL
+    )
+    """,
 ]
 
 
