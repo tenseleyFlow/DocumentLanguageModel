@@ -84,10 +84,13 @@ class TestArchitectureShapes:
 
     def test_qwen_entries_use_qwen2_gguf_arch(self) -> None:
         for key, entry in BASE_MODELS.items():
-            if key.startswith("qwen"):
-                assert entry.gguf_arch == "qwen2"
-                assert entry.architecture == "Qwen2ForCausalLM"
-                assert entry.template == "chatml"
+            # Audio-language Qwen2 variants carry a distinct gguf_arch
+            # (no llama.cpp converter support) and a multi-modal template.
+            if not key.startswith("qwen") or entry.modality != "text":
+                continue
+            assert entry.gguf_arch == "qwen2"
+            assert entry.architecture == "Qwen2ForCausalLM"
+            assert entry.template == "chatml"
 
     def test_llama_entries_use_llama_gguf_arch(self) -> None:
         for key in ("llama-3.2-1b", "llama-3.2-3b"):
