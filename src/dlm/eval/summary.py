@@ -30,6 +30,25 @@ class ProbeOutput(BaseModel):
     section_id: str = ""
 
 
+class SourceProvenanceRecord(BaseModel):
+    """Serialized per-directive ingestion bookkeeping.
+
+    Mirrors `dlm.directives.SourceProvenance` as a pydantic model so
+    the training summary JSON is self-describing. One record per
+    `training.sources` entry; `file_count == 0` indicates a directive
+    that matched nothing (worth flagging in the CLI).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path: str
+    file_count: int = Field(0, ge=0)
+    total_bytes: int = Field(0, ge=0)
+    skipped_binary: int = Field(0, ge=0)
+    skipped_encoding: int = Field(0, ge=0)
+    skipped_over_size: int = Field(0, ge=0)
+
+
 class TrainingSummary(BaseModel):
     """Canonical post-run report."""
 
@@ -59,6 +78,10 @@ class TrainingSummary(BaseModel):
     steps: int = Field(0, ge=0)
     duration_seconds: float = Field(0.0, ge=0.0)
     determinism_class: str = "best_effort"
+    # Sprint 29: per-directive ingestion provenance. Empty when no
+    # `training.sources` declared. Order matches the frontmatter so
+    # CLI formatters can line up rows with source entries.
+    source_directives: list[SourceProvenanceRecord] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)

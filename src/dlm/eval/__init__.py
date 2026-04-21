@@ -13,6 +13,7 @@ from dlm.eval.probes import Probe, extract_probes
 from dlm.eval.retention import RetentionSlice, build_retention_slice, retention_delta
 from dlm.eval.summary import (
     ProbeOutput,
+    SourceProvenanceRecord,
     TrainingSummary,
     load_summary,
     save_summary,
@@ -28,6 +29,7 @@ __all__ = [
     "ProbeOutput",
     "RetentionSlice",
     "RetentionSliceError",
+    "SourceProvenanceRecord",
     "TrainingSummary",
     "build_callback",
     "build_retention_slice",
