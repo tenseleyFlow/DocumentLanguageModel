@@ -144,6 +144,36 @@ class TestValidation:
     def test_model_without_layers_attribute_rejected(self) -> None:
         bare = nn.Linear(4, 4)
         vector = np.ones(4, dtype=np.float32)
-        with pytest.raises(ControlApplyError, match="model.layers"):
+        with pytest.raises(ControlApplyError, match="layers"):
             with apply_control(bare, vector, layer_index=0):
                 pass
+
+    def test_peft_wrapped_model_resolves_through_base_model(self) -> None:
+        """`apply_control` must walk through `PeftModel.base_model.model`.
+
+        PEFT wraps the HF model one extra hop down: the layers live at
+        `peft_model.base_model.model.layers[i]` rather than
+        `model.model.layers[i]`. The resolver must find them anyway;
+        otherwise every PEFT-loaded inference session silently cannot
+        apply a control vector.
+        """
+
+        class _FakeLoraWrapper(nn.Module):
+            def __init__(self, hf_model: _ToyModel) -> None:
+                super().__init__()
+                # `PeftModel.base_model` is a LoraModel; `.model` points
+                # at the underlying HF model. Mirror that shape here.
+                self.model = hf_model
+
+        class _FakePeftModel(nn.Module):
+            def __init__(self, hf_model: _ToyModel) -> None:
+                super().__init__()
+                self.base_model = _FakeLoraWrapper(hf_model)
+
+        inner = _ToyModel(n_layers=4, hidden_dim=8)
+        wrapped = _FakePeftModel(inner)
+        vector = np.ones(8, dtype=np.float32)
+        hidden = torch.zeros(1, 3, 8)
+        with apply_control(wrapped, vector, layer_index=2, strength=1.0):
+            out = _run_through_layer(inner, 2, hidden)
+        assert torch.allclose(out, torch.ones_like(out))
