@@ -170,6 +170,51 @@ def latest_tokenization(store_root: Path) -> TokenizationRow | None:
     return TokenizationRow(*row)
 
 
+@dataclass(frozen=True)
+class GateEventRow:
+    """One row of the gate_events table (per-run per-adapter)."""
+
+    run_id: int
+    adapter_name: str
+    mean_weight: float
+    sample_count: int
+    mode: str
+    at: str
+
+
+def gate_events_for_run(store_root: Path, run_id: int) -> list[GateEventRow]:
+    """All gate_events rows for `run_id`, ordered by adapter name.
+
+    Empty list when the run didn't record a gate (pre-Sprint-34 or
+    `training.gate.enabled` was false).
+    """
+    try:
+        with connect(store_root) as conn:
+            rows = conn.execute(
+                "SELECT run_id, adapter_name, mean_weight, sample_count, mode, at "
+                "FROM gate_events WHERE run_id = ? ORDER BY adapter_name",
+                (run_id,),
+            ).fetchall()
+    except sqlite3.Error:
+        return []
+    return [GateEventRow(*row) for row in rows]
+
+
+def latest_gate_events(store_root: Path) -> list[GateEventRow]:
+    """All gate_events rows for the most-recent run that recorded a
+    gate. Empty list when no run has gate-event rows yet."""
+    try:
+        with connect(store_root) as conn:
+            row = conn.execute(
+                "SELECT MAX(run_id) FROM gate_events"
+            ).fetchone()
+    except sqlite3.Error:
+        return []
+    if row is None or row[0] is None:
+        return []
+    return gate_events_for_run(store_root, int(row[0]))
+
+
 def latest_run_id(store_root: Path) -> int | None:
     """The most-recent `run_id`, or None on empty / missing DB."""
     try:
