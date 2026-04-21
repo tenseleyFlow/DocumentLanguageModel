@@ -13,8 +13,9 @@ Flow:
    - Sign the pack's embedded `CHECKSUMS.sha256` with the user's
      minisign secret key (default `~/.dlm/minisign.key`, prompt for
      passphrase via minisign's own TTY path).
-   - The resulting `.sig` file travels inside the pack next to the
-     checksums.
+   - The resulting `.minisig` sidecar is written next to the pack
+     tarball (e.g. `mydoc.dlm.pack` + `mydoc.dlm.pack.minisig`).
+     Embedding the signature inside the pack itself is deferred.
 
 2. **Verify** (pull-side):
    - If a signature is present, try every public key in
