@@ -80,3 +80,46 @@ def perform_merge(  # pragma: no cover
 
     tokenizer = AutoTokenizer.from_pretrained(str(adapter_dir), local_files_only=True)
     tokenizer.save_pretrained(str(out_hf_dir))
+
+
+def perform_vl_merge(  # pragma: no cover
+    adapter_dir: Path,
+    out_hf_dir: Path,
+    *,
+    cached_base_dir: Path,
+) -> None:
+    """VL-aware merge: `AutoModelForImageTextToText` + full processor save.
+
+    Parallel to `perform_merge` but uses the image-text-to-text class so
+    the vision tower travels with the merged output (upstream
+    `convert_hf_to_gguf.py` drops ViT tensors for Qwen2-VL at our
+    pinned tag — the ViT runs through Ollama's preprocessor path — but
+    `from_pretrained` still needs the VL class to reconstruct the full
+    graph before `merge_and_unload`).
+
+    LoRA adapters for VL bases should target language-model projections
+    only (enforced by `preflight.check_vl_target_modules_lm_only`), so
+    `merge_and_unload()` touches LM weights exclusively; vision-tower
+    weights are saved unmodified.
+
+    `processor.save_pretrained` (not just tokenizer) writes the
+    tokenizer + image_processor + processor config together — every
+    piece a recipient needs to re-hydrate.
+    """
+    import torch
+    from peft import PeftModel
+    from transformers import AutoModelForImageTextToText, AutoProcessor
+
+    base = AutoModelForImageTextToText.from_pretrained(
+        str(cached_base_dir),
+        torch_dtype=torch.float16,
+        local_files_only=True,
+    )
+    peft: Any = PeftModel.from_pretrained(base, str(adapter_dir))
+    merged = peft.merge_and_unload()
+
+    out_hf_dir.mkdir(parents=True, exist_ok=True)
+    merged.save_pretrained(str(out_hf_dir))
+
+    processor = AutoProcessor.from_pretrained(str(cached_base_dir), local_files_only=True)  # type: ignore[no-untyped-call]
+    processor.save_pretrained(str(out_hf_dir))
