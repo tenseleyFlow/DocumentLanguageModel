@@ -1225,6 +1225,25 @@ def export_cmd(
         mix_entries = [(e.name, e.weight) for e in entries]
 
     store = for_dlm(parsed.frontmatter.dlm_id)
+
+    # Gate-driven static mix. Sprint 34: when the doc has an enabled
+    # gate AND the user didn't pass --adapter-mix / --adapter, freeze
+    # the learned gate to per-adapter weights for the GGUF export
+    # path. Dynamic routing only lives in the `dlm prompt` flow; the
+    # runtime can't evaluate the torch gate, so we substitute the
+    # prior here. A CLI --adapter-mix wins — users who know what they
+    # want get full control.
+    if mix_entries is None and adapter is None:
+        from dlm.export.gate_fallback import resolve_gate_mix
+
+        gate_mix = resolve_gate_mix(store, parsed)
+        if gate_mix is not None:
+            mix_entries = gate_mix
+            console.print(
+                "[dim]export: substituting learned gate weights for "
+                "--adapter-mix (gate_mode=static).[/dim]"
+            )
+
     already_accepted = _previously_accepted(store.manifest)
     try:
         spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=already_accepted)
