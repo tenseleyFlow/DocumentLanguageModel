@@ -17,6 +17,7 @@ The returned `TrainingPlan` is frozen and JSON-serializable.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass
 from typing import Any, Final, Literal
 
@@ -25,6 +26,8 @@ from dlm.hardware.backend import Backend
 from dlm.hardware.capabilities import Capabilities
 from dlm.hardware.memory import estimate_peak_vram_gb, estimate_step_seconds
 from dlm.hardware.refusals import check_multi_gpu_refusals, check_refusals
+
+_LOG = logging.getLogger(__name__)
 
 AttnImpl = Literal["flash_attention_2", "sdpa", "eager"]
 Precision = Literal["bf16", "fp16", "fp32"]
@@ -106,7 +109,7 @@ def resolve(
     )
 
     use_qlora = _should_qlora(training, caps)
-    precision = _pick_precision(caps)
+    precision = _pick_precision(caps, override=training.precision)
     attn = _pick_attention(caps)
     micro_batch = _resolve_micro_batch(training, caps, base_params, seq_len, precision, use_qlora)
     if phase == "dpo":
@@ -166,20 +169,37 @@ def _should_qlora(training: TrainingConfig, caps: Capabilities) -> bool:
     return training.adapter == "qlora" and caps.backend == Backend.CUDA and caps.has_bitsandbytes
 
 
-def _pick_precision(caps: Capabilities) -> Precision:
-    """Pick training precision purely from host capabilities.
+def _pick_precision(caps: Capabilities, override: Precision | None = None) -> Precision:
+    """Pick training precision.
 
-    MPS is pinned to fp32: PyTorch's MPS fp16 attention kernels produce
-    NaN LoRA weights on tiny-data SFT runs (reproduced 2026-04-20 on
-    smollm2-135m + 4 samples + lr=2e-4 + no warmup; see
-    `.docs/bugs/01-nan-adapter-on-mps.md`). CPU-side training under the
-    identical config is finite, pinning the failure to MPS kernels.
-    PyTorch reports MPS bf16 support as patchy across SoCs, so we prefer
-    the safe fp32 path over a conditional bf16/fp16 pick. Users who
-    want faster MPS training can still override via the frontmatter
-    (`training.precision: fp16`) once that knob ships — until then
-    finite weights beat fast NaN weights.
+    Defaults:
+
+    - CUDA Ampere+ / ROCm with bf16 support → bf16
+    - Older CUDA → fp16
+    - MPS → fp32 (pinned: PyTorch's MPS fp16 attention kernels produce
+      NaN LoRA weights on tiny-data SFT runs; reproduced 2026-04-20 on
+      smollm2-135m + 4 samples + lr=2e-4 + no warmup, see
+      `.docs/bugs/01-nan-adapter-on-mps.md`)
+    - CPU → fp32 implicit (memory estimator treats it as full precision)
+
+    An explicit `override` from `training.precision` wins. On MPS, an
+    fp16 override emits a loud warning — the user is opting into the
+    known NaN risk in exchange for fitting larger bases in unified
+    memory. A bf16 override is silently honored where supported; on
+    hosts that don't support bf16 the caller should refuse at an
+    earlier boundary (this function trusts its inputs).
     """
+    if override is not None:
+        if caps.backend == Backend.MPS and override == "fp16":
+            _LOG.warning(
+                "training.precision=fp16 on MPS: accepting user override, but "
+                "the MPS fp16 attention kernels can produce NaN LoRA weights "
+                "on tiny-data runs. The post-train finite-weight gate will "
+                "refuse to persist a corrupt adapter. If training diverges, "
+                "drop back to fp32 (the default) or add warmup + more data. "
+                "See .docs/bugs/01-nan-adapter-on-mps.md."
+            )
+        return override
     if caps.backend == Backend.MPS:
         return "fp32"
     if caps.supports_bf16:
