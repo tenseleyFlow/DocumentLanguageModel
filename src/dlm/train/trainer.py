@@ -658,6 +658,12 @@ def _build_real_trainer(  # pragma: no cover
         "lr_scheduler_type": parsed.frontmatter.training.lr_scheduler,
         "warmup_ratio": parsed.frontmatter.training.warmup_ratio,
         "max_steps": max_steps if max_steps is not None else -1,
+        # Honor the frontmatter `sequence_len` (default 2048) instead
+        # of TRL's built-in 1024 default. Also the value the tokenized-
+        # section cache keys on — a silent mismatch between SFTConfig's
+        # effective max and the cache key invariant would silently
+        # invalidate or, worse, serve stale tokens.
+        "max_length": parsed.frontmatter.training.sequence_len,
         "seed": seed,
         "data_seed": seed,
         "bf16": plan.precision == "bf16",
