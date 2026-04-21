@@ -496,6 +496,19 @@ def train_cmd(
             ),
         ),
     ] = False,
+    skip_export_probes: Annotated[
+        bool,
+        typer.Option(
+            "--skip-export-probes",
+            help=(
+                "Skip the llama.cpp / GGUF-conversion probes so brand-new "
+                "architectures (not yet in our vendored llama.cpp) can still "
+                "be used for training + HF inference. Forfeits `dlm export` "
+                "to Ollama until the vendored copy catches up. Mirrors the "
+                "flag of the same name on `dlm init`."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
     import sys
@@ -656,6 +669,7 @@ def train_cmd(
         spec = resolve_base_model(
             parsed.frontmatter.base_model,
             accept_license=i_accept_license,
+            skip_export_probes=skip_export_probes,
         )
     except GatedModelError as exc:
         console.print(f"[red]license:[/red] base model {parsed.frontmatter.base_model!r} is gated.")

@@ -113,26 +113,74 @@ class TestProbeGgufArch:
         assert result.passed is True
 
     def test_matches_registered_arch(self, tmp_path: Path) -> None:
+        """Decorator registers the HF architecture class name
+        (``DemoForCausalLM``) — probe compares against ``spec.architecture``."""
         vendor = tmp_path / "llama.cpp"
         vendor.mkdir()
         (vendor / "convert_hf_to_gguf.py").write_text(
-            '@Model.register("qwen2", "qwen3")\n@Model.register("demo")\nclass DemoModel: ...\n',
+            '@Model.register("OtherForCausalLM", "DemoForCausalLM")\n'
+            '@Model.register("AnotherForCausalLM")\nclass DemoModel: ...\n',
             encoding="utf-8",
         )
         result = probe_gguf_arch_supported(_spec(), vendor_path=vendor)
         assert result.passed is True
-        assert result.detail.count("demo") >= 1
+        assert "DemoForCausalLM" in result.detail
 
     def test_missing_arch_fails(self, tmp_path: Path) -> None:
         vendor = tmp_path / "llama.cpp"
         vendor.mkdir()
         (vendor / "convert_hf_to_gguf.py").write_text(
-            '@Model.register("qwen2")\n@Model.register("llama")\n',
+            '@Model.register("OtherForCausalLM")\n@Model.register("LlamaForCausalLM")\n',
             encoding="utf-8",
         )
         result = probe_gguf_arch_supported(_spec(), vendor_path=vendor)
         assert result.passed is False
-        assert "demo" in result.detail
+        assert "DemoForCausalLM" in result.detail
+
+    def test_matches_modelbase_register_post_rename(self, tmp_path: Path) -> None:
+        """Upstream llama.cpp renamed ``@Model.register`` → ``@ModelBase.register``
+        mid-2024. The probe must accept both forms so brand-new
+        architectures (Qwen3, Phi4, etc.) register against the vendored
+        converter without a false negative.
+        """
+        vendor = tmp_path / "llama.cpp"
+        vendor.mkdir()
+        (vendor / "convert_hf_to_gguf.py").write_text(
+            '@ModelBase.register("Qwen3ForCausalLM", "Qwen3Model")\n'
+            '@ModelBase.register("DemoForCausalLM")\n'
+            "class DemoModel: ...\n",
+            encoding="utf-8",
+        )
+        result = probe_gguf_arch_supported(_spec(), vendor_path=vendor)
+        assert result.passed is True
+        assert "DemoForCausalLM" in result.detail
+
+    def test_mixed_register_forms_both_matched(self, tmp_path: Path) -> None:
+        """If a hypothetical vendor pin mixes the two decorator forms
+        (unlikely but defensible), the probe sees architectures from both.
+        """
+        vendor = tmp_path / "llama.cpp"
+        vendor.mkdir()
+        (vendor / "convert_hf_to_gguf.py").write_text(
+            '@Model.register("OtherForCausalLM")\n@ModelBase.register("DemoForCausalLM")\n',
+            encoding="utf-8",
+        )
+        result = probe_gguf_arch_supported(_spec(), vendor_path=vendor)
+        assert result.passed is True
+
+    def test_captures_all_args_not_just_first(self, tmp_path: Path) -> None:
+        """A decorator can list multiple architectures — all must be
+        captured, not just the first. Regression lock for the historical
+        single-capture regex that silently missed secondary names like
+        ``@ModelBase.register("Qwen3ForCausalLM", "Qwen3Model")``."""
+        vendor = tmp_path / "llama.cpp"
+        vendor.mkdir()
+        (vendor / "convert_hf_to_gguf.py").write_text(
+            '@ModelBase.register("FirstForCausalLM", "SecondForCausalLM", "DemoForCausalLM")\n',
+            encoding="utf-8",
+        )
+        result = probe_gguf_arch_supported(_spec(), vendor_path=vendor)
+        assert result.passed is True
 
 
 class TestProbePretokenizerLabel:

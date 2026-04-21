@@ -164,7 +164,8 @@ def probe_gguf_arch_supported(
     *,
     vendor_path: Path | None = None,
 ) -> ProbeResult:
-    """Scan vendored `convert_hf_to_gguf.py` for `@Model.register("<gguf_arch>")`.
+    """Scan vendored ``convert_hf_to_gguf.py`` for
+    ``@Model.register("<gguf_arch>")`` or ``@ModelBase.register(...)``.
 
     Until Sprint 11 lands the submodule, this probe skips.
     """
@@ -186,20 +187,36 @@ def probe_gguf_arch_supported(
             detail=f"read failed: {exc}",
         )
 
-    # `@Model.register("qwen2", …)` or `@Model.register("qwen2")`
-    pattern = re.compile(r"""@Model\.register\(\s*["']([^"']+)["']""")
-    found_archs = set(pattern.findall(source))
-    if spec.gguf_arch in found_archs:
+    # llama.cpp's converter registers HF architecture class names via
+    # ``@ModelBase.register("Qwen3ForCausalLM", "Qwen3Model", ...)`` (the
+    # class was renamed from ``@Model.register`` mid-2024; we accept both
+    # forms so this probe stays tolerant if the vendored copy is ever
+    # pinned to an older tag). A single decorator may list *multiple*
+    # architectures, so we capture the full parenthesized arg list and
+    # then extract every quoted string from it.
+    decorator_re = re.compile(r"""@(?:Model|ModelBase)\.register\(([^)]*)\)""")
+    arg_string_re = re.compile(r"""["']([^"']+)["']""")
+    found_archs: set[str] = set()
+    for args in decorator_re.findall(source):
+        found_archs.update(arg_string_re.findall(args))
+    # Compare against the HF architecture (what the decorator actually
+    # registers), not the short gguf label. Historically the probe
+    # compared ``spec.gguf_arch`` — a silent false-negative, because
+    # llama.cpp registers ``"Qwen2ForCausalLM"`` not ``"qwen2"``; the
+    # probe only passed for registered models, which bypass this code
+    # path entirely.
+    if spec.architecture in found_archs:
         return ProbeResult(
             name="gguf_arch",
             passed=True,
-            detail=f"converter registers {spec.gguf_arch!r}",
+            detail=f"converter registers {spec.architecture!r}",
         )
     return ProbeResult(
         name="gguf_arch",
         passed=False,
         detail=(
-            f"{spec.gguf_arch!r} not in convert_hf_to_gguf.py (found: {sorted(found_archs)[:5]}…)"
+            f"{spec.architecture!r} not in convert_hf_to_gguf.py "
+            f"(scanned {len(found_archs)} registrations)"
         ),
     )
 
