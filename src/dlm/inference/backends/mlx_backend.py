@@ -90,7 +90,7 @@ class MlxBackend(InferenceBackend):
         *,
         adapter_name: str | None = None,
     ) -> None:
-        from mlx_lm import load  # type: ignore[import-not-found]
+        from mlx_lm import load  # type: ignore[import-not-found, unused-ignore]
 
         from dlm.inference.loader import resolve_adapter_path
 
@@ -104,7 +104,11 @@ class MlxBackend(InferenceBackend):
         self._workdir = tempfile.TemporaryDirectory(prefix="dlm-mlx-")
         staged = stage_mlx_adapter_dir(adapter_path, Path(self._workdir.name))
 
-        self._model, self._tokenizer = load(
+        # mlx_lm.load returns (model, tokenizer) when return_config is
+        # False (the default) — `misc` suppresses the Union unpacking
+        # warning. `unused-ignore` guards against CI linux where mlx_lm
+        # is not importable and this branch isn't analyzed.
+        self._model, self._tokenizer = load(  # type: ignore[misc, unused-ignore]
             base.hf_id,
             adapter_path=str(staged),
         )

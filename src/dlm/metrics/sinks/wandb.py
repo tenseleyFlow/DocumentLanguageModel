@@ -42,7 +42,7 @@ class WandbSink:
 
     def __init__(self, store_root: Path, run_id: int, project: str) -> None:
         try:
-            import wandb  # type: ignore[import-not-found]
+            import wandb
         except ImportError as exc:  # pragma: no cover - depends on install
             raise RuntimeError(
                 "W&B sink requires `wandb`; run `uv sync --extra observability` to install it."
