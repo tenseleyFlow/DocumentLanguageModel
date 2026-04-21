@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import typer
 
@@ -1091,6 +1091,18 @@ def prompt_cmd(
             ),
         ),
     ] = None,
+    audio: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--audio",
+            help=(
+                "Attach an audio file (.wav/.flac/.ogg) to the prompt. "
+                "Repeat for multiple clips; each expands to the base's "
+                "audio-token placeholder. Requires an audio-language base "
+                "(Sprint 35.2: Qwen2-Audio-7B-Instruct)."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run inference against the trained adapter."""
     import sys
@@ -1119,6 +1131,13 @@ def prompt_cmd(
     # Typer passes None when the option was never given; normalize early so
     # downstream branching can just check truthiness + len().
     image_paths: list[Path] = list(image or [])
+    audio_paths: list[Path] = list(audio or [])
+    if image_paths and audio_paths:
+        console.print(
+            "[red]prompt:[/red] --image and --audio cannot be combined "
+            "(each targets a different modality)."
+        )
+        raise typer.Exit(code=2)
 
     from dlm.base_models import GatedModelError
 
@@ -1191,6 +1210,36 @@ def prompt_cmd(
         )
         return
 
+    # --- Audio path (Sprint 35.2) -------------------------------------
+    is_audio_spec = spec.modality == "audio-language"
+    if audio_paths and not is_audio_spec:
+        console.print(
+            f"[red]prompt:[/red] --audio is only valid with audio-language bases; "
+            f"base {spec.key!r} is modality='{spec.modality}'."
+        )
+        raise typer.Exit(code=2)
+    if is_audio_spec and not audio_paths:
+        console.print(
+            f"[red]prompt:[/red] base {spec.key!r} is audio-language; "
+            "pass at least one --audio PATH to prompt it."
+        )
+        raise typer.Exit(code=2)
+    if is_audio_spec:
+        _dispatch_audio_prompt(
+            console=console,
+            spec=spec,
+            store=store,
+            caps=caps,
+            adapter_name=adapter,
+            audio_paths=audio_paths,
+            query=query,
+            max_tokens=max_tokens,
+            temp=temp,
+            top_p=top_p,
+            verbose=verbose,
+        )
+        return
+
     try:
         backend_name = select_backend(backend, caps)  # type: ignore[arg-type]
     except UnsupportedBackendError as exc:
@@ -1253,7 +1302,7 @@ def _dispatch_vl_prompt(  # pragma: no cover
     )
 
     if verbose:
-        console.print(f"[dim]vl-backend:[/dim] pytorch (AutoModelForImageTextToText)")
+        console.print("[dim]vl-backend:[/dim] pytorch (AutoModelForImageTextToText)")
 
     try:
         loaded = load_for_vl_inference(store, spec, caps, adapter_name=adapter_name)
@@ -1286,6 +1335,87 @@ def _dispatch_vl_prompt(  # pragma: no cover
         query,
         images,
         image_token=image_token,
+        max_new_tokens=max_tokens,
+        temperature=temp,
+        top_p=top_p,
+    )
+    sys.stdout.write(response + "\n")
+
+
+def _dispatch_audio_prompt(  # pragma: no cover
+    *,
+    console: Any,
+    spec: Any,
+    store: Any,
+    caps: Any,
+    adapter_name: str | None,
+    audio_paths: list[Path],
+    query: str | None,
+    max_tokens: int,
+    temp: float,
+    top_p: float | None,
+    verbose: bool,
+) -> None:
+    """Run the audio-LM generate path. Keeps `prompt_cmd` readable.
+
+    Pragma'd from unit coverage because it calls the audio HF stack.
+    Covered by the slow-marked Sprint 35.2 integration test (T12).
+    """
+    import sys
+
+    import typer
+
+    from dlm.inference import (
+        AdapterNotFoundError,
+        generate_audio,
+        load_audios,
+        load_for_audio_inference,
+    )
+
+    if verbose:
+        console.print(f"[dim]audio-backend:[/dim] pytorch ({spec.architecture})")
+
+    try:
+        loaded = load_for_audio_inference(store, spec, caps, adapter_name=adapter_name)
+    except AdapterNotFoundError as exc:
+        console.print(f"[red]prompt:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    if spec.audio_preprocessor_plan is None:
+        # Defensive — every registry audio spec carries the plan, but
+        # the hf: escape hatch could skip it.
+        console.print(
+            f"[red]prompt:[/red] base {spec.key!r} is audio-language "
+            "but has no audio_preprocessor_plan; cannot resolve sample rate."
+        )
+        raise typer.Exit(code=2)
+
+    target_sr = spec.audio_preprocessor_plan.sample_rate
+    try:
+        waveforms = load_audios(audio_paths, target_sample_rate=target_sr)
+    except FileNotFoundError as exc:
+        console.print(f"[red]prompt:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+    except ValueError as exc:
+        # Sample-rate mismatch — surface the actionable ffmpeg hint.
+        console.print(f"[red]prompt:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
+
+    if query is None:
+        query = sys.stdin.read().strip()
+    if not query:
+        console.print("[red]prompt:[/red] empty query (pass a string or pipe on stdin)")
+        raise typer.Exit(code=2)
+
+    audio_token = spec.audio_preprocessor_plan.audio_token
+
+    response = generate_audio(
+        loaded.model,
+        loaded.processor,
+        query,
+        waveforms,
+        audio_token=audio_token,
+        sample_rate=target_sr,
         max_new_tokens=max_tokens,
         temperature=temp,
         top_p=top_p,
