@@ -134,6 +134,40 @@ def _default_gate() -> GateConfig:
     return GateConfig()
 
 
+class CacheConfig(BaseModel):
+    """Tokenized-section cache tuning (Sprint 31.6).
+
+    The cache lives at `~/.dlm/store/<dlm_id>/tokenized-cache/` and
+    trades disk for tokenization wall-clock on directive-sourced runs.
+    Defaults cover the typical case: cache on, 10 GiB cap, 90-day
+    retention. Per-document overrides here let authors tune for their
+    corpus size.
+
+    All fields are independent — no cross-field validation. The three
+    knobs map to three distinct operator concerns:
+    - ``enabled`` is the off-switch.
+    - ``max_bytes`` is the disk ceiling.
+    - ``prune_older_than_days`` is the retention window.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = True
+    # Default: 10 GiB (10 * 1024^3). Per-document cap that supersedes
+    # the cache module's built-in default when the trainer opens the
+    # cache. Lower for small personal corpora, higher for 50K+ file
+    # codebases.
+    max_bytes: int = Field(10 * 1024 * 1024 * 1024, ge=1)
+    # Default cutoff for `dlm cache prune` when the user doesn't pass
+    # `--older-than`. Overridable by the CLI flag on a per-command
+    # basis.
+    prune_older_than_days: int = Field(90, ge=1)
+
+
+def _default_cache() -> CacheConfig:
+    return CacheConfig()
+
+
 class AdapterConfig(BaseModel):
     """One named adapter in a multi-adapter document.
 
@@ -216,6 +250,9 @@ class TrainingConfig(BaseModel):
     # declares two or more named adapters — a gate over a single
     # adapter is a tautology. Enforced at validate-time below.
     gate: GateConfig = Field(default_factory=_default_gate)
+    # Tokenized-section cache tuning (Sprint 31.6). Defaults preserve
+    # pre-v9 behavior: cache on, 10 GiB cap, 90-day prune window.
+    cache: CacheConfig = Field(default_factory=_default_cache)
     # Named adapters for multi-adapter composition. When set, the flat
     # `adapter`/`lora_*`/`target_modules`/`learning_rate` fields must
     # stay at their defaults — mixing the two shapes creates ambiguous
