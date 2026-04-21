@@ -100,6 +100,64 @@ export:
 | `warmup_ratio` | float 0..0.5 | 0.1 | |
 | `precision` | `bf16` / `fp16` / `fp32` or null | null | Override the doctor's auto-pick. Defaults: bf16 on Ampere+/ROCm-bf16, fp16 on older CUDA, **fp32 on MPS** (the MPS fp16 attention kernels produce NaN LoRA weights on tiny-data SFT — see bug note below). Set `fp16` on MPS only if you need the memory headroom for a 7–8B base and your data isn't pathologically small; the post-train finite-weights gate will still refuse to persist a corrupt adapter. |
 | `seed` | int | 42 | Determinism seed. Changing it invalidates the [determinism golden](../determinism.md). |
+| `sources` | list[SourceDirective] or null | null | Declarative file-tree ingestion. Each entry is walked at train time; matching files become synthetic PROSE sections on the CPT path. See below. |
+| `sources_policy` | `permissive` / `strict` | `permissive` | `strict` confines directive paths to the `.dlm`'s parent subtree; `permissive` allows absolute paths anywhere. Symlink escapes are refused under strict, warned under permissive. |
+
+### `training.sources[]` — SourceDirective
+
+One entry per external root to ingest. Paths resolve relative to the
+`.dlm` file's parent when not absolute; `~` expands to `$HOME`.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `path` | non-empty str | required | File or directory path. Relative → anchored at the `.dlm`'s parent. |
+| `include` | list[str] | `["**/*"]` | Glob patterns (POSIX, `**` spans directories). At least one must match for a file to be ingested. |
+| `exclude` | list[str] | `[]` | Glob patterns evaluated first; any match drops the file. |
+| `max_bytes_per_file` | int ≥ 1 or null | null | Files larger than this are skipped with one log line. |
+| `max_files` | int ≥ 1 or null | null | Deterministic truncation: lexicographic-sorted walk keeps the first-N. |
+
+Behavior:
+
+- **File enumeration is deterministic.** Lexicographic sort on the
+  resolved path list; identical trees on identical OSes produce
+  identical Section order.
+- **Binary files are skipped** (NUL byte in the first KiB — the
+  standard grep heuristic). Skip count is recorded in the training
+  summary.
+- **UTF-8 decode failures are skipped**, not fatal. Use `exclude` for
+  known-non-UTF-8 formats.
+- **Each ingested file becomes a PROSE section** whose content is
+  prefixed with `# source: <relpath>\n\n`. The path prefix ensures
+  two files with identical bodies produce distinct `section_id`s —
+  the replay corpus tracks per-file identity, not per-content.
+- **Integration is seamless** with in-body sections. The CPT path,
+  replay corpus, content-hash diff, and deterministic train/val
+  split all treat directive-sourced sections identically.
+
+Example:
+
+```yaml
+training:
+  sources_policy: permissive
+  sources:
+    - path: ~/code/quillstone-protocol
+      include: ["**/*.py", "**/*.rs"]
+      exclude: ["tests/**", "**/__pycache__/**"]
+      max_bytes_per_file: 65536
+      max_files: 5000
+    - path: ~/notes/research.md
+```
+
+After `dlm train`, the training summary JSON carries a
+`source_directives: [...]` array with per-source file counts, byte
+totals, and skip breakdowns. `dlm show --json` reports the same
+under `training_sources`.
+
+**Secrets warning:** directive ingestion has no implicit exclude
+list. Add explicit `exclude: ["**/.env", "**/credentials*", ...]`
+or use `sources_policy: strict` + a curated subtree to avoid
+training on `.env`, private keys, or other sensitive files that
+happen to live in your codebase.
 
 ### `export`
 

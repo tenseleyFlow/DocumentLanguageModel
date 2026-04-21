@@ -73,6 +73,7 @@ nav:
       - Metrics & observability: cookbook/metrics.md
       - Template gallery: cookbook/template-gallery.md
       - Sharing adapters: cookbook/sharing.md
+      - Multi-source training: cookbook/multi-source-training.md
   - Architecture: architecture.md
   - Determinism: determinism.md
   - Hardware:
