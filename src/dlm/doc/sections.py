@@ -1,17 +1,28 @@
 """Body sections: PROSE (default), INSTRUCTION (`::instruction::`),
-PREFERENCE (`::preference::`).
+PREFERENCE (`::preference::`), IMAGE (`::image path="..." alt="..."::`).
 
-Each section carries its raw content verbatim plus a stable `section_id`
-derived from `sha256(type || "\\n" || normalized_content)[:16]` where
-normalization is the same LF+BOM-stripping applied by `dlm.io.text`.
+Text-body sections carry their raw content verbatim plus a stable
+`section_id` derived from `sha256(type || "\\n" || normalized_content)[:16]`
+where normalization is the same LF+BOM-stripping applied by `dlm.io.text`.
+
+IMAGE sections reference a binary blob outside the `.dlm` file; their
+identity is `sha256(type || "\\n" || path || "\\n" || blob_sha)[:16]`
+once the blob has been ingested into the content-addressed store. The
+path is part of the hash because different logical uses of the same
+bytes (`hero.png` in section A, `same-bytes.png` in section B) should
+not collapse to one training row. Before ingestion, `media_blob_sha`
+is `None` and the path alone seeds identity — sufficient for `dlm show`
+but not for training.
 
 This means:
 
 - The section ID is stable across Windows/Unix line endings (audit F15).
 - A whitespace-only edit inside *another* section does not change this
   section's ID (content-addressing correctness).
-- Changing the section type (prose → instruction) produces a different ID
-  even for identical content.
+- Changing the section type (prose → instruction) produces a different
+  ID even for identical content.
+- For IMAGE sections, a blob-bytes change flips the ID even if the path
+  didn't move; a path change flips the ID even if the bytes are identical.
 """
 
 from __future__ import annotations
@@ -31,6 +42,7 @@ class SectionType(StrEnum):
     PROSE = "prose"
     INSTRUCTION = "instruction"
     PREFERENCE = "preference"
+    IMAGE = "image"
 
 
 _SECTION_ID_BYTES = 8  # 16 hex chars
@@ -68,6 +80,13 @@ class Section:
     sway report (schema v7). `harvest_source` records the source run
     ("run_N_sway"-style opaque token) for provenance. Like `tags`,
     neither field participates in `section_id`.
+
+    `media_path` / `media_alt` / `media_blob_sha` are IMAGE-only fields
+    populated from the fence attributes (`path="..." alt="..."`) and
+    the content-addressed blob store (after ingestion). Non-IMAGE
+    sections leave them at their `None` defaults and they do not
+    participate in identity; IMAGE sections use them as the identity
+    inputs in place of `content`.
     """
 
     type: SectionType
@@ -77,13 +96,27 @@ class Section:
     tags: Mapping[str, str] = field(default_factory=lambda: _EMPTY_TAGS)
     auto_harvest: bool = False
     harvest_source: str | None = None
+    media_path: str | None = None
+    media_alt: str | None = None
+    media_blob_sha: str | None = None
 
     @property
     def section_id(self) -> str:
         """Stable 16-char hex content-hash ID."""
-        normalized = normalize_for_hashing(self.content)
         h = hashlib.sha256()
         h.update(self.type.value.encode("utf-8"))
         h.update(b"\n")
-        h.update(normalized.encode("utf-8"))
+        if self.type == SectionType.IMAGE:
+            # Media identity: path || blob_sha. Pre-ingest fallback
+            # hashes path alone so `dlm show` and parser round-trips
+            # work before the trainer writes bytes through the blob
+            # store; the trainer always populates `media_blob_sha`
+            # before deterministic splits see the ID.
+            h.update((self.media_path or "").encode("utf-8"))
+            if self.media_blob_sha is not None:
+                h.update(b"\n")
+                h.update(self.media_blob_sha.encode("utf-8"))
+        else:
+            normalized = normalize_for_hashing(self.content)
+            h.update(normalized.encode("utf-8"))
         return h.hexdigest()[: _SECTION_ID_BYTES * 2]
