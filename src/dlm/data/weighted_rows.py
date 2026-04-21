@@ -42,6 +42,23 @@ Row = dict[str, Any]
 WeightsMap = Mapping[str, Mapping[str, float]]
 
 
+def merge_weights_maps(maps: Sequence[WeightsMap]) -> dict[str, dict[str, float]]:
+    """Merge a shallowest-to-deepest sequence of weights maps.
+
+    Deeper entries override shallower ones at the `(tag_key, tag_value)`
+    grain, matching the nearest-ancestor semantics `.dlm/training.yaml`
+    already uses for `metadata` and `exclude`. An empty sequence
+    returns `{}`.
+    """
+    merged: dict[str, dict[str, float]] = {}
+    for weights in maps:
+        for tag_key, inner in weights.items():
+            dst = merged.setdefault(tag_key, {})
+            for tag_value, scale in inner.items():
+                dst[tag_value] = scale
+    return merged
+
+
 def resolve_row_weight(row_tags: Mapping[str, str], weights: WeightsMap) -> float:
     """Compose the effective weight for a row from its tags + weights map.
 
