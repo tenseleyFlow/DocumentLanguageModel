@@ -104,7 +104,9 @@ def test_schema_to_gate_to_inference_end_to_end(tmp_path: Path) -> None:
     held-out embeddings correctly > 80% of the time."""
     parsed = parse_text(_DLM_TEXT)
     fm = parsed.frontmatter
-    assert fm.dlm_version == 8
+    # v8 frontmatter auto-migrates to the current schema — assert the
+    # floor, not the ceiling, so future schema bumps don't break this.
+    assert fm.dlm_version >= 8
     assert fm.training.gate.enabled is True
     assert fm.training.adapters is not None
     adapter_names = tuple(fm.training.adapters)
