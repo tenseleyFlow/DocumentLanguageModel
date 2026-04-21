@@ -193,6 +193,60 @@ def check_pretokenizer_fingerprint(spec: BaseModelSpec) -> None:
         )
 
 
+_VL_FORBIDDEN_TARGET_SUBSTRINGS: tuple[str, ...] = (
+    "vision_tower",
+    "visual.",
+    "vision_model",
+    "mm_projector",
+    "multi_modal_projector",
+    "merger.",
+)
+
+
+def check_vl_target_modules_lm_only(adapter_dir: Path) -> None:
+    """Refuse VL adapters that target vision-tower modules.
+
+    `convert_hf_to_gguf.py` for VL archs (Qwen2-VL at our pinned tag)
+    drops vision-tower tensors — the ViT runs through Ollama's image
+    preprocessor path, not the GGUF. A LoRA that baked deltas into
+    `vision_tower.*` / `visual.*` would appear to merge cleanly but
+    those deltas get silently thrown away during conversion, leaving
+    the emitted GGUF with an under-adapted model. We fail loud here
+    so users re-train with LM-only target_modules instead of finding
+    out via silent quality regression after shipping.
+
+    No-op on non-VL adapters (their target_modules never match the
+    forbidden substrings); callers can invoke unconditionally.
+    """
+    config_path = adapter_dir / "adapter_config.json"
+    if not config_path.exists():
+        # `check_adapter_config` surfaces this with a better message;
+        # our role here is the VL-specific content check.
+        return
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return  # `check_adapter_config` reports parse failures
+    targets = config.get("target_modules") or []
+    if not isinstance(targets, list):
+        return  # PEFT accepts a string pattern too; skip the loose shape
+    offenders = [
+        t
+        for t in targets
+        if isinstance(t, str) and any(bad in t for bad in _VL_FORBIDDEN_TARGET_SUBSTRINGS)
+    ]
+    if offenders:
+        raise PreflightError(
+            probe="vl_target_modules_lm_only",
+            detail=(
+                f"adapter targets vision-tower modules {offenders}; upstream "
+                "convert_hf_to_gguf.py drops ViT tensors, which would silently "
+                "discard these LoRA deltas. Re-train with `target_modules` "
+                "restricted to language-model projections (q_proj/v_proj/etc)."
+            ),
+        )
+
+
 def check_was_adapter_qlora(adapter_dir: Path) -> bool:
     """Read the audit-05 M1 `training_run.json` flag.
 
