@@ -74,14 +74,15 @@ training time.
 **Floor.** MPS with 16 GB comfortably handles batch=4. 12 GB CUDA
 handles batch=1; 16 GB CUDA handles batch=4.
 
-**Loader caveat.** InternVL2 ships as `InternVLChatModel`, a
-custom remote-code class. `AutoModelForImageTextToText` may not
-resolve it on older transformers. If `dlm train` raises
-`ValueError: Unrecognized configuration class`, upgrade
-transformers (≥5.5 typically carries the registration) or wait for
-the trust-remote-code opt-in flag (tracked as a Sprint 35.3
-follow-up). The registry + probe paths work regardless — they read
-spec metadata, not the HF class.
+**Security note: trust_remote_code.** InternVL2 ships as
+`InternVLChatModel`, a custom class defined in
+`modeling_internvl_chat.py` inside the HF model repo. Loading it
+requires executing that repo's code — the registry entry declares
+`trust_remote_code=True`, and the loader routes through
+`AutoModel.from_pretrained(trust_remote_code=True)`. Picking this
+base in a `.dlm` frontmatter is the user's informed acknowledgment:
+the other two VL bases ship their class in transformers itself and
+do NOT set `trust_remote_code`.
 
 ## Refusal matrix
 

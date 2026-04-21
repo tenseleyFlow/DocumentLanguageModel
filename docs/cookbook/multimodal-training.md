@@ -43,9 +43,11 @@ dlm init my-diagrams.dlm --multimodal --i-accept-license
 
 See [docs/hardware/vl-memory.md](../hardware/vl-memory.md) for the
 VRAM table (inference / LoRA bs=1 / LoRA bs=4 per base) and the
-base-selection matrix. InternVL2 has a loader caveat documented
-there — it may need a transformers upgrade to load on older
-installs.
+base-selection matrix. **Heads-up on InternVL2**: its HF class
+lives in the model repo (`modeling_internvl_chat.py`), so picking
+that base activates `trust_remote_code=True` at load time. The
+other two VL bases don't. Pick InternVL2 intentionally if you've
+read the repo's code.
 
 ## Step 2 — Author image sections
 
