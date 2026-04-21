@@ -257,6 +257,87 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
             num_image_tokens=256,
         ),
     ),
+    # Qwen2-VL-2B-Instruct — Alibaba's Apache-2.0 VL base with dynamic-
+    # resolution support in native HF. Sprint 35.3 pins a conservative
+    # fixed 672×672 preprocessing plan (implementation-note (a) in the
+    # sprint spec) to avoid growing the VlPreprocessorPlan abstraction
+    # for dynamic ranges in v1 — later sprints can extend the plan with
+    # {min_pixels, max_pixels} when a user reaches that limit.
+    #
+    # 672×672 with Qwen2-VL's 28-pixel patch-merger grid yields 24×24 =
+    # 576 vision tokens per image. `<|image_pad|>` is the runtime
+    # placeholder the processor expands into that window.
+    #
+    # Apache-2.0 (redistributable, no acceptance). `AutoModelForImageTextToText`
+    # handles this arch natively since transformers ≥4.45 — same path
+    # PaliGemma loads through.
+    BaseModelSpec(
+        key="qwen2-vl-2b-instruct",
+        hf_id="Qwen/Qwen2-VL-2B-Instruct",
+        # Placeholder SHA (format-valid, not a real commit). See the
+        # paligemma entry for the self-healing workflow via
+        # `scripts/refresh-registry.py --check`.
+        revision="c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9",
+        architecture="Qwen2VLForConditionalGeneration",
+        params=2_200_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="qwen2-vl",
+        gguf_arch="qwen2-vl",
+        tokenizer_pre="qwen2",
+        license_spdx="Apache-2.0",
+        license_url="https://huggingface.co/Qwen/Qwen2-VL-2B-Instruct/blob/main/LICENSE",
+        requires_acceptance=False,
+        redistributable=True,
+        size_gb_fp16=4.5,
+        context_length=32_768,
+        recommended_seq_len=2048,
+        modality="vision-language",
+        vl_preprocessor_plan=VlPreprocessorPlan(
+            target_size=(672, 672),
+            resize_policy="fixed",
+            image_token="<|image_pad|>",
+            num_image_tokens=576,
+        ),
+    ),
+    # InternVL2-2B — OpenGVLab's MIT-licensed 2B VL model. Uses fixed
+    # 448×448 input (32×32 patch grid with 2×2 pixel-shuffle → 256
+    # vision tokens per image).
+    #
+    # **Loader caveat**: InternVL2's HF integration is `InternVLChatModel`
+    # (a custom remote-code class), which `AutoModelForImageTextToText`
+    # may not resolve on older transformers. Sprint 35.3 ships the
+    # registry entry + preprocessing plan; callers who hit a
+    # `ValueError: Unrecognized configuration class` on `dlm train`
+    # may need a transformers bump or `trust_remote_code=True` (not
+    # enabled by default — tracked as a Sprint 35.3 follow-up). The
+    # doctor + probe paths work regardless since they read spec
+    # metadata, not the model class.
+    BaseModelSpec(
+        key="internvl2-2b",
+        hf_id="OpenGVLab/InternVL2-2B",
+        # Placeholder SHA (format-valid, not a real commit).
+        revision="d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0",
+        architecture="InternVLChatModel",
+        params=2_200_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="internvl2",
+        gguf_arch="internvl2",
+        tokenizer_pre="internvl2",
+        license_spdx="MIT",
+        license_url="https://huggingface.co/OpenGVLab/InternVL2-2B/blob/main/LICENSE",
+        requires_acceptance=False,
+        redistributable=True,
+        size_gb_fp16=4.4,
+        context_length=8_192,
+        recommended_seq_len=2048,
+        modality="vision-language",
+        vl_preprocessor_plan=VlPreprocessorPlan(
+            target_size=(448, 448),
+            resize_policy="fixed",
+            image_token="<IMG_CONTEXT>",
+            num_image_tokens=256,
+        ),
+    ),
     # --- Audio-language bases (Sprint 35.2) ---------------------------------
     # Qwen2-Audio-7B-Instruct — Alibaba's open audio-text model. Uses
     # the Qwen2 LLM backbone + a dedicated audio encoder. Apache-2.0
