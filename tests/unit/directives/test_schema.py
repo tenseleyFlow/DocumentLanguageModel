@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from dlm.directives.schema import DlmTrainingConfig
 from dlm.doc.schema import CURRENT_SCHEMA_VERSION, SourceDirective, TrainingConfig
 
 
@@ -70,3 +71,41 @@ def test_training_config_accepts_sources_list() -> None:
 def test_training_config_rejects_bad_policy() -> None:
     with pytest.raises(ValidationError):
         TrainingConfig(sources_policy="lenient")  # type: ignore[arg-type]
+
+
+# ---- DlmTrainingConfig -----------------------------------------------------
+
+
+def test_dlm_training_config_defaults() -> None:
+    cfg = DlmTrainingConfig()
+    assert cfg.dlm_training_version == 1
+    assert cfg.include == ()
+    assert cfg.exclude == ()
+    assert cfg.exclude_defaults is True
+    assert cfg.metadata == {}
+
+
+def test_dlm_training_config_extra_forbidden() -> None:
+    with pytest.raises(ValidationError):
+        DlmTrainingConfig(unknown_key="x")  # type: ignore[call-arg]
+
+
+def test_dlm_training_config_rejects_wrong_version() -> None:
+    with pytest.raises(ValidationError):
+        DlmTrainingConfig(dlm_training_version=2)  # type: ignore[arg-type]
+
+
+def test_dlm_training_config_accepts_full_shape() -> None:
+    cfg = DlmTrainingConfig.model_validate(
+        {
+            "dlm_training_version": 1,
+            "include": ["src/**/*.py"],
+            "exclude": ["**/test_*.py"],
+            "exclude_defaults": False,
+            "metadata": {"language": "python", "domain": "auth"},
+        }
+    )
+    assert cfg.include == ("src/**/*.py",)
+    assert cfg.exclude == ("**/test_*.py",)
+    assert cfg.exclude_defaults is False
+    assert cfg.metadata == {"language": "python", "domain": "auth"}
