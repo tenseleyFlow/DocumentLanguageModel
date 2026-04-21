@@ -438,6 +438,61 @@ class TestWaveformCacheIntegration:
         # Only one cache entry exists for (a*64, 16000, 30000).
         assert len(list(cache.root.rglob("*.npz"))) == 1
 
+    def test_multi_epoch_hit_rate_after_first_epoch(
+        self, wav_16k: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """After epoch 1 populates the cache, epoch 2+ must be 100% hits.
+
+        Counts soundfile.read calls across three "epochs" over the same
+        rows. Epoch 1 should decode every row once (cache miss → populate);
+        epochs 2 and 3 should read zero times from disk because every key
+        is already in the cache. This is the guarantee training users
+        actually care about: the decode cost amortizes over the full run,
+        not just a single repeat call.
+        """
+        import soundfile as sf
+
+        from dlm.data.audio_cache import WaveformCache
+
+        read_calls: list[str] = []
+        original_read = sf.read
+
+        def _counting_read(*args: object, **kwargs: object) -> object:
+            read_calls.append(str(args[0]) if args else "?")
+            return original_read(*args, **kwargs)  # type: ignore[no-untyped-call]
+
+        monkeypatch.setattr(sf, "read", _counting_read)
+
+        proc = _StubProcessor()
+        cache = WaveformCache(tmp_path / "wav-cache")
+        collator = AudioLmCollator(
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            waveform_cache=cache,
+        )
+        # Three rows, distinct blob_shas so every row contributes to the cache.
+        rows = [
+            {
+                "audio_blob_sha": f"{letter * 64}",
+                "audio_path": str(wav_16k),
+                "text": f"<|AUDIO|>\nRow {letter}.",
+            }
+            for letter in ("a", "b", "c")
+        ]
+
+        # Epoch 1: 3 decodes (one per row).
+        collator(rows)
+        assert len(read_calls) == 3
+
+        # Epochs 2 + 3: 0 additional decodes — every key hits the cache.
+        collator(rows)
+        collator(rows)
+        assert len(read_calls) == 3, (
+            f"expected cache to absorb epochs 2-3 but saw "
+            f"{len(read_calls) - 3} extra soundfile.read calls"
+        )
+
     def test_no_cache_when_not_configured(self, wav_16k: Path, tmp_path: Path) -> None:
         """waveform_cache=None bypasses the cache entirely (default behavior)."""
         proc = _StubProcessor()
