@@ -1,6 +1,7 @@
 """Turn `doc.sections.Section` objects into ready-to-train dict rows.
 
-Per Sprint 07's shape table (extended by Sprint 35 v1 for media):
+Per Sprint 07's shape table (extended by Sprint 35 v1 for images and
+Sprint 35.2 for audio):
 
 | Section type | Row shape |
 |---|---|
@@ -8,12 +9,16 @@ Per Sprint 07's shape table (extended by Sprint 35 v1 for media):
 | INSTRUCTION | one `{"messages": [{"role":"user","content":Q},{"role":"assistant","content":A}]}` per Q/A pair |
 | PREFERENCE  | one `{"prompt":P,"chosen":C,"rejected":R}` per triple |
 | IMAGE       | `{"images": [PIL.Image], "text": "<image>\\n<caption>"}` — matches TRL 1.2's `DataCollatorForVisionLanguageModeling` standard-LM contract |
+| AUDIO       | `{"audio_blob_sha": sha, "audio_path": str, "text": "<|AUDIO|>\\n<transcript>"}` — path-based (TRL has no audio auto-dispatch; a custom collator resolves the blob and drives `preprocess_audio` at collate time) |
 
-IMAGE emission requires a `BlobStore` (to resolve `media_blob_sha`
-into bytes) and the base's `image_token` placeholder (from
-`VlPreprocessorPlan.image_token`). Callers that leave `blob_store=None`
-with IMAGE sections in the input raise `ValueError` — the row shape
-isn't viable without the actual bytes.
+IMAGE / AUDIO emission requires a `BlobStore` (to resolve
+`media_blob_sha` into bytes) and the base's placeholder token.
+Callers that leave `blob_store=None` with media sections in the
+input raise `ValueError` — the row shape isn't viable without the
+actual bytes. Audio rows hold only the path + sha, not the decoded
+waveform; the audio cache (Sprint 35.2) is the right place to hold
+preprocessed features across epochs, and loading lazily at collate
+time keeps dataset rows small.
 
 Every row carries `_dlm_section_id` so `splitter.split()` can key
 deterministically on (seed, section_id) rather than row index. This is
@@ -55,6 +60,7 @@ def _normalize_probe_markers(body: str) -> str:
 Row = dict[str, Any]
 
 _DEFAULT_IMAGE_TOKEN = "<image>"
+_DEFAULT_AUDIO_TOKEN = "<|AUDIO|>"
 
 
 def sections_to_rows(
@@ -62,6 +68,7 @@ def sections_to_rows(
     *,
     blob_store: BlobStore | None = None,
     image_token: str = _DEFAULT_IMAGE_TOKEN,
+    audio_token: str = _DEFAULT_AUDIO_TOKEN,
 ) -> list[Row]:
     """Flatten every section into its row shape(s), preserving order.
 
@@ -70,11 +77,12 @@ def sections_to_rows(
     INSTRUCTION / PREFERENCE bodies are parse errors (handled by the
     respective section parsers).
 
-    IMAGE sections require `blob_store` (to resolve `media_blob_sha`
-    into bytes) and use `image_token` as the textual placeholder — the
-    base model's processor expands that placeholder into its fixed
-    `num_image_tokens` slots at collate time. Passing `blob_store=None`
-    with IMAGE sections in the input raises `ValueError`.
+    IMAGE / AUDIO sections require `blob_store` (to resolve
+    `media_blob_sha` into bytes) and use `image_token` / `audio_token`
+    as the textual placeholder — the base model's processor expands
+    that placeholder into its fixed token window at collate time.
+    Passing `blob_store=None` with media sections in the input raises
+    `ValueError`.
     """
     rows: list[Row] = []
     for section in sections:
@@ -83,6 +91,7 @@ def sections_to_rows(
                 section,
                 blob_store=blob_store,
                 image_token=image_token,
+                audio_token=audio_token,
             ),
         )
     return rows
@@ -93,6 +102,7 @@ def _section_to_rows(
     *,
     blob_store: BlobStore | None,
     image_token: str,
+    audio_token: str,
 ) -> list[Row]:
     sid = section.section_id
     tags = dict(section.tags)
@@ -133,6 +143,9 @@ def _section_to_rows(
     if section.type is SectionType.IMAGE:
         return [_image_section_to_row(section, blob_store, image_token, sid, tags)]
 
+    if section.type is SectionType.AUDIO:
+        return [_audio_section_to_row(section, blob_store, audio_token, sid, tags)]
+
     raise ValueError(f"unknown section type: {section.type!r}")  # pragma: no cover
 
 
@@ -172,6 +185,58 @@ def _image_section_to_row(
     text = f"{image_token}\n{caption}" if caption else image_token
     return {
         "images": [image],
+        "text": text,
+        "_dlm_section_id": sid,
+        "_dlm_row_tags": tags,
+    }
+
+
+def _audio_section_to_row(
+    section: Section,
+    blob_store: BlobStore | None,
+    audio_token: str,
+    sid: str,
+    tags: dict[str, str],
+) -> Row:
+    """Emit an audio row: path + sha + transcript-prefixed text.
+
+    Audio rows carry the blob path + sha rather than a decoded
+    waveform so the custom collator (T8) can drive `preprocess_audio`
+    with the content-addressed cache — decoding + feature-extraction
+    is expensive and repeats across epochs. The transcript from the
+    sibling `<stem>.txt` goes into the row's `text` after the
+    placeholder; the custom collator replaces the placeholder with
+    the feature-extractor's `num_audio_tokens` slots before the
+    trainer sees it.
+
+    Audio sections with an empty transcript aren't useful for SFT
+    (no target text to predict) — refuse loudly rather than emit a
+    placeholder-only row that would train the model to produce an
+    empty response.
+    """
+    if blob_store is None:
+        raise ValueError(
+            "sections_to_rows: AUDIO section requires a blob_store; "
+            f"section {sid} has media_path={section.media_path!r}",
+        )
+    if section.media_blob_sha is None:
+        raise ValueError(
+            "sections_to_rows: AUDIO section has no media_blob_sha "
+            f"(section {sid} hasn't been ingested through the blob store)",
+        )
+    transcript = (section.media_transcript or "").strip()
+    if not transcript:
+        raise ValueError(
+            "sections_to_rows: AUDIO section has empty transcript "
+            f"(section {sid}, media_path={section.media_path!r}); "
+            "transcript sibling `<stem>.txt` must be non-empty",
+        )
+
+    blob_path = blob_store.get(section.media_blob_sha)
+    text = f"{audio_token}\n{transcript}"
+    return {
+        "audio_blob_sha": section.media_blob_sha,
+        "audio_path": str(blob_path),
         "text": text,
         "_dlm_section_id": sid,
         "_dlm_row_tags": tags,
