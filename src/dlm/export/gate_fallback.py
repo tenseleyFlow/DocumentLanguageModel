@@ -77,3 +77,60 @@ def uniform_adapter_mix(adapter_names: tuple[str, ...]) -> list[tuple[str, float
         return []
     w = 1.0 / n
     return [(name, w) for name in adapter_names]
+
+
+def resolve_gate_mix(
+    store: object,
+    parsed: object,
+) -> list[tuple[str, float]] | None:
+    """Derive a static ``--adapter-mix`` from the learned gate's state.
+
+    Returns ``None`` when the document has no enabled gate, declares
+    fewer than two adapters, or the store has no persisted
+    ``gate_config.json``. Otherwise returns one of:
+
+    - **uniform mode** → ``uniform_adapter_mix(adapter_names)``
+    - **trained mode** → the last recorded ``gate_events`` row set,
+      mapped into ``(name, mean_weight)`` pairs. When no events have
+      been recorded yet (e.g. gate trained but metrics DB empty) we
+      fall back to uniform rather than refusing the export.
+
+    This is the static substitution `export_cmd` uses when the user
+    didn't pass ``--adapter-mix`` on a gate-enabled document — the
+    Ollama / llama.cpp runtime can't evaluate the gate dynamically,
+    so we freeze the learned prior at export time.
+    """
+    import json
+
+    from dlm.doc.parser import ParsedDlm
+    from dlm.metrics import queries as _queries
+    from dlm.store.paths import StorePath
+    from dlm.train.gate.module import GateMetadata
+    from dlm.train.gate.paths import gate_config_path
+
+    if not isinstance(store, StorePath) or not isinstance(parsed, ParsedDlm):
+        return None
+    training = parsed.frontmatter.training
+    if not training.gate.enabled:
+        return None
+    adapters = training.adapters
+    if adapters is None or len(adapters) < 2:
+        return None
+
+    cfg_path = gate_config_path(store)
+    if not cfg_path.exists():
+        return None
+    raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+    meta = GateMetadata.from_json(raw)
+    adapter_names = tuple(meta.adapter_names)
+
+    if meta.mode == "uniform":
+        return uniform_adapter_mix(adapter_names)
+
+    events = _queries.latest_gate_events(store.root)
+    if not events:
+        return uniform_adapter_mix(adapter_names)
+    by_name = {e.adapter_name: e.mean_weight for e in events}
+    # Preserve declared adapter order — the Modelfile consumer reads
+    # positionally-meaningful `--adapter-mix` tuples.
+    return [(name, by_name.get(name, 0.0)) for name in adapter_names]
