@@ -146,6 +146,16 @@ def run_post_sft_gate(
         )
     except GateTrainingError as exc:
         _LOG.warning("gate: training failed, leaving store gate-less: %s", exc)
+        # Emit a `mode="diverged"` GateEvent per declared adapter so
+        # `dlm show` surfaces the failure instead of silently skipping
+        # the gate. mean_weight=0 + sample_count=0 keeps the row
+        # schema-compatible without pretending the gate learned
+        # anything.
+        _record_divergence_events(
+            recorder=recorder,
+            run_id=run_id,
+            adapter_names=adapter_names,
+        )
         return None
 
     _record_gate_events(
@@ -187,5 +197,26 @@ def _record_gate_events(
                 mean_weight=mean_weight,
                 sample_count=sample_count,
                 mode=result.mode,
+            )
+        )
+
+
+def _record_divergence_events(
+    *,
+    recorder: MetricsRecorder,
+    run_id: int,
+    adapter_names: tuple[str, ...],
+) -> None:
+    """Emit one `GateEvent` row per adapter marking the run diverged."""
+    from dlm.metrics.events import GateEvent
+
+    for name in adapter_names:
+        recorder.record_gate(
+            GateEvent(
+                run_id=run_id,
+                adapter_name=name,
+                mean_weight=0.0,
+                sample_count=0,
+                mode="diverged",
             )
         )
