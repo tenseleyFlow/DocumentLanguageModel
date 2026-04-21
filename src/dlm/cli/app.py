@@ -113,6 +113,7 @@ app.command("serve")(commands.serve_cmd)
 app.command("doctor")(commands.doctor_cmd)
 app.command("show")(commands.show_cmd)
 app.command("migrate")(commands.migrate_cmd)
+app.command("harvest")(commands.harvest_cmd)
 
 # Sprint 26: `dlm metrics <path>` + `dlm metrics watch <path>` as a
 # subcommand group. Typer nests naturally via an Annotated sub-app.
