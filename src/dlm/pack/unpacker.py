@@ -158,6 +158,43 @@ def unpack(
     )
 
 
+def read_pack_member_bytes(pack_path: Path, member_name: str) -> bytes | None:
+    """Stream-read one named entry from a `.dlm.pack` into memory.
+
+    Opens the zstd+tar once, iterates members, extracts the first
+    match. Returns `None` if the member isn't present (callers treat
+    missing provenance.json as "unsigned"). Applies the same
+    per-member size cap the full-unpack path does so a malicious
+    pack can't blow up memory via this helper.
+
+    Safer than full `unpack()` for read-only probes because nothing
+    is written to disk.
+    """
+    import zstandard as zstd
+
+    dctx = zstd.ZstdDecompressor(max_window_size=_MAX_ZSTD_WINDOW_BYTES)
+    with (
+        pack_path.open("rb") as fh,
+        dctx.stream_reader(fh) as reader,
+        tarfile.open(fileobj=reader, mode="r|") as tar,
+    ):
+        for member in tar:
+            if _is_unsafe_member(member.name):
+                raise PackLayoutError(f"refusing to read unsafe tar entry {member.name!r}")
+            if member.name != member_name:
+                continue
+            if member.size > _MAX_TAR_MEMBER_BYTES:
+                raise PackLayoutError(
+                    f"tar entry {member.name!r} size {member.size} exceeds "
+                    f"per-member cap {_MAX_TAR_MEMBER_BYTES}"
+                )
+            handle = tar.extractfile(member)
+            if handle is None:
+                return None
+            return handle.read()
+    return None
+
+
 # --- internals --------------------------------------------------------------
 
 

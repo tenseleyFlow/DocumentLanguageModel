@@ -29,9 +29,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-SignatureVerifier = Callable[[bytes, str, Path], None]
-
 from dlm.share.errors import ShareError
+
+SignatureVerifier = Callable[[bytes, str, Path], None]
 
 
 class ProvenanceError(ShareError):
@@ -312,9 +312,7 @@ def verify_provenance(
                 "re-run with `--trust-on-first-use` to record, or add the key "
                 "manually and retry."
             )
-        trusted_path = record_trusted_key(
-            prov.signer_public_key, trusted_keys_dir=trusted_keys_dir
-        )
+        trusted_path = record_trusted_key(prov.signer_public_key, trusted_keys_dir=trusted_keys_dir)
         tofu_recorded = True
 
     verifier = signature_verifier or _default_signature_verifier
@@ -329,9 +327,7 @@ def verify_provenance(
     )
 
 
-def _default_signature_verifier(
-    chain_bytes: bytes, signature: str, pubkey_path: Path
-) -> None:
+def _default_signature_verifier(chain_bytes: bytes, signature: str, pubkey_path: Path) -> None:
     """Default signature verifier: writes chain + signature to temp files and
     calls `minisign -V`.
 

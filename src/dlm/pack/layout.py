@@ -13,6 +13,9 @@ from typing import Final
 HEADER_FILENAME: Final[str] = "PACK_HEADER.json"
 MANIFEST_FILENAME: Final[str] = "manifest.json"
 SHA256_FILENAME: Final[str] = "CHECKSUMS.sha256"
+# Optional; presence means the pack carries a signed provenance chain
+# and `dlm verify` can validate it. Absent → unsigned pack.
+PROVENANCE_FILENAME: Final[str] = "provenance.json"
 
 # Subtree prefixes.
 DLM_DIR: Final[str] = "dlm"
