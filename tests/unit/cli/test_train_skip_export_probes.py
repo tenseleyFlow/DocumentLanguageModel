@@ -83,9 +83,7 @@ class TestTrainSkipExportProbes:
         captured = _patch_resolve(monkeypatch)
 
         runner = CliRunner()
-        result = runner.invoke(
-            app, ["--home", str(tmp_path), "train", str(doc)]
-        )
+        result = runner.invoke(app, ["--home", str(tmp_path), "train", str(doc)])
         assert result.exit_code != 0
         assert captured.get("skip_export_probes") is False, (
             f"expected skip_export_probes=False in resolve kwargs; got {captured!r}"
