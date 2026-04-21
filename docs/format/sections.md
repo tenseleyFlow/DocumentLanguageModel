@@ -69,6 +69,50 @@ Trains via **DPO** (direct preference optimization) or **ORPO** — the
 model learns to prefer the `Chosen` phrasing. The DPO / ORPO trainer
 lands in Sprint 17/18.
 
+### Image (`::image path="..." alt="..."::`)
+
+Schema v10 adds image sections for vision-language bases (PaliGemma in
+v1; Qwen2-VL + InternVL2 land in the 35.x follow-ups). The fence uses
+attribute syntax instead of the bare `::type::` form:
+
+```dlm
+::image path="figures/architecture.png" alt="training pipeline diagram"::
+Caption text describing the figure. The caption body becomes the "text"
+part of the training row; the placeholder expands to the base's image
+tokens at collate time.
+```
+
+Required attributes: `path` (the image file, resolved relative to the
+`.dlm`'s parent dir). Optional: `alt` (short description; defaults to
+the filename stem on directive-ingested images).
+
+**Supported extensions.** `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`,
+`.bmp`, `.tiff`. Other binary types (PDF, archives) stay out of the
+training corpus by default.
+
+**Content hash.** Image sections hash on `(type, path, blob_sha)`
+rather than the body text. Two identical-bytes images at different
+paths produce different `section_id`s — paths carry meaning. Changing
+the blob bytes flips the ID even if the path didn't move.
+
+**Directive ingest.** `training.sources` directives with image
+extensions in their `include` globs ingest automatically:
+
+```yaml
+training:
+  sources:
+    - path: ./paper-figures
+      include: ["**/*.png", "**/*.jpg"]
+```
+
+Each discovered image becomes an `::image::` section with
+`alt=<filename-stem>` and flows through the same row-emission path.
+
+**Base-model requirements.** Only vision-language bases accept image
+sections at training time. `dlm init --multimodal` scaffolds a VL
+doc pinned to PaliGemma. Text-only bases (Qwen, Llama, SmolLM, Phi)
+refuse image sections at train start with a pointer to `--multimodal`.
+
 ## Fence rules
 
 - A fence must be the full line — `::instruction::` with no leading/

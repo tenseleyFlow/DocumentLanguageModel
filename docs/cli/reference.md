@@ -26,14 +26,16 @@ Bootstrap a new `.dlm` file with a fresh ULID, create the per-store
 directory, and persist the license-acceptance record (audit-05 B2).
 
 ```
-dlm init <path> [--base <key>] [--template <name>] [--i-accept-license] [--force]
+dlm init <path> [--base <key>] [--template <name>] [--multimodal]
+                [--i-accept-license] [--force]
 ```
 
 | Option | Default | Notes |
 |---|---|---|
-| `--base <key>` | `qwen2.5-1.5b` | Registry key or `hf:org/name`. Ignored when `--template` is used (the template's `recommended_base` wins). |
-| `--template <name>` | None | Bootstrap from a named gallery template. See `dlm templates list`. |
-| `--i-accept-license` | false | Required for gated bases (Llama-3.2). |
+| `--base <key>` | `qwen2.5-1.5b` | Registry key or `hf:org/name`. Ignored when `--template` is used (the template's `recommended_base` wins). With `--multimodal`, defaults to `paligemma-3b-mix-224`. |
+| `--template <name>` | None | Bootstrap from a named gallery template. See `dlm templates list`. Mutually exclusive with `--multimodal`. |
+| `--multimodal` | false | Scaffold a vision-language `.dlm` with an `::image::` section (schema v10). Flips `--base` to `paligemma-3b-mix-224` unless explicitly overridden; a non-VL `--base` is refused. See [multimodal-training cookbook](../cookbook/multimodal-training.md). |
+| `--i-accept-license` | false | Required for gated bases (Llama-3.2, PaliGemma). |
 | `--force` | false | Overwrite an existing `.dlm` at path. |
 
 Writes `<path>` with minimum frontmatter, provisions
@@ -83,7 +85,8 @@ Run inference against the current adapter.
 
 ```
 dlm prompt <path> [query] [--max-tokens N] [--temp F] [--top-p F]
-                  [--adapter NAME] [--gate {auto,off}] [--verbose]
+                  [--adapter NAME] [--gate {auto,off}] [--image PATH]...
+                  [--verbose]
 ```
 
 | Option | Default | Notes |
@@ -93,7 +96,8 @@ dlm prompt <path> [query] [--max-tokens N] [--temp F] [--top-p F]
 | `--top-p F` | None | Top-p sampling. |
 | `--adapter NAME` | None | Select a named adapter from `training.adapters`. Required on multi-adapter documents; rejected on single-adapter ones. |
 | `--gate {auto,off}` | `auto` | Learned adapter gate (Sprint 34). `auto` uses the trained gate when one exists in the store; `off` forces uniform weights across declared adapters. Silently ignored when `--adapter` pins a single adapter. See `docs/cookbook/learned-adapter-gate.md`. |
-| `--backend {auto,pytorch,mlx}` | `auto` | Inference backend. `auto` picks MLX on Apple Silicon (when `uv sync --extra mlx` is installed), else PyTorch. |
+| `--image PATH` | none | Attach an image to the prompt. Repeat for multiple images; each expands to one `<image>` placeholder the processor slots pixels into. Required on vision-language bases; rejected on text bases. See [multimodal-training cookbook](../cookbook/multimodal-training.md). |
+| `--backend {auto,pytorch,mlx}` | `auto` | Inference backend. `auto` picks MLX on Apple Silicon (when `uv sync --extra mlx` is installed), else PyTorch. Ignored on VL bases (the VL path always uses PyTorch + AutoModelForImageTextToText). |
 | `--verbose` | false | Print resolved `InferencePlan` on stderr. |
 
 Query is the CLI positional argument. Omit to read from stdin.
