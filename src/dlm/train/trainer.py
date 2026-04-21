@@ -240,6 +240,14 @@ def run(
             removed=list(change_set.removed),
         )
 
+        # Record per-tag row counts for the training summary — useful
+        # when auditing how the `weights:` block in `.dlm/training.yaml`
+        # actually partitioned the corpus. Counted pre-expansion so the
+        # numbers reflect the source corpus, not the N-copied rows.
+        weight_distribution = _compute_weight_distribution(
+            parsed=parsed, directive_discovered=directive_discovered
+        )
+
         # 5. Build or resume the SFT trainer.
         sft = _build_trainer(
             store=store,
@@ -424,6 +432,7 @@ def run(
             current_sections=list(parsed.sections),
             summary_path=summary_path,
             adapter_name=adapter_name,
+            weight_distribution=weight_distribution,
         )
 
         # 12. Persist the lock (Sprint 15). `ignore_lock` mode suppresses
@@ -1161,6 +1170,7 @@ def _append_training_run(
     current_sections: list[Any],
     summary_path: Path,
     adapter_name: str | None = None,
+    weight_distribution: dict[str, dict[str, int]] | None = None,
 ) -> None:
     """Append a TrainingRunSummary + refresh `content_hashes` (audit-04 M2).
 
@@ -1206,6 +1216,7 @@ def _append_training_run(
         pinned_versions={k: v for k, v in versions.items() if isinstance(v, str)},
         summary_path=summary_rel,
         adapter_name=adapter_name,
+        weight_distribution=weight_distribution,
     )
 
     manifest_path = store.manifest
@@ -1404,6 +1415,29 @@ def _maybe_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _compute_weight_distribution(
+    *,
+    parsed: ParsedDlm,
+    directive_discovered: tuple[Any, ...],
+) -> dict[str, dict[str, int]] | None:
+    """Pre-expansion `(tag_key, tag_value) → row_count` for the summary.
+
+    Returns `None` when no discovered config declares a `weights`
+    block — the summary field is then `None`, distinguishing "weights
+    inactive" from "weights active, zero matching rows".
+    """
+    from dlm.data.sections_to_rows import sections_to_rows
+    from dlm.data.weighted_rows import merge_weights_maps, weight_distribution
+
+    merged = merge_weights_maps(
+        tuple(d.config.weights for d in directive_discovered if d.config is not None)
+    )
+    if not merged:
+        return None
+    rows = sections_to_rows(list(parsed.sections))
+    return weight_distribution(rows)
 
 
 def _expand_directives(

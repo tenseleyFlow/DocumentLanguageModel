@@ -67,6 +67,12 @@ class TrainingRunSummary(BaseModel):
     # field, multi-adapter stores can't attribute a TrainingRunSummary
     # to its adapter.
     adapter_name: str | None = None
+    # Per-`(tag_key, tag_value)` counts of the rows eligible for
+    # tag-weighted expansion, recorded pre-expansion. `None` when no
+    # directive-sourced `.dlm/training.yaml` declared a `weights`
+    # block — callers can distinguish "weights inactive" from "weights
+    # active with zero matching rows" (empty dict).
+    weight_distribution: dict[str, dict[str, int]] | None = None
 
 
 class ExportSummary(BaseModel):
