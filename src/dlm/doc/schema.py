@@ -22,7 +22,7 @@ _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 # Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
 _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 9
+CURRENT_SCHEMA_VERSION: Final[int] = 10
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
@@ -37,7 +37,12 @@ added the additive `training.precision` override (opt-in fp16/bf16
 on MPS after the NaN-adapter bug). v6 adds the additive
 `training.sources` block — declarative file-tree directives that
 synthesize PROSE sections at train time, letting a `.dlm` act as a
-training plan over content stored elsewhere on disk.
+training plan over content stored elsewhere on disk. v10 introduces
+`SectionType.IMAGE` + the `::image path="..." alt="..."::` fence
+grammar for multi-modal training; the body schema is strictly
+additive and the fence extension is backward-compatible (images
+are parsed via a separate attribute grammar rather than changing
+the existing `::type#name::` form).
 """
 
 
