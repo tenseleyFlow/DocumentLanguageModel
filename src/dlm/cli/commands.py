@@ -1845,6 +1845,16 @@ def show_cmd(
     training_sources, discovered_configs = _summarize_training_sources_and_discovered(
         parsed, path.resolve().parent
     )
+    # The per-document cache config comes from frontmatter, not on-disk
+    # state — report it on both the pre-train and initialized-store paths
+    # so authors can sanity-check the knobs before `dlm train` runs.
+    cache_cfg = parsed.frontmatter.training.cache
+    training_cache_config: dict[str, object] = {
+        "enabled": cache_cfg.enabled,
+        "max_bytes": cache_cfg.max_bytes,
+        "prune_older_than_days": cache_cfg.prune_older_than_days,
+    }
+
     # Store may not exist yet (no `dlm train` run). Treat that as an
     # informational state rather than an error — useful after `dlm init`.
     if not store.manifest.exists():
@@ -1854,6 +1864,7 @@ def show_cmd(
                 "base_model": parsed.frontmatter.base_model,
                 "store_initialized": False,
                 "source_path": str(path.resolve()),
+                "training_cache_config": training_cache_config,
             }
             if training_sources is not None:
                 payload["training_sources"] = training_sources
