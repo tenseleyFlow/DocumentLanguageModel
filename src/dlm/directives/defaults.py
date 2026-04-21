@@ -65,11 +65,13 @@ DEFAULT_EXCLUDES: Final[tuple[str, ...]] = (
     "**/uv.lock",
     "**/poetry.lock",
     "**/Pipfile.lock",
-    # Binaries + media
-    "**/*.png",
-    "**/*.jpg",
-    "**/*.jpeg",
-    "**/*.gif",
+    # Archives + non-image binaries. Image extensions (png/jpg/jpeg/gif/
+    # webp/bmp/tiff) are intentionally *not* excluded — schema v10 made
+    # them first-class training material via `SectionType.IMAGE`, and
+    # `expand_sources` refuses to ingest them unless the caller supplies
+    # a `BlobStore`. Text-only workflows that pass no blob store still
+    # see zero images because the walker tallies them under
+    # `skipped_image_no_store` instead of emitting Sections.
     "**/*.ico",
     "**/*.pdf",
     "**/*.zip",

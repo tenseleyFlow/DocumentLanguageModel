@@ -66,8 +66,8 @@ def _matches_any_default(path: str) -> bool:
         "uv.lock",
         "poetry.lock",
         "Pipfile.lock",
-        # Media / binaries
-        "assets/logo.png",
+        # Media / binaries (image extensions are intentionally NOT
+        # caught by defaults — see `defaults.py` commentary).
         "docs/diagram.pdf",
         "release.zip",
         "assets/clip.wasm",
