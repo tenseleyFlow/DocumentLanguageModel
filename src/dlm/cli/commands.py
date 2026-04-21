@@ -1307,6 +1307,7 @@ def prompt_cmd(
             temp=temp,
             top_p=top_p,
             verbose=verbose,
+            auto_resample=parsed.frontmatter.training.audio.auto_resample,
         )
         return
 
@@ -1425,6 +1426,7 @@ def _dispatch_audio_prompt(  # pragma: no cover
     temp: float,
     top_p: float | None,
     verbose: bool,
+    auto_resample: bool = False,
 ) -> None:
     """Run the audio-LM generate path. Keeps `prompt_cmd` readable.
 
@@ -1462,7 +1464,11 @@ def _dispatch_audio_prompt(  # pragma: no cover
 
     target_sr = spec.audio_preprocessor_plan.sample_rate
     try:
-        waveforms = load_audios(audio_paths, target_sample_rate=target_sr)
+        waveforms = load_audios(
+            audio_paths,
+            target_sample_rate=target_sr,
+            auto_resample=auto_resample,
+        )
     except FileNotFoundError as exc:
         console.print(f"[red]prompt:[/red] {exc}")
         raise typer.Exit(code=2) from exc

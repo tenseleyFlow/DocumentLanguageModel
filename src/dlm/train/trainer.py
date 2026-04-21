@@ -833,6 +833,7 @@ def _build_real_trainer(  # pragma: no cover
             max_length_seconds=spec.audio_preprocessor_plan.max_length_seconds,
             max_length=parsed.frontmatter.training.sequence_len,
             waveform_cache=WaveformCache(store.audio_waveform_cache_dir),
+            auto_resample=parsed.frontmatter.training.audio.auto_resample,
         )
     if use_formatting_func:
         trainer_kwargs["formatting_func"] = make_formatting_func(tok_bringup.tokenizer)

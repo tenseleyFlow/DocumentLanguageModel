@@ -43,13 +43,18 @@ def format_audio_prompt(
     return f"{tokens}\n{prompt}" if prompt else tokens
 
 
-def load_audios(paths: list[Path], *, target_sample_rate: int) -> list[np.ndarray]:
+def load_audios(
+    paths: list[Path],
+    *,
+    target_sample_rate: int,
+    auto_resample: bool = False,
+) -> list[np.ndarray]:
     """Open each audio path as a mono float32 waveform at `target_sample_rate`.
 
-    Refuses on sample-rate mismatch (same policy as `preprocess_audio`
-    and `AudioLmCollator`). Downmixes stereo to mono by channel
-    averaging. `FileNotFoundError` bubbles up from soundfile; the CLI
-    converts it to a typer exit.
+    Mirrors the training decode contract: refuse on sample-rate mismatch
+    by default; resample on opt-in (`auto_resample=True`). Downmixes
+    stereo to mono by channel averaging. `FileNotFoundError` bubbles up
+    from soundfile; the CLI converts it to a typer exit.
     """
     import soundfile as sf  # type: ignore[import-untyped]
 
@@ -58,15 +63,22 @@ def load_audios(paths: list[Path], *, target_sample_rate: int) -> list[np.ndarra
         if not path.exists():
             raise FileNotFoundError(f"audio not found: {path}")
         data, native_sr = sf.read(str(path), dtype="float32", always_2d=False)
-        if native_sr != target_sample_rate:
-            raise ValueError(
-                f"audio {path.name!r}: native sample_rate={native_sr} Hz "
-                f"does not match pinned {target_sample_rate} Hz "
-                f"(re-encode with `ffmpeg -i <in> -ar {target_sample_rate} <out>`)"
-            )
         if data.ndim > 1:
             data = data.mean(axis=1).astype(np.float32, copy=False)
-        waveforms.append(np.ascontiguousarray(data, dtype=np.float32))
+        mono = np.ascontiguousarray(data, dtype=np.float32)
+        if native_sr != target_sample_rate:
+            if not auto_resample:
+                raise ValueError(
+                    f"audio {path.name!r}: native sample_rate={native_sr} Hz "
+                    f"does not match pinned {target_sample_rate} Hz. "
+                    "Set `training.audio.auto_resample: true` in the .dlm "
+                    f"frontmatter to resample on the fly, or re-encode with "
+                    f"`ffmpeg -i <in> -ar {target_sample_rate} <out>`."
+                )
+            from dlm.data.audio_resample import resample
+
+            mono = resample(mono, src_sr=native_sr, dst_sr=target_sample_rate)
+        waveforms.append(mono)
     return waveforms
 
 

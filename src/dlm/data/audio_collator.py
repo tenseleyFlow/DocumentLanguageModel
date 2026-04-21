@@ -64,8 +64,9 @@ class AudioLmCollator:
         `.tokenizer` with a pad token set.
     sample_rate:
         Target sample rate in Hz (from `AudioPreprocessorPlan`).
-        Rows whose native rate disagrees raise — we refuse silent
-        resampling the same way `preprocess_audio` does.
+        Rows whose native rate disagrees raise by default (same gate
+        as `preprocess_audio`). Pass `auto_resample=True` to resample
+        on the fly via `dlm.data.audio_resample`.
     max_length_seconds:
         Per-clip duration cap in seconds (from
         `AudioPreprocessorPlan`). Longer waveforms are truncated.
@@ -75,7 +76,14 @@ class AudioLmCollator:
     waveform_cache:
         Optional `WaveformCache` for memoizing decoded + mono-mixed
         + truncated waveforms across training epochs. `None` decodes
-        fresh every batch (the pre-deferred behavior).
+        fresh every batch (the pre-deferred behavior). Cache keys
+        carry `auto_resample` so native-rate and resampled entries
+        don't collide.
+    auto_resample:
+        Opt-in flag flipped by `training.audio.auto_resample=True`.
+        When True, SR-mismatched files resample to `sample_rate`
+        instead of raising. Requires soxr or scipy; absence surfaces
+        as `AudioResampleUnavailable` at first mismatched decode.
     """
 
     def __init__(
@@ -86,12 +94,14 @@ class AudioLmCollator:
         max_length_seconds: float,
         max_length: int | None = None,
         waveform_cache: WaveformCache | None = None,
+        auto_resample: bool = False,
     ) -> None:
         self._processor = processor
         self._sample_rate = sample_rate
         self._max_length_seconds = max_length_seconds
         self._max_length = max_length
         self._waveform_cache = waveform_cache
+        self._auto_resample = auto_resample
         self._max_length_ms = int(round(max_length_seconds * 1000))
 
         tokenizer = getattr(processor, "tokenizer", None)
@@ -169,6 +179,7 @@ class AudioLmCollator:
                 blob_sha=blob_sha,
                 sample_rate=self._sample_rate,
                 max_length_ms=self._max_length_ms,
+                auto_resample=self._auto_resample,
             )
             hit = self._waveform_cache.get(cache_key)
             if hit is not None:
@@ -177,15 +188,26 @@ class AudioLmCollator:
         import soundfile as sf  # type: ignore[import-untyped]
 
         data, native_sr = sf.read(str(path), dtype="float32", always_2d=False)
-        if native_sr != self._sample_rate:
-            raise ValueError(
-                f"AudioLmCollator: audio {path.name!r} native sample_rate="
-                f"{native_sr} Hz != pinned {self._sample_rate} Hz; "
-                f"re-encode with `ffmpeg -i <in> -ar {self._sample_rate} <out>`"
-            )
+
+        # Mono before resample: see audio_preprocessor._run_processor
+        # for the same rationale (mixing after resampling can smear
+        # channel-specific transients the filter needs to preserve).
         if data.ndim > 1:
             data = data.mean(axis=1).astype(np.float32, copy=False)
         mono: np.ndarray = np.ascontiguousarray(data, dtype=np.float32)
+
+        if native_sr != self._sample_rate:
+            if not self._auto_resample:
+                raise ValueError(
+                    f"AudioLmCollator: audio {path.name!r} native sample_rate="
+                    f"{native_sr} Hz != pinned {self._sample_rate} Hz. "
+                    "Set `training.audio.auto_resample: true` to resample "
+                    "on the fly, or re-encode with "
+                    f"`ffmpeg -i <in> -ar {self._sample_rate} <out>`."
+                )
+            from dlm.data.audio_resample import resample
+
+            mono = resample(mono, src_sr=native_sr, dst_sr=self._sample_rate)
 
         max_samples = int(round(self._max_length_seconds * self._sample_rate))
         if mono.shape[0] > max_samples:
