@@ -21,7 +21,7 @@ def _dlm(body: str = "") -> str:
     return (
         "---\n"
         "dlm_id: 01KPMGSTNGSTTSTTSTTSTTSTVA\n"
-        "dlm_version: 11\n"
+        "dlm_version: 12\n"
         "base_model: smollm2-135m\n"
         "training:\n"
         "  sources:\n"

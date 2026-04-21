@@ -22,7 +22,7 @@ _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 # Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
 _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 11
+CURRENT_SCHEMA_VERSION: Final[int] = 12
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
@@ -46,7 +46,10 @@ the existing `::type#name::` form). v11 adds `SectionType.AUDIO`
 with the parallel `::audio path="..." transcript="..."::` fence —
 the transcript becomes the text-side supervision (no equivalent to
 the optional image caption; audio without a transcript has no
-training signal).
+training signal). v12 adds the additive `training.audio` block
+(currently one field, `auto_resample: bool`) — opt-in automatic
+resampling when audio files don't match the base's pinned rate.
+Default False preserves the "refuse on SR mismatch" contract.
 """
 
 
@@ -177,6 +180,31 @@ def _default_cache() -> CacheConfig:
     return CacheConfig()
 
 
+class AudioConfig(BaseModel):
+    """Audio-pipeline knobs for audio-language training (v12).
+
+    Only meaningful when the base is an audio-language model (the
+    trainer reads this block only on that branch). Default leaves
+    behavior identical to v11: ``auto_resample=False`` preserves the
+    "refuse on SR mismatch" contract, so adding a no-audio or
+    non-audio document to v12 never changes training output.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    # When True, audio files at a native sample rate different from the
+    # base's pinned rate (e.g. 48 kHz clip with Qwen2-Audio's 16 kHz
+    # pin) are resampled on the fly via `dlm.data.audio_resample`
+    # instead of raising. Resampled waveforms cache separately from
+    # native-rate ones (cache key carries the flag), so toggling
+    # auto_resample on an existing corpus doesn't serve stale entries.
+    auto_resample: bool = False
+
+
+def _default_audio() -> AudioConfig:
+    return AudioConfig()
+
+
 class AdapterConfig(BaseModel):
     """One named adapter in a multi-adapter document.
 
@@ -268,6 +296,11 @@ class TrainingConfig(BaseModel):
     # Tokenized-section cache tuning (Sprint 31.6). Defaults preserve
     # pre-v9 behavior: cache on, 10 GiB cap, 90-day prune window.
     cache: CacheConfig = Field(default_factory=_default_cache)
+    # Audio-pipeline knobs (v12). Only read when the base is an
+    # audio-language model. Default `auto_resample=False` preserves the
+    # v11 contract (refuse on SR mismatch); set to True to enable on-
+    # the-fly resampling to the base's pinned rate.
+    audio: AudioConfig = Field(default_factory=_default_audio)
     # Named adapters for multi-adapter composition. When set, the flat
     # `adapter`/`lora_*`/`target_modules`/`learning_rate` fields must
     # stay at their defaults — mixing the two shapes creates ambiguous
