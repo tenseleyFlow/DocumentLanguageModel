@@ -103,6 +103,7 @@ export:
 | `sources` | list[SourceDirective] or null | null | Declarative file-tree ingestion. Each entry is walked at train time; matching files become synthetic PROSE sections on the CPT path. See below. |
 | `sources_policy` | `permissive` / `strict` | `permissive` | `strict` confines directive paths to the `.dlm`'s parent subtree; `permissive` allows absolute paths anywhere. Symlink escapes are refused under strict, warned under permissive. |
 | `gate` | GateConfig | defaults | Learned MoE-style adapter gate (schema v8). See below. |
+| `cache` | CacheConfig | defaults | Tokenized-section cache knobs (schema v9). See below. |
 
 ### `training.gate` — GateConfig
 
@@ -124,6 +125,22 @@ only one adapter) is refused at parse time — a router over a single
 adapter has nothing to route between. See
 `docs/cookbook/learned-adapter-gate.md` for the full workflow +
 Ollama-export fallback semantics.
+
+### `training.cache` — CacheConfig
+
+Per-document knobs on the tokenized-section cache at
+`~/.dlm/store/<dlm_id>/tokenized-cache/`. Defaults match the behavior
+pre-v9 so upgrading a doc is a no-op.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `true` | Set `false` to skip the cache on every run of this doc (equivalent to always passing `--no-cache`). |
+| `max_bytes` | int ≥ 1 | `10_737_418_240` (10 GiB) | LRU cap. Threaded to `TokenizedCache.open(..., max_bytes=...)`. Reads evict until size ≤ cap after a put. |
+| `prune_older_than_days` | int ≥ 1 | `90` | Default cutoff for `dlm cache prune` when the CLI `--older-than` flag is omitted. The flag still wins when passed. |
+
+The CLI `--no-cache` flag and the `DLM_DISABLE_TOKENIZED_CACHE=1` env
+var both override `enabled: true` for a single invocation. See the
+cache cookbook for sizing advice.
 
 ### `training.sources[]` — SourceDirective
 
