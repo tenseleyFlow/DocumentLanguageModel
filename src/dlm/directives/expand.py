@@ -32,6 +32,7 @@ import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 from dlm.directives.discovery import DiscoveredConfig, discover_configs
 from dlm.directives.errors import DirectivePathError
@@ -41,8 +42,16 @@ from dlm.doc.parser import ParsedDlm
 from dlm.doc.schema import SourceDirective
 from dlm.doc.sections import Section, SectionType
 from dlm.io.text import DlmEncodingError, read_text
+from dlm.store.blobs import BlobStore
 
 _LOG = logging.getLogger(__name__)
+
+# File extensions dispatched to the blob store as IMAGE sections.
+# Kept lowercase; comparison lowers the observed suffix. Audio
+# extensions (.wav, .mp3, .flac) land via Sprint 35.2.
+_IMAGE_EXTENSIONS: Final[frozenset[str]] = frozenset(
+    {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
+)
 
 
 @dataclass(frozen=True)
@@ -51,20 +60,26 @@ class SourceProvenance:
 
     `path` is the directive's raw path (user-facing, before ~ or
     symlink resolution) so it matches the frontmatter on disk.
-    `file_count` / `total_bytes` reflect what made it into the
-    Section list. `skipped_binary` / `skipped_encoding` /
-    `skipped_over_size` / `skipped_by_descent` break down the drops —
-    if a directive yields zero sections, the skip counts let the user
-    see why.
+    `file_count` / `total_bytes` reflect text sections that made it
+    into the Section list. `image_count` / `image_bytes` reflect IMAGE
+    sections ingested through the blob store. `skipped_binary` /
+    `skipped_encoding` / `skipped_over_size` / `skipped_by_descent`
+    break down the drops — if a directive yields zero sections, the
+    skip counts let the user see why. `skipped_image_no_store` counts
+    image-extension hits that were dropped because no BlobStore was
+    passed to `expand_sources` (tests, `dlm show`).
     """
 
     path: str
     file_count: int
     total_bytes: int
+    image_count: int = 0
+    image_bytes: int = 0
     skipped_binary: int = 0
     skipped_encoding: int = 0
     skipped_over_size: int = 0
     skipped_by_descent: int = 0
+    skipped_image_no_store: int = 0
 
 
 @dataclass(frozen=True)
@@ -76,7 +91,12 @@ class ExpandResult:
     discovered: tuple[DiscoveredConfig, ...] = ()
 
 
-def expand_sources(parsed: ParsedDlm, *, base_path: Path) -> ExpandResult:
+def expand_sources(
+    parsed: ParsedDlm,
+    *,
+    base_path: Path,
+    blob_store: BlobStore | None = None,
+) -> ExpandResult:
     """Walk every `training.sources` directive and synthesize sections.
 
     `base_path` is the `.dlm` file's parent directory — the anchor
@@ -90,6 +110,11 @@ def expand_sources(parsed: ParsedDlm, *, base_path: Path) -> ExpandResult:
     intended anchor is the corpus directory, not the metadata
     directory — so relative resolution and strict confinement use the
     grandparent as the effective base. Fixes Audit-09 B2.
+
+    `blob_store` receives ingested image bytes. When `None`, image-
+    extension files are counted in `skipped_image_no_store` and no
+    IMAGE section is emitted — this is the right shape for read-only
+    paths like `dlm show`, where we don't want to mutate disk.
 
     Returns an `ExpandResult` with an empty sections tuple when the
     frontmatter has no directives — callers can unconditionally
@@ -126,6 +151,7 @@ def expand_sources(parsed: ParsedDlm, *, base_path: Path) -> ExpandResult:
             directive=directive,
             resolved_root=resolved_root,
             discovered=discovered,
+            blob_store=blob_store,
         )
         sections.extend(dir_sections)
         provenance.append(dir_prov)
@@ -142,14 +168,18 @@ def _expand_one(
     directive: SourceDirective,
     resolved_root: Path,
     discovered: tuple[DiscoveredConfig, ...],
+    blob_store: BlobStore | None,
 ) -> tuple[list[Section], SourceProvenance]:
     """Expand a single directive into sections + per-directive provenance."""
     sections: list[Section] = []
     total_bytes = 0
+    image_count = 0
+    image_bytes = 0
     skipped_binary = 0
     skipped_encoding = 0
     skipped_over_size = 0
     skipped_by_descent = 0
+    skipped_image_no_store = 0
 
     # Anchor for relpath-in-header. For a single-file directive the
     # header uses the file name; for a directory the relpath is the
@@ -157,7 +187,9 @@ def _expand_one(
     header_root = resolved_root if resolved_root.is_dir() else resolved_root.parent
 
     for file_path in _iter_candidates(resolved_root):
-        if directive.max_files is not None and len(sections) >= directive.max_files:
+        if directive.max_files is not None and _section_cap_reached(
+            sections, directive.max_files
+        ):
             _LOG.info(
                 "directive: hit max_files=%d for %s; truncating deterministically",
                 directive.max_files,
@@ -195,6 +227,34 @@ def _expand_one(
             skipped_over_size += 1
             continue
 
+        # Image-extension dispatch: skips the text-read + binary-skip
+        # path entirely. The blob store owns ingestion; the synthesized
+        # section carries only the path + blob sha.
+        if file_path.suffix.lower() in _IMAGE_EXTENSIONS:
+            if blob_store is None:
+                _LOG.info(
+                    "directive: %s is an image but no blob_store supplied; skipping",
+                    file_path,
+                )
+                skipped_image_no_store += 1
+                continue
+            handle = blob_store.put(file_path)
+            relpath = file_path.relative_to(header_root).as_posix()
+            alt = file_path.stem
+            sections.append(
+                Section(
+                    type=SectionType.IMAGE,
+                    content="",
+                    media_path=relpath,
+                    media_alt=alt,
+                    media_blob_sha=handle.sha,
+                    tags=effective.tags,
+                ),
+            )
+            image_count += 1
+            image_bytes += handle.size
+            continue
+
         try:
             raw = file_path.read_bytes()
         except OSError as exc:
@@ -218,15 +278,28 @@ def _expand_one(
         sections.append(Section(type=SectionType.PROSE, content=content, tags=effective.tags))
         total_bytes += len(raw)
 
+    text_sections = sum(1 for s in sections if s.type != SectionType.IMAGE)
     return sections, SourceProvenance(
         path=directive.path,
-        file_count=len(sections),
+        file_count=text_sections,
         total_bytes=total_bytes,
+        image_count=image_count,
+        image_bytes=image_bytes,
         skipped_binary=skipped_binary,
         skipped_encoding=skipped_encoding,
         skipped_over_size=skipped_over_size,
         skipped_by_descent=skipped_by_descent,
+        skipped_image_no_store=skipped_image_no_store,
     )
+
+
+def _section_cap_reached(sections: list[Section], max_files: int) -> bool:
+    """True when the cap has been hit for the user's intent.
+
+    `max_files` caps total ingested files (text + image) — the user
+    wrote one number; both modalities count against it.
+    """
+    return len(sections) >= max_files
 
 
 def _iter_candidates(root: Path) -> Iterator[Path]:
