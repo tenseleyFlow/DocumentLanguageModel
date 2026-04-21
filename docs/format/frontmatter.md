@@ -85,7 +85,7 @@ export:
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `adapter` | `lora` or `qlora` | `lora` | QLoRA requires CUDA + bitsandbytes. |
+| `adapter` | `lora` / `qlora` / `dora` | `lora` | QLoRA requires CUDA + bitsandbytes. DoRA (weight-decomposed LoRA) requires `peft >= 0.8`; ~10% training wall-clock tax for 2-4% quality uplift on multi-task fine-tunes. See `docs/cookbook/dora-vs-lora.md`. |
 | `lora_r` | int 1..256 | 8 | LoRA rank. |
 | `lora_alpha` | int ≥ 1 | 16 | LoRA alpha (scaling). |
 | `lora_dropout` | float 0..0.5 | 0.05 | |
@@ -95,7 +95,7 @@ export:
 | `grad_accum` | `auto` or int ≥ 1 | `auto` | Doctor picks to reach effective batch = 8. |
 | `learning_rate` | float > 0 | 2e-4 | |
 | `num_epochs` | int ≥ 1 | 3 | |
-| `optimizer` | enum | `adamw_torch` | `adamw_bnb_8bit` / `paged_adamw_8bit` for CUDA + bnb. |
+| `optimizer` | enum | `adamw_torch` | `adamw_bnb_8bit` / `paged_adamw_8bit` for CUDA + bnb. `galore_adamw` / `galore_adamw_8bit` for rank-projected optimizer state (~40% memory reduction, paper uplift at ≥ 7B bases; `dlm doctor` warns on sub-1B). See `docs/cookbook/dora-vs-lora.md`. |
 | `lr_scheduler` | enum | `cosine` | |
 | `warmup_ratio` | float 0..0.5 | 0.1 | |
 | `precision` | `bf16` / `fp16` / `fp32` or null | null | Override the doctor's auto-pick. Defaults: bf16 on Ampere+/ROCm-bf16, fp16 on older CUDA, **fp32 on MPS** (the MPS fp16 attention kernels produce NaN LoRA weights on tiny-data SFT — see bug note below). Set `fp16` on MPS only if you need the memory headroom for a 7–8B base and your data isn't pathologically small; the post-train finite-weights gate will still refuse to persist a corrupt adapter. |
