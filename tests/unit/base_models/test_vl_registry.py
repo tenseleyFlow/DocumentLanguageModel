@@ -273,3 +273,30 @@ class TestCountVlRegistryEntries:
             1 for s in BASE_MODELS.values() if s.modality == "vision-language"
         )
         assert vl_count >= 3
+
+
+class TestTrustRemoteCodeOptIn:
+    """Per-spec trust_remote_code gate (Sprint 35.3 deferred-item follow-up).
+
+    Picking a base that declares `trust_remote_code=True` is the user's
+    informed opt-in; the field is False by default so non-custom bases
+    never accidentally enable remote code execution at load time.
+    """
+
+    def test_defaults_to_false(self) -> None:
+        """PaliGemma + Qwen2-VL use standard AutoModel classes."""
+        assert BASE_MODELS["paligemma-3b-mix-224"].trust_remote_code is False
+        assert BASE_MODELS["qwen2-vl-2b-instruct"].trust_remote_code is False
+
+    def test_internvl2_opts_in(self) -> None:
+        """InternVL2 requires trust_remote_code because InternVLChatModel
+        is defined in the model repo, not in transformers."""
+        assert BASE_MODELS["internvl2-2b"].trust_remote_code is True
+
+    def test_text_bases_default_false(self) -> None:
+        """None of the text bases opt into trust_remote_code."""
+        for key, spec in BASE_MODELS.items():
+            if spec.modality == "text":
+                assert spec.trust_remote_code is False, (
+                    f"{key} unexpectedly opts into trust_remote_code"
+                )
