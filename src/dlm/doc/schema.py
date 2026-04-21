@@ -22,7 +22,7 @@ _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 # Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
 _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 10
+CURRENT_SCHEMA_VERSION: Final[int] = 11
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
@@ -42,7 +42,11 @@ training plan over content stored elsewhere on disk. v10 introduces
 grammar for multi-modal training; the body schema is strictly
 additive and the fence extension is backward-compatible (images
 are parsed via a separate attribute grammar rather than changing
-the existing `::type#name::` form).
+the existing `::type#name::` form). v11 adds `SectionType.AUDIO`
+with the parallel `::audio path="..." transcript="..."::` fence —
+the transcript becomes the text-side supervision (no equivalent to
+the optional image caption; audio without a transcript has no
+training signal).
 """
 
 
