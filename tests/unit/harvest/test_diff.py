@@ -52,8 +52,8 @@ class TestBuildPlan:
         assert section.type.value == "instruction"
         assert section.auto_harvest is True
         assert section.harvest_source == "auto-harvest/quine_q"
-        assert "!probe" in section.content
-        assert "### Q\nwhat is a quine?" in section.content
+        assert "### Q !probe" in section.content
+        assert "what is a quine?" in section.content
         assert "### A\na program that prints itself." in section.content
 
     def test_custom_tag_prefixes_harvest_source(self) -> None:

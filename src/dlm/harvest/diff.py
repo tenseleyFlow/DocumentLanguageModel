@@ -109,9 +109,7 @@ def _candidate_to_section(candidate: HarvestCandidate, *, tag: str) -> Section:
     the next train.
     """
     content_lines = [
-        "!probe",
-        "",
-        "### Q",
+        "### Q !probe",
         candidate.prompt.strip(),
         "",
         "### A",
