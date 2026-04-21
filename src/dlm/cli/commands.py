@@ -2235,11 +2235,23 @@ def serve_cmd(
     from dlm.doc.parser import parse_file
     from dlm.pack.packer import pack as pack_fn
     from dlm.share import ServeOptions, serve
+    from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
 
     parsed = parse_file(path)
     dlm_id = parsed.frontmatter.dlm_id
+
+    # Audit-09 M3: pack() calls load_manifest(), which crashes with an
+    # unhelpful "store manifest corrupt" error on a .dlm that's never
+    # been trained. Surface the true cause instead.
+    store = for_dlm(dlm_id)
+    if not store.manifest.exists():
+        console.print(
+            f"[red]serve:[/red] no training state for {dlm_id} — run "
+            "[bold]dlm train[/bold] first."
+        )
+        raise typer.Exit(code=1)
 
     # Pack into a temp file that lives as long as the server does.
     import tempfile
