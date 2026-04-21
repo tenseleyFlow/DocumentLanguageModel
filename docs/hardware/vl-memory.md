@@ -1,8 +1,18 @@
 # Vision-language memory budget
 
-Sprint 35 v1 ships one VL base — **PaliGemma-3B-mix-224**. Further VL
-bases land in Sprint 35.3; their budgets land here as they're
-validated.
+Three VL bases ship after Sprint 35.3: **PaliGemma-3B-mix-224**,
+**Qwen2-VL-2B-Instruct**, and **InternVL2-2B**. Each is pinned at a
+fixed preprocessing resolution; dynamic-resolution support (Qwen2-VL's
+native capability) is deferred to a follow-up so the
+`VlPreprocessorPlan` cache key stays stable.
+
+## Base-selection guidance
+
+| Base                      | License    | Pick when you want… |
+|---------------------------|------------|---------------------|
+| paligemma-3b-mix-224      | Gemma (gated) | The cleanest PEFT path + proven chart/doc QA; accept the Gemma license first. |
+| qwen2-vl-2b-instruct      | Apache-2.0 | Permissive licensing + strong general-purpose VL; dynamic-res is capped to 672² in v1 but native runtime supports more. |
+| internvl2-2b              | MIT        | Most permissive license + competitive 2B-scale quality; **loader caveat** (InternVLChatModel uses trust_remote_code). |
 
 ## PaliGemma-3B-mix-224 (224×224, fp16)
 
@@ -26,6 +36,53 @@ gradient accumulation (`training.grad_accum: 4` + `micro_batch_size:
 batch=1; SM 8.0 with 24 GB handles batch=4 directly. QLoRA on VL
 isn't plumbed in v1 (see Sprint 35.3 follow-up).
 
+## Qwen2-VL-2B-Instruct (pinned 672×672, fp16)
+
+Qwen2-VL's HF-native dynamic resolution is capped to a fixed 672²
+preprocessing plan in v1 — 24×24 patch grid × patch-merger 2×2 yields
+576 image tokens per frame, which is the cache-key invariant.
+
+| Config          | Base weights | Adapter | Activations | Total (peak) |
+|-----------------|-------------:|--------:|------------:|-------------:|
+| Inference, fp16 |          4.5 |    0.03 |         0.8 |          5.4 |
+| LoRA + bs=1     |          4.5 |    0.03 |         3.2 |          7.8 |
+| LoRA + bs=4     |          4.5 |    0.03 |        12.8 |         17.4 |
+
+**Floor.** MPS with 16 GB unified memory handles LoRA batch=1 with
+headroom for IDE + browser. 24 GB CUDA fits batch=4. Larger images
+than 672² inflate activation memory super-linearly (576 tokens grows
+as `(H/28) × (W/28)`); revisit when the plan supports dynamic ranges.
+
+**Qwen2-VL-specific.** The vision tower is a 675M-param ViT so the
+activation footprint at LoRA time is dominated by cross-attention
+between vision + text tokens. Gradient checkpointing on the tower
+trims ~30% of peak; `training.gradient_checkpointing: true` in
+frontmatter enables it.
+
+## InternVL2-2B (448×448, fp16)
+
+InternVL2 uses ViT-L/14 + pixel-shuffle 2×2 so 448² input yields 256
+image tokens — the smallest of the three bases and cheapest at
+training time.
+
+| Config          | Base weights | Adapter | Activations | Total (peak) |
+|-----------------|-------------:|--------:|------------:|-------------:|
+| Inference, fp16 |          4.4 |    0.03 |         0.3 |          4.8 |
+| LoRA + bs=1     |          4.4 |    0.03 |         1.5 |          6.0 |
+| LoRA + bs=4     |          4.4 |    0.03 |         6.0 |         10.5 |
+
+**Floor.** MPS with 16 GB comfortably handles batch=4. 12 GB CUDA
+handles batch=1; 16 GB CUDA handles batch=4.
+
+**Loader caveat.** InternVL2 ships as `InternVLChatModel`, a
+custom remote-code class. `AutoModelForImageTextToText` may not
+resolve it on older transformers. If `dlm train` raises
+`ValueError: Unrecognized configuration class`, upgrade
+transformers (≥5.5 typically carries the registration) or wait for
+the trust-remote-code opt-in flag (tracked as a Sprint 35.3
+follow-up). The registry + probe paths work regardless — they read
+spec metadata, not the HF class.
+
 ## Refusal matrix
 
 `dlm doctor` refuses VL training on:
@@ -43,8 +100,18 @@ first refusal stands.
 
 The VL preprocessor (`dlm.data.vl_preprocessor`) caches its output
 tensors under `~/.dlm/store/<dlm_id>/vl-cache/` keyed on
-`(blob_sha, processor_sha, target_size)`. Budget ~0.5 MB per 224×224
-image after preprocessing. A 100-image corpus caches ~50 MB.
+`(blob_sha, processor_sha, target_size)`. Per-image cache size scales
+with the preprocessing plan:
+
+| Base                      | Target size | Cache per image |
+|---------------------------|------------:|----------------:|
+| paligemma-3b-mix-224      |     224×224 |        ~0.5 MB  |
+| internvl2-2b              |     448×448 |        ~2.0 MB  |
+| qwen2-vl-2b-instruct      |     672×672 |        ~4.5 MB  |
+
+A 100-image corpus on PaliGemma caches ~50 MB; the same corpus on
+Qwen2-VL caches ~450 MB. Budget accordingly when running many
+experiments.
 
 Clear manually with `rm -rf ~/.dlm/store/<dlm_id>/vl-cache/` when
 experimenting with different processors; the entries become stale

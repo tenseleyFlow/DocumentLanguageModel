@@ -26,6 +26,27 @@ schema-v10 scaffold with a sample `::image::` fence. The initial
 body references `figures/your-image.png` (non-existent by default —
 drop real images into that path before the first train).
 
+### Picking a different VL base
+
+Three VL bases ship in the registry as of Sprint 35.3:
+
+```bash
+# Permissive + Apache-2.0 + strong general-purpose VL (pinned 672²):
+dlm init my-diagrams.dlm --multimodal --base qwen2-vl-2b-instruct
+
+# MIT-licensed, smallest per-image footprint (448²):
+dlm init my-diagrams.dlm --multimodal --base internvl2-2b
+
+# Default — Gemma license gate, cleanest PEFT path (224²):
+dlm init my-diagrams.dlm --multimodal --i-accept-license
+```
+
+See [docs/hardware/vl-memory.md](../hardware/vl-memory.md) for the
+VRAM table (inference / LoRA bs=1 / LoRA bs=4 per base) and the
+base-selection matrix. InternVL2 has a loader caveat documented
+there — it may need a transformers upgrade to load on older
+installs.
+
 ## Step 2 — Author image sections
 
 Two ways to add images. Either write them by hand:
@@ -162,9 +183,9 @@ support.
 
 ## What's not yet in Sprint 35 v1
 
-- **Other VL bases.** Qwen2-VL-2B-Instruct + InternVL2-2B land in
-  Sprint 35.3. Use `hf:Qwen/Qwen2-VL-2B-Instruct` for experiments
-  via the escape hatch, but training semantics aren't fully validated.
+- **Other VL bases.** Qwen2-VL-2B-Instruct + InternVL2-2B landed in
+  Sprint 35.3 — use `--base qwen2-vl-2b-instruct` or `--base
+  internvl2-2b`. See the base-selection section above.
 - **Audio.** Sprint 35.2 ships `::audio path="..." transcript="..."::`.
 - **GGUF export.** Sprint 35.4 adds `llama.cpp` arch detection + the
   Ollama Modelfile emitter. Until then, HF-snapshot is the only
