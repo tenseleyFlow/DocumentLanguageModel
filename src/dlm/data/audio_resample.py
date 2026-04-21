@@ -22,10 +22,17 @@ plan-resolve time rather than letting a training loop crash mid-run.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
+import numpy as np
+
 from dlm.data.errors import DataError
 
+_Backend = Callable[..., np.ndarray]
 
-class AudioResampleUnavailable(DataError):
+
+class AudioResampleUnavailable(DataError):  # noqa: N818 — mirrors DataError sibling naming
     """Neither soxr nor scipy is importable for `training.audio.auto_resample=True`.
 
     Suggests the two install paths: ``pip install soxr`` (preferred,
@@ -34,12 +41,7 @@ class AudioResampleUnavailable(DataError):
     """
 
 
-def resample(
-    waveform,  # type: ignore[no-untyped-def]
-    *,
-    src_sr: int,
-    dst_sr: int,
-):  # type: ignore[no-untyped-def]
+def resample(waveform: np.ndarray, *, src_sr: int, dst_sr: int) -> np.ndarray:
     """Return `waveform` resampled from `src_sr` → `dst_sr`.
 
     Input and output are 1-D float32 mono arrays. If `src_sr == dst_sr`
@@ -53,15 +55,14 @@ def resample(
         return waveform
     if src_sr <= 0 or dst_sr <= 0:
         raise ValueError(
-            f"resample: sample rates must be positive, got "
-            f"src_sr={src_sr} dst_sr={dst_sr}"
+            f"resample: sample rates must be positive, got src_sr={src_sr} dst_sr={dst_sr}"
         )
 
     backend = _pick_backend()
     return backend(waveform, src_sr=src_sr, dst_sr=dst_sr)
 
 
-def _pick_backend():  # type: ignore[no-untyped-def]
+def _pick_backend() -> _Backend:
     """Resolve the first importable resampler. Raises when none found.
 
     Probes each backend's actual import path rather than returning a
@@ -76,7 +77,7 @@ def _pick_backend():  # type: ignore[no-untyped-def]
         return _soxr_resample
 
     try:
-        import scipy.signal  # type: ignore[import-not-found]  # noqa: F401
+        import scipy.signal  # type: ignore[import-untyped]  # noqa: F401
     except ImportError:
         pass
     else:
@@ -90,16 +91,15 @@ def _pick_backend():  # type: ignore[no-untyped-def]
     )
 
 
-def _soxr_resample(waveform, *, src_sr: int, dst_sr: int):  # type: ignore[no-untyped-def]
+def _soxr_resample(waveform: np.ndarray, *, src_sr: int, dst_sr: int) -> np.ndarray:
     """soxr backend. Highest quality + speed, requires libsoxr wheel."""
-    import numpy as np
-    import soxr  # type: ignore[import-not-found]
+    import soxr
 
-    out = soxr.resample(waveform, src_sr, dst_sr, quality="HQ")
+    out: Any = soxr.resample(waveform, src_sr, dst_sr, quality="HQ")
     return np.ascontiguousarray(out, dtype=np.float32)
 
 
-def _scipy_resample(waveform, *, src_sr: int, dst_sr: int):  # type: ignore[no-untyped-def]
+def _scipy_resample(waveform: np.ndarray, *, src_sr: int, dst_sr: int) -> np.ndarray:
     """scipy.signal.resample_poly fallback.
 
     Reduces (src_sr, dst_sr) to their coprime pair so the polyphase
@@ -108,11 +108,10 @@ def _scipy_resample(waveform, *, src_sr: int, dst_sr: int):  # type: ignore[no-u
     """
     from math import gcd
 
-    import numpy as np
-    from scipy.signal import resample_poly  # type: ignore[import-not-found]
+    from scipy.signal import resample_poly
 
     divisor = gcd(src_sr, dst_sr)
     up = dst_sr // divisor
     down = src_sr // divisor
-    out = resample_poly(waveform, up=up, down=down)
+    out: Any = resample_poly(waveform, up=up, down=down)
     return np.ascontiguousarray(out, dtype=np.float32)

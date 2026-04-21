@@ -42,7 +42,11 @@ class TestBackendPickFailure:
     def test_no_backend_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Force both imports to fail and confirm the error names both paths."""
 
-        real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
+        real_import = (
+            __builtins__["__import__"]
+            if isinstance(__builtins__, dict)
+            else __builtins__.__import__
+        )
 
         def fake_import(name: str, *args: object, **kwargs: object) -> object:
             if name in ("soxr", "scipy", "scipy.signal"):
