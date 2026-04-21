@@ -72,6 +72,7 @@ nav:
       - Save-to-train (--watch): cookbook/watch-mode.md
       - Metrics & observability: cookbook/metrics.md
       - Template gallery: cookbook/template-gallery.md
+      - Sharing adapters: cookbook/sharing.md
   - Architecture: architecture.md
   - Determinism: determinism.md
   - Hardware:

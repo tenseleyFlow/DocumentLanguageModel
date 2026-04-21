@@ -220,6 +220,72 @@ dlm unpack <pack> [--force] [--out DIR]
 | `--force` | false | Overwrite an existing store with the same `dlm_id`. |
 | `--out DIR` | pack parent | Where to place the restored `.dlm`. |
 
+### `dlm push`
+
+Upload a `.dlm` (auto-packs) or `.dlm.pack` to a sharing destination
+(Sprint 28).
+
+```
+dlm push <path> --to <destination> [--sign] [pack flags]
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--to <destination>` | required | `hf:<org>/<repo>`, `https://...` URL endpoint, or a local path. |
+| `--sign` | false | Sign the pack with `minisign` before upload (requires `minisign` on PATH + key at `~/.dlm/minisign.key`). |
+| `--include-exports` | false | Forwarded to `dlm pack` when auto-packing a `.dlm`. |
+| `--include-base` | false | Same. |
+| `--include-logs` | false | Same. |
+| `--i-am-the-licensee URL` | none | Required with `--include-base` on a non-redistributable base. |
+
+**Destinations:**
+- `hf:<org>/<repo>` — HuggingFace Hub. Uses `$HF_TOKEN` if set. Autogenerates a `README.md` with `library_name: dlm` tag. Creates the repo if missing (your personal namespace needs no approval).
+- `https://…` — any HTTPS endpoint that accepts a POST with an `application/octet-stream` body. Sets `Authorization:` from `$DLM_SHARE_AUTH` when present (e.g. `Bearer <token>`).
+- `<local/path>` — copy the pack to a filesystem path.
+
+### `dlm pull`
+
+Download + verify + unpack a `.dlm.pack` from a remote source.
+
+```
+dlm pull <source> [--out DIR] [--force]
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `<source>` | required | `hf:<org>/<repo>`, `https://…`, `peer://host:port/<id>?token=…`, or a local path. |
+| `--out DIR` | CWD | Directory for the restored `.dlm`. |
+| `--force` | false | Overwrite an existing store with the same `dlm_id`. |
+
+Pulls always verify sha256 checksums during unpack. If a `.minisig`
+sidecar is served alongside the pack, `dlm pull` tries every key in
+`~/.dlm/trusted-keys/*.pub` — match → `verified`, no match →
+`unverified` warning (still installs, checksums are fine). No sidecar
+→ `unsigned` (still installs).
+
+### `dlm serve`
+
+Serve a `.dlm`'s pack over LAN for peers to pull.
+
+```
+dlm serve <path> [--port N] [--public --i-know-this-is-public]
+                 [--max-concurrency N] [--rate-limit N]
+                 [--token-ttl-minutes N]
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--port N` | 7337 | Bind port. |
+| `--public` | false | Bind `0.0.0.0` **only when paired with** `--i-know-this-is-public`. Without the confirmation flag, `--public` logs a refusal and binds `127.0.0.1`. |
+| `--i-know-this-is-public` | false | Acknowledges the public bind. Meaningless without `--public`. |
+| `--max-concurrency N` | 4 | Max concurrent connections per token. Excess returns HTTP 429. |
+| `--rate-limit N` | 30 | Max requests per minute per token. |
+| `--token-ttl-minutes N` | 15 | Issued token lifetime. Ctrl-C invalidates every outstanding token instantly — the session secret lives only in the serving process. |
+
+On start, prints the `peer://` URL (with embedded token) that the
+other side pastes into `dlm pull`. Ctrl-C cleanly stops the server
+and deletes the temp pack.
+
 ### `dlm doctor`
 
 Inspect hardware + print the resolved training plan.
