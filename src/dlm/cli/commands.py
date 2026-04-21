@@ -1876,6 +1876,15 @@ def show_cmd(
         raise typer.Exit(code=1) from exc
 
     training_cache = _summarize_training_cache(store.tokenized_cache_dir, store.root)
+    # Sprint 31.6: surface the per-document cache config (intent)
+    # alongside `training_cache` (on-disk state). Intent survives even
+    # when nothing's been trained yet.
+    cache_cfg = parsed.frontmatter.training.cache
+    training_cache_config: dict[str, object] = {
+        "enabled": cache_cfg.enabled,
+        "max_bytes": cache_cfg.max_bytes,
+        "prune_older_than_days": cache_cfg.prune_older_than_days,
+    }
     gate = _summarize_gate(store)
 
     if json_out:
@@ -1886,6 +1895,7 @@ def show_cmd(
             payload_full["discovered_training_configs"] = discovered_configs
         if training_cache is not None:
             payload_full["training_cache"] = training_cache
+        payload_full["training_cache_config"] = training_cache_config
         if gate is not None:
             payload_full["gate"] = gate
         # Write JSON to raw stdout — Rich's Console wraps lines at the
@@ -2578,15 +2588,17 @@ def cache_show_cmd(
 def cache_prune_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm file to prune the cache for.")],
     older_than: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--older-than",
             help=(
                 "Drop entries not accessed in this duration. "
-                "Format: `30d`, `12h`, `45m`. Default `90d`."
+                "Format: `30d`, `12h`, `45m`. When omitted, defaults to "
+                "the document's `training.cache.prune_older_than_days` "
+                "(90d pre-v9 docs inherit)."
             ),
         ),
-    ] = "90d",
+    ] = None,
 ) -> None:
     """Remove tokenized-cache entries not accessed within a cutoff."""
     from rich.console import Console
@@ -2598,24 +2610,36 @@ def cache_prune_cmd(
 
     console = Console(stderr=True)
 
-    seconds = _parse_duration(older_than)
-    if seconds is None:
-        console.print(
-            f"[red]cache:[/red] invalid --older-than {older_than!r} (expected e.g. 30d, 12h, 45m)"
-        )
-        raise typer.Exit(code=2)
-
+    # Parse the doc first — we need it either way (for dlm_id) AND
+    # for the frontmatter default when --older-than is absent.
     try:
         parsed = parse_file(path)
     except (DlmParseError, OSError) as exc:
         console.print(f"[red]cache:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
+    if older_than is not None:
+        seconds = _parse_duration(older_than)
+        if seconds is None:
+            console.print(
+                f"[red]cache:[/red] invalid --older-than {older_than!r} "
+                "(expected e.g. 30d, 12h, 45m)"
+            )
+            raise typer.Exit(code=2)
+        cutoff_label = older_than
+    else:
+        # Sprint 31.6: fall back to the frontmatter's per-doc default.
+        # Pre-v9 docs get the CacheConfig default of 90 days via the
+        # Pydantic factory on parse.
+        days = parsed.frontmatter.training.cache.prune_older_than_days
+        seconds = float(days) * 86400.0
+        cutoff_label = f"{days}d"
+
     store = for_dlm(parsed.frontmatter.dlm_id)
     cache = TokenizedCache.open(store.tokenized_cache_dir)
     removed = cache.prune(older_than_seconds=seconds)
     cache.save_manifest()
-    console.print(f"[green]cache:[/green] pruned {removed} entr(y/ies) older than {older_than}")
+    console.print(f"[green]cache:[/green] pruned {removed} entr(y/ies) older than {cutoff_label}")
 
 
 def cache_clear_cmd(
