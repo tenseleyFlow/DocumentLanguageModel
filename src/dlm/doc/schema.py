@@ -181,7 +181,7 @@ class AdapterConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    adapter: Literal["lora", "qlora"] = "lora"
+    adapter: Literal["lora", "qlora", "dora"] = "lora"
     lora_r: int = Field(8, ge=1, le=256)
     lora_alpha: int = Field(16, ge=1)
     lora_dropout: float = Field(0.05, ge=0.0, le=0.5)
@@ -221,7 +221,7 @@ class TrainingConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    adapter: Literal["lora", "qlora"] = "lora"
+    adapter: Literal["lora", "qlora", "dora"] = "lora"
     lora_r: int = Field(8, ge=1, le=256)
     lora_alpha: int = Field(16, ge=1)
     lora_dropout: float = Field(0.05, ge=0.0, le=0.5)
@@ -231,7 +231,13 @@ class TrainingConfig(BaseModel):
     grad_accum: Literal["auto"] | int = "auto"
     learning_rate: float = Field(2e-4, gt=0.0)
     num_epochs: int = Field(3, ge=1)
-    optimizer: Literal["adamw_torch", "adamw_bnb_8bit", "paged_adamw_8bit"] = "adamw_torch"
+    optimizer: Literal[
+        "adamw_torch",
+        "adamw_bnb_8bit",
+        "paged_adamw_8bit",
+        "galore_adamw",
+        "galore_adamw_8bit",
+    ] = "adamw_torch"
     lr_scheduler: Literal["cosine", "linear", "constant"] = "cosine"
     warmup_ratio: float = Field(0.1, ge=0.0, le=0.5)
     # Advanced: override the hardware doctor's auto-picked precision.
