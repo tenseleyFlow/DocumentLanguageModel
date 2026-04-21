@@ -69,6 +69,17 @@ def test_strict_lock_rejects_torch_minor_drift(tmp_path: Path) -> None:
     from dlm.store.paths import for_dlm
 
     parsed = parse_file(doc)
+
+    # On hosts without a viable training plan (CPU-only CI) the CLI
+    # aborts with "no viable training plan" before the lock validator
+    # runs — the test can't distinguish lock-drift from plan-miss in
+    # that case. Skip there; the unit-test counterpart still covers
+    # the lock validator directly.
+    from dlm.hardware import doctor
+
+    if doctor(training_config=parsed.frontmatter.training).plan is None:
+        pytest.skip("doctor() returned no viable training plan on this host")
+
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
     save_manifest(

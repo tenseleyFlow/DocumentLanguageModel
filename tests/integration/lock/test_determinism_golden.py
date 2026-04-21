@@ -55,7 +55,10 @@ def _train_once(home: Path) -> Path:
     parsed = parse_file(doc)
     spec = resolve_base_model(parsed.frontmatter.base_model)
     plan = doctor().plan
-    assert plan is not None
+    if plan is None:
+        import pytest
+
+        pytest.skip("doctor() returned no viable training plan on this host")
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
 
