@@ -164,7 +164,8 @@ def probe_gguf_arch_supported(
     *,
     vendor_path: Path | None = None,
 ) -> ProbeResult:
-    """Scan vendored `convert_hf_to_gguf.py` for `@Model.register("<gguf_arch>")`.
+    """Scan vendored ``convert_hf_to_gguf.py`` for
+    ``@Model.register("<gguf_arch>")`` or ``@ModelBase.register(...)``.
 
     Until Sprint 11 lands the submodule, this probe skips.
     """
@@ -186,8 +187,13 @@ def probe_gguf_arch_supported(
             detail=f"read failed: {exc}",
         )
 
-    # `@Model.register("qwen2", …)` or `@Model.register("qwen2")`
-    pattern = re.compile(r"""@Model\.register\(\s*["']([^"']+)["']""")
+    # Match both the pre-rename ``@Model.register(...)`` and the current
+    # ``@ModelBase.register(...)`` decorator forms. Upstream renamed the
+    # class in
+    # https://github.com/ggml-org/llama.cpp/commit/46e3556 (mid-2024);
+    # the pre-rename form is preserved so this probe stays tolerant if
+    # the vendored copy is ever pinned to an older tag.
+    pattern = re.compile(r"""@(?:Model|ModelBase)\.register\(\s*["']([^"']+)["']""")
     found_archs = set(pattern.findall(source))
     if spec.gguf_arch in found_archs:
         return ProbeResult(
