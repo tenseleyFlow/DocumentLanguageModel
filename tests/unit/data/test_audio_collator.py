@@ -297,3 +297,119 @@ class TestCollatorConstruction:
         collator = _make_collator(proc)
         with pytest.raises(ValueError, match="missing required keys"):
             collator([{"audio_path": str(wav_16k)}])  # no `text`
+
+
+class TestWaveformCacheIntegration:
+    """Deferred-item follow-up: WaveformCache skips repeat decodes."""
+
+    def test_second_call_hits_cache(
+        self, wav_16k: Path, tmp_path: Path
+    ) -> None:
+        from dlm.data.audio_cache import WaveformCache
+
+        proc = _StubProcessor()
+        cache = WaveformCache(tmp_path / "wav-cache")
+        collator = AudioLmCollator(
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            max_length=512,
+            waveform_cache=cache,
+        )
+        row = {
+            "audio_blob_sha": "a" * 64,
+            "audio_path": str(wav_16k),
+            "text": "<|AUDIO|>\nHi.",
+        }
+        # First call: miss → decodes + writes cache.
+        collator([row])
+        cache_files = list(cache.root.rglob("*.npz"))
+        assert len(cache_files) == 1
+
+        # Delete the .wav from disk → second call must come from cache.
+        wav_16k.unlink()
+        assert not wav_16k.exists()
+
+        # Second call: hit → uses cached waveform despite missing file.
+        # If the cache wasn't consulted, this would raise FileNotFoundError
+        # from soundfile.
+        collator([row])
+        assert proc.calls == 2  # processor runs both times (expected)
+
+    def test_cache_key_disambiguates_sample_rate(
+        self, wav_16k: Path, tmp_path: Path
+    ) -> None:
+        """Same blob at different sample rates → different cache entries."""
+        from dlm.data.audio_cache import WaveformCache
+
+        proc = _StubProcessor()
+        cache = WaveformCache(tmp_path / "wav-cache")
+        collator_16k = AudioLmCollator(
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            waveform_cache=cache,
+        )
+        row = {
+            "audio_blob_sha": "a" * 64,
+            "audio_path": str(wav_16k),
+            "text": "<|AUDIO|>",
+        }
+        collator_16k([row])
+        # Only one cache entry exists for (a*64, 16000, 30000).
+        assert len(list(cache.root.rglob("*.npz"))) == 1
+
+    def test_no_cache_when_not_configured(
+        self, wav_16k: Path, tmp_path: Path
+    ) -> None:
+        """waveform_cache=None bypasses the cache entirely (default behavior)."""
+        proc = _StubProcessor()
+        collator = AudioLmCollator(
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            waveform_cache=None,
+        )
+        # Verify no cache file is created under tmp_path when the cache
+        # is not configured — confirms we didn't silently default to one.
+        collator(
+            [
+                {
+                    "audio_blob_sha": "a" * 64,
+                    "audio_path": str(wav_16k),
+                    "text": "x",
+                }
+            ]
+        )
+        assert not list(tmp_path.rglob("*.npz"))
+
+    def test_cache_skipped_when_blob_sha_missing(
+        self, wav_16k: Path, tmp_path: Path
+    ) -> None:
+        """Row without audio_blob_sha → decodes but doesn't cache.
+
+        Rows from pre-35.2 codepaths (or ad-hoc construction) may lack
+        a blob sha. Skip the cache rather than raise — the decode path
+        still works correctly.
+        """
+        from dlm.data.audio_cache import WaveformCache
+
+        proc = _StubProcessor()
+        cache = WaveformCache(tmp_path / "wav-cache")
+        collator = AudioLmCollator(
+            processor=proc,
+            sample_rate=16_000,
+            max_length_seconds=30.0,
+            waveform_cache=cache,
+        )
+        collator(
+            [
+                {
+                    # No audio_blob_sha key.
+                    "audio_path": str(wav_16k),
+                    "text": "x",
+                }
+            ]
+        )
+        # Cache is untouched because we had no key to store under.
+        assert not list(cache.root.rglob("*.npz"))

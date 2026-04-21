@@ -19,7 +19,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from dlm.data.audio_cache import AudioCache, AudioCacheKey, processor_sha256
+from dlm.data.audio_cache import (
+    AudioCache,
+    AudioCacheKey,
+    WaveformCache,
+    WaveformCacheKey,
+    processor_sha256,
+)
 
 
 def _key(**overrides: object) -> AudioCacheKey:
@@ -161,3 +167,112 @@ class TestProcessorSha256:
         proc_a = SimpleNamespace(feature_extractor=FeA())
         proc_b = SimpleNamespace(feature_extractor=FeB())
         assert processor_sha256(proc_a) != processor_sha256(proc_b)
+
+
+# --- WaveformCache (35.2 deferred-item follow-up) ---------------------------
+
+
+def _wkey(**overrides: object) -> WaveformCacheKey:
+    defaults: dict[str, object] = {
+        "blob_sha": "a" * 64,
+        "sample_rate": 16_000,
+        "max_length_ms": 30_000,
+    }
+    defaults.update(overrides)
+    return WaveformCacheKey(**defaults)  # type: ignore[arg-type]
+
+
+class TestWaveformCacheKey:
+    def test_filename_shape(self) -> None:
+        k = _wkey()
+        assert k.as_filename() == f"{'a' * 64}.16000.30000.wav.npz"
+
+    def test_shard_is_two_prefix(self) -> None:
+        assert _wkey(blob_sha="cd" + "0" * 62).shard() == "cd"
+
+    def test_different_sample_rate_different_filename(self) -> None:
+        assert _wkey(sample_rate=16_000).as_filename() != _wkey(
+            sample_rate=48_000
+        ).as_filename()
+
+    def test_different_max_length_different_filename(self) -> None:
+        assert _wkey(max_length_ms=30_000).as_filename() != _wkey(
+            max_length_ms=60_000
+        ).as_filename()
+
+    def test_key_no_processor_sha(self) -> None:
+        """Waveform cache is pre-processor; key should omit processor_sha."""
+        # Distinct filenames from AudioCacheKey even for overlapping params
+        # — the layout is intentionally separate.
+        k = _wkey()
+        assert "proc" not in k.as_filename().lower()
+
+    def test_key_is_frozen(self) -> None:
+        k = _wkey()
+        with pytest.raises(AttributeError):
+            k.blob_sha = "x" * 64  # type: ignore[misc]
+
+
+class TestWaveformCacheRoundTrip:
+    def test_miss_on_empty(self, tmp_path: Path) -> None:
+        cache = WaveformCache(tmp_path / "wav")
+        assert cache.get(_wkey()) is None
+
+    def test_put_then_get(self, tmp_path: Path) -> None:
+        cache = WaveformCache(tmp_path / "wav")
+        waveform = np.arange(16_000 * 1, dtype=np.float32) / 16_000.0
+        cache.put(_wkey(), waveform)
+        loaded = cache.get(_wkey())
+        assert loaded is not None
+        np.testing.assert_array_equal(loaded, waveform)
+        assert loaded.dtype == np.float32
+
+    def test_put_creates_shard_dir(self, tmp_path: Path) -> None:
+        cache = WaveformCache(tmp_path / "wav")
+        key = _wkey(blob_sha="ef" + "0" * 62)
+        cache.put(key, np.zeros((1,), dtype=np.float32))
+        assert (tmp_path / "wav" / "ef").is_dir()
+
+    def test_exists_flips_after_put(self, tmp_path: Path) -> None:
+        cache = WaveformCache(tmp_path / "wav")
+        key = _wkey()
+        assert cache.exists(key) is False
+        cache.put(key, np.zeros((1,), dtype=np.float32))
+        assert cache.exists(key) is True
+
+    def test_corrupt_file_treated_as_miss(self, tmp_path: Path) -> None:
+        cache = WaveformCache(tmp_path / "wav")
+        key = _wkey()
+        cache.put(key, np.zeros((1,), dtype=np.float32))
+        cache.path_for(key).write_bytes(b"not npz")
+        assert cache.get(key) is None
+
+    def test_clear_removes_tree(self, tmp_path: Path) -> None:
+        cache = WaveformCache(tmp_path / "wav")
+        cache.put(_wkey(), np.zeros((1,), dtype=np.float32))
+        cache.clear()
+        assert not (tmp_path / "wav").exists()
+
+
+class TestWaveformAndFeatureCachesDistinct:
+    """The two audio caches must not collide on-disk or in-memory."""
+
+    def test_separate_roots_coexist(self, tmp_path: Path) -> None:
+        features = AudioCache(tmp_path / "audio-cache")
+        waveforms = WaveformCache(tmp_path / "audio-waveform-cache")
+        features.put(
+            AudioCacheKey(
+                blob_sha="a" * 64,
+                processor_sha="b" * 64,
+                sample_rate=16_000,
+                max_length_ms=30_000,
+            ),
+            np.zeros((1,), dtype=np.float32),
+        )
+        waveforms.put(_wkey(), np.zeros((1,), dtype=np.float32))
+        # Neither cache's directory tree touches the other's.
+        feat_files = set((tmp_path / "audio-cache").rglob("*.npz"))
+        wave_files = set((tmp_path / "audio-waveform-cache").rglob("*.npz"))
+        assert feat_files
+        assert wave_files
+        assert feat_files.isdisjoint(wave_files)
