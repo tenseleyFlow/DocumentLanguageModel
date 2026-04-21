@@ -4,11 +4,23 @@ Backing for `dlm init --template <name>`. The flow:
 
 1. Load the template pair (body + meta) from the gallery.
 2. Parse the bundled body as a `.dlm` to validate it and grab its schema.
-3. Mint a fresh `dlm_id` — two users running `dlm init --template coding-tutor`
+3. When the template's `recommended_base` is gated, require the caller
+   to pass `accept_license=True` — apply_template refuses otherwise
+   (audit-09 m2: makes the license contract first-class rather than
+   something the surrounding `init_cmd` happens to handle).
+4. Mint a fresh `dlm_id` — two users running `dlm init --template coding-tutor`
    must get distinct stores, never collide on the bundled ULID.
-4. Serialize the updated frontmatter + body to the target path.
+5. Serialize the updated frontmatter + body to the target path.
 
 Refuses to overwrite unless the caller passes `force=True`.
+
+**License contract.** `apply_template` itself does not persist the
+license acceptance record — that happens in the store manifest, which
+is the caller's responsibility (see `dlm init` in `dlm.cli.commands`).
+But `apply_template` DOES enforce at call time that a caller applying
+a template with a gated base has explicitly opted in via
+`accept_license=True`. Future callers outside `init_cmd` cannot
+silently skip the license step without hitting a `TemplateApplyError`.
 """
 
 from __future__ import annotations
@@ -39,6 +51,7 @@ def apply_template(
     *,
     force: bool = False,
     gallery_dir: Path | None = None,
+    accept_license: bool = False,
 ) -> ApplyResult:
     """Write a new `.dlm` at `target` based on the named gallery template.
 
@@ -48,6 +61,12 @@ def apply_template(
 
     Refuses when `target` exists and `force` is False. Never overwrites
     silently — same policy as `dlm init` without `--template`.
+
+    When the template's `recommended_base` is gated (Llama-3.2 family,
+    Qwen2.5-3B, …), the caller MUST pass `accept_license=True` — the
+    CLI does this after prompting or via `--i-accept-license`. This
+    enforces the license-acceptance contract at the template boundary
+    rather than relying on the caller's surrounding orchestration.
     """
     if target.exists() and not force:
         raise TemplateApplyError(
@@ -55,6 +74,31 @@ def apply_template(
         )
 
     template = load_template(name, gallery_dir=gallery_dir)
+
+    # Enforce the license contract at the template boundary. We resolve
+    # the recommended_base just far enough to check `is_gated`; actual
+    # acceptance persistence happens in the caller's manifest write.
+    from dlm.base_models import GatedModelError
+    from dlm.base_models import resolve as resolve_base_model
+    from dlm.base_models.license import is_gated
+
+    try:
+        spec = resolve_base_model(
+            template.meta.recommended_base,
+            accept_license=accept_license,
+        )
+    except GatedModelError as exc:
+        raise TemplateApplyError(
+            f"template {name!r} uses gated base "
+            f"{template.meta.recommended_base!r}; pass accept_license=True "
+            "after obtaining upstream license acceptance"
+        ) from exc
+    if is_gated(spec) and not accept_license:
+        raise TemplateApplyError(
+            f"template {name!r} uses gated base {spec.key!r}; "
+            "pass accept_license=True"
+        )
+
     parsed = parse_text(template.dlm_text)
 
     fresh_id = mint_ulid()

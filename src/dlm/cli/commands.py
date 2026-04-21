@@ -86,16 +86,17 @@ def init_cmd(
     # pass both a template and an explicit --base get a warning but the
     # template still wins (the template body was authored against its
     # recommended base).
-    applied_result = None
     if template is not None:
-        from dlm.templates import TemplateError, apply_template
+        from dlm.templates import load_template
 
+        # Peek at the template's recommended base WITHOUT writing
+        # anything yet, so we can handle the license prompt against the
+        # right base (the template's, not `--base`) before committing.
         try:
-            applied_result = apply_template(template, path, force=force)
-        except TemplateError as exc:
+            resolved_base = load_template(template).meta.recommended_base
+        except Exception as exc:
             console.print(f"[red]init:[/red] {exc}")
             raise typer.Exit(code=1) from exc
-        resolved_base = applied_result.template.meta.recommended_base
         if base != "qwen2.5-1.5b" and base != resolved_base:
             console.print(
                 f"[yellow]init:[/yellow] --base {base} ignored; template "
@@ -128,6 +129,22 @@ def init_cmd(
             accept_license=True,
             skip_export_probes=skip_export_probes,
         )
+
+    # NOW apply the template — license has already been accepted (either
+    # by --i-accept-license or interactive prompt), so pass the
+    # acceptance through. apply_template enforces the license contract
+    # at its boundary (audit-09 m2).
+    applied_result = None
+    if template is not None:
+        from dlm.templates import TemplateError, apply_template
+
+        try:
+            applied_result = apply_template(
+                template, path, force=force, accept_license=True
+            )
+        except TemplateError as exc:
+            console.print(f"[red]init:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
 
     # Record the license acceptance (or None for non-gated specs). We
     # know `resolve_base_model` already validated the flag/prompt chain
