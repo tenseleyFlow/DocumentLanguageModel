@@ -1511,19 +1511,60 @@ def _dispatch_vl_snapshot_export(
 ) -> None:
     """Route a VL spec through the HF-snapshot export path.
 
-    Emits a banner explaining why GGUF is unavailable for the base's
-    modality, warns on GGUF-specific flags the user supplied, then
-    runs `run_vl_snapshot_export` and prints the resulting layout.
+    Probes the vendored llama.cpp for arch coverage; emits a banner
+    naming the verdict (SUPPORTED/PARTIAL/UNSUPPORTED) + the tag. On
+    SUPPORTED the GGUF path would emit today, but that emitter is a
+    follow-up (tracked by the sprint 35.4 doc) so all three verdicts
+    currently fall through to HF-snapshot with distinct messaging.
+
+    Warns on GGUF-specific flags the user supplied, runs
+    `run_vl_snapshot_export`, prints the resulting layout.
     """
     import typer
 
-    from dlm.export.errors import ExportError
+    from dlm.export.arch_probe import SupportLevel, probe_gguf_arch
+    from dlm.export.errors import ExportError, VendoringError
     from dlm.export.vl_snapshot import run_vl_snapshot_export
 
-    console.print(
-        f"[yellow]export:[/yellow] base {spec.key!r} is vision-language; "
-        "emitting HF-snapshot (GGUF deferred to Sprint 35.4)."
-    )
+    try:
+        verdict = probe_gguf_arch(spec.architecture)
+    except VendoringError as exc:
+        # Vendored tree missing / unreadable — surface the vendoring
+        # message but don't block the snapshot path: it doesn't need
+        # llama.cpp at all.
+        console.print(
+            f"[yellow]export:[/yellow] llama.cpp probe unavailable ({exc}); "
+            "falling back to HF-snapshot without a GGUF verdict."
+        )
+        verdict = None
+
+    if verdict is None or verdict.support is SupportLevel.UNSUPPORTED:
+        tag_note = (
+            f"at tag={verdict.llama_cpp_tag or 'unknown'} "
+            if verdict is not None
+            else ""
+        )
+        console.print(
+            f"[yellow]export:[/yellow] base {spec.key!r} "
+            f"(arch={spec.architecture}) is not covered by the vendored "
+            f"llama.cpp {tag_note}— emitting HF-snapshot. Run "
+            "`scripts/bump-llama-cpp.sh` to pull a newer tag if upstream "
+            "has added support, or ship this adapter as a snapshot."
+        )
+    elif verdict.support is SupportLevel.PARTIAL:
+        console.print(
+            f"[yellow]export:[/yellow] base {spec.key!r} has PARTIAL "
+            f"llama.cpp coverage (vision tower ships as mmproj sidecar). "
+            "Emitting HF-snapshot for now — single-file GGUF emission "
+            "for split VL archs is tracked by sprint 35.4."
+        )
+    else:  # SUPPORTED
+        console.print(
+            f"[yellow]export:[/yellow] base {spec.key!r} is SUPPORTED by "
+            f"llama.cpp (tag={verdict.llama_cpp_tag or 'unknown'}); GGUF "
+            "emitter for VL adapters is tracked by sprint 35.4. Emitting "
+            "HF-snapshot today."
+        )
     if quant is not None or merged or adapter_mix_raw is not None:
         console.print(
             "[yellow]export:[/yellow] ignoring GGUF-only flags "
