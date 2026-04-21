@@ -482,6 +482,20 @@ def train_cmd(
             ),
         ),
     ] = 0,
+    no_cache: Annotated[
+        bool,
+        typer.Option(
+            "--no-cache",
+            help=(
+                "Opt out of the tokenized-section cache for this run. By "
+                "default, `dlm train` pre-tokenizes directive-sourced rows "
+                "via ~/.dlm/store/<id>/tokenized-cache/ so subsequent runs "
+                "on the same corpus skip re-tokenization. Use this to "
+                "bypass the cache for debugging or to compare cached vs "
+                "uncached training determinism."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
     import sys
@@ -555,6 +569,15 @@ def train_cmd(
         lock_mode = "update"
     elif ignore_lock:
         lock_mode = "ignore"
+
+    # Sprint 31.5: `--no-cache` bypasses the tokenized-section cache for
+    # this run. Plumbed as an env var because the trainer's pre-tokenize
+    # helper already reads one — the CLI flag is a discoverable surface
+    # over the same switch. Rolling the flag into `TrainingPlan` is a
+    # deferred refactor; the env var is sufficient for the user-facing
+    # contract and survives `accelerate launch` re-invocations.
+    if no_cache:
+        os.environ["DLM_DISABLE_TOKENIZED_CACHE"] = "1"
 
     if policy not in ("permissive", "strict"):
         console.print(
