@@ -22,7 +22,7 @@ _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 # Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
 _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 6
+CURRENT_SCHEMA_VERSION: Final[int] = 7
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same

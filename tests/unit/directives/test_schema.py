@@ -13,8 +13,8 @@ from dlm.directives.schema import DlmTrainingConfig
 from dlm.doc.schema import CURRENT_SCHEMA_VERSION, SourceDirective, TrainingConfig
 
 
-def test_current_schema_is_v6() -> None:
-    assert CURRENT_SCHEMA_VERSION == 6
+def test_current_schema_is_v7() -> None:
+    assert CURRENT_SCHEMA_VERSION == 7
 
 
 def test_source_directive_defaults() -> None:

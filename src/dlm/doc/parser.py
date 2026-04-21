@@ -32,6 +32,14 @@ from dlm.doc.sections import Section, SectionType
 from dlm.doc.versioned import validate_versioned
 from dlm.io.text import read_text
 
+# Schema v7 marker: sections written back by `dlm harvest` carry a
+# magic-comment first line inside the fenced section body. The parser
+# recognizes it and moves the metadata to `Section.auto_harvest` +
+# `Section.harvest_source`; it is not user-authored content.
+_HARVEST_MARKER_RE: Final[re.Pattern[str]] = re.compile(
+    r'^<!-- dlm-auto-harvest: source="([^"]*)" -->$'
+)
+
 # --- public surface -----------------------------------------------------------
 
 
@@ -181,7 +189,21 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
     current_start_line = body_start_line
 
     def flush() -> None:
-        content = "\n".join(current_lines)
+        # Schema v7: non-PROSE sections may carry a harvest marker as
+        # the first body line. Lift it into Section fields before the
+        # content hash sees it, so a harvested section's `section_id`
+        # matches a hand-authored section with identical content —
+        # provenance is metadata, not identity.
+        lines_for_content = list(current_lines)
+        auto_harvest = False
+        harvest_source: str | None = None
+        if current_type != SectionType.PROSE and lines_for_content:
+            marker_match = _HARVEST_MARKER_RE.match(lines_for_content[0])
+            if marker_match:
+                auto_harvest = True
+                harvest_source = marker_match.group(1)
+                lines_for_content = lines_for_content[1:]
+        content = "\n".join(lines_for_content)
         # Elide empty PROSE sections (no content at all).
         if current_type == SectionType.PROSE and not content.strip() and not current_lines:
             return
@@ -194,6 +216,8 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
                 content=content,
                 start_line=current_start_line,
                 adapter=current_adapter,
+                auto_harvest=auto_harvest,
+                harvest_source=harvest_source,
             ),
         )
 

@@ -220,4 +220,12 @@ def _serialize_section(section: Section) -> str:
     body = section.content
     if body and not body.endswith("\n"):
         body += "\n"
+    # Schema v7: auto-harvested sections carry a magic-comment marker
+    # immediately after the fence. Parser lifts it back into
+    # `Section.auto_harvest` + `Section.harvest_source`; emitting it
+    # here keeps the round-trip symmetric.
+    if section.auto_harvest:
+        source = section.harvest_source or ""
+        marker = f'<!-- dlm-auto-harvest: source="{source}" -->\n'
+        return fence + marker + body
     return fence + body

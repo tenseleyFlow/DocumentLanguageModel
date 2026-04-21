@@ -62,6 +62,12 @@ class Section:
     sway probes) read these; the trainer's row-production path
     ignores them. Like `adapter`, tags are **not** part of `section_id`
     — metadata churn doesn't invalidate replay identity.
+
+    `auto_harvest` marks a section as written back into the `.dlm` by
+    `dlm harvest` — the pull-mode that ingests failing probes from a
+    sway report (schema v7). `harvest_source` records the source run
+    ("run_N_sway"-style opaque token) for provenance. Like `tags`,
+    neither field participates in `section_id`.
     """
 
     type: SectionType
@@ -69,6 +75,8 @@ class Section:
     start_line: int = 0
     adapter: str | None = None
     tags: Mapping[str, str] = field(default_factory=lambda: _EMPTY_TAGS)
+    auto_harvest: bool = False
+    harvest_source: str | None = None
 
     @property
     def section_id(self) -> str:
