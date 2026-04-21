@@ -1834,6 +1834,7 @@ def show_cmd(
         raise typer.Exit(code=1) from exc
 
     training_cache = _summarize_training_cache(store.tokenized_cache_dir, store.root)
+    gate = _summarize_gate(store)
 
     if json_out:
         payload_full = _inspection_to_dict(inspection)
@@ -1843,6 +1844,8 @@ def show_cmd(
             payload_full["discovered_training_configs"] = discovered_configs
         if training_cache is not None:
             payload_full["training_cache"] = training_cache
+        if gate is not None:
+            payload_full["gate"] = gate
         # Write JSON to raw stdout — Rich's Console wraps lines at the
         # terminal width and would corrupt the JSON.
         sys.stdout.write(_json.dumps(payload_full, indent=2, default=str) + "\n")
@@ -1853,6 +1856,8 @@ def show_cmd(
         _render_training_sources_text(out_console, training_sources)
     if training_cache is not None and training_cache.get("entry_count", 0):
         _render_training_cache_text(out_console, training_cache)
+    if gate is not None:
+        _render_gate_text(out_console, gate)
 
 
 def _inspection_to_dict(inspection: object) -> dict[str, object]:
@@ -2042,6 +2047,80 @@ def _summarize_training_cache(cache_dir: Path, store_root: Path) -> dict[str, ob
         "last_run_hit_rate": last.hit_rate if last else None,
         "last_run_id": last.run_id if last else None,
     }
+
+
+def _summarize_gate(store: object) -> dict[str, object] | None:
+    """Return a JSON-friendly snapshot of the learned adapter gate.
+
+    None when the store has no gate config (pre-Sprint-34 runs, or
+    `training.gate.enabled` was false). Reads two sources: the
+    on-disk `gate_config.json` for mode + adapter order, and the
+    metrics `gate_events` table for per-adapter mean weight from the
+    most recent run that recorded a gate.
+    """
+    import json as _json
+
+    from dlm.store.paths import StorePath
+    from dlm.train.gate.paths import gate_config_path
+
+    assert isinstance(store, StorePath)
+    cfg_path = gate_config_path(store)
+    if not cfg_path.exists():
+        return None
+
+    from dlm.metrics import queries as _queries
+    from dlm.train.gate.module import GateMetadata
+
+    raw = _json.loads(cfg_path.read_text(encoding="utf-8"))
+    meta = GateMetadata.from_json(raw)
+    events = _queries.latest_gate_events(store.root)
+    per_adapter: list[dict[str, object]] = []
+    run_id: int | None = None
+    if events:
+        run_id = events[0].run_id
+        per_adapter = [
+            {
+                "adapter_name": e.adapter_name,
+                "mean_weight": e.mean_weight,
+                "sample_count": e.sample_count,
+                "mode": e.mode,
+            }
+            for e in events
+        ]
+    else:
+        # No recorded events yet; fall back to the config so `dlm show`
+        # still reports that a gate exists and in which mode.
+        per_adapter = [{"adapter_name": name} for name in meta.adapter_names]
+    return {
+        "mode": meta.mode,
+        "adapter_names": list(meta.adapter_names),
+        "input_dim": meta.input_dim,
+        "hidden_proj_dim": meta.hidden_proj_dim,
+        "last_run_id": run_id,
+        "per_adapter": per_adapter,
+    }
+
+
+def _render_gate_text(console: object, snap: dict[str, object]) -> None:
+    from rich.console import Console
+
+    assert isinstance(console, Console)
+    mode = snap.get("mode", "?")
+    console.print(f"  adapter gate ({mode}):")
+    per_adapter = snap.get("per_adapter", [])
+    if isinstance(per_adapter, list):
+        for entry in per_adapter:
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("adapter_name", "?")
+            weight = entry.get("mean_weight")
+            count = entry.get("sample_count")
+            if weight is None:
+                console.print(f"    {name}  [dim](no recorded events)[/dim]")
+            else:
+                w = float(weight) if isinstance(weight, (int, float)) else 0.0
+                c = count if isinstance(count, int) else 0
+                console.print(f"    {name:<16}  weight={w:.3f}  samples={c}")
 
 
 def _render_training_cache_text(console: object, snap: dict[str, object]) -> None:
