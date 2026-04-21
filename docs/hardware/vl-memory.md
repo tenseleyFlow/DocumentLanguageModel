@@ -84,6 +84,30 @@ base in a `.dlm` frontmatter is the user's informed acknowledgment:
 the other two VL bases ship their class in transformers itself and
 do NOT set `trust_remote_code`.
 
+## llama.cpp GGUF support matrix (sprint 35.4)
+
+`dlm.export.arch_probe` scans the vendored `convert_hf_to_gguf.py`
+for each VL arch and classifies coverage. Current verdicts at tag
+**b8816** (cached in `vendor/llama_cpp_vl_arch_support.json`, refreshed
+by `scripts/bump-llama-cpp.sh bump <tag>`):
+
+| Base                      | Arch class                          | GGUF support |
+|---------------------------|-------------------------------------|:-------------|
+| paligemma-3b-mix-224      | PaliGemmaForConditionalGeneration   | UNSUPPORTED  |
+| qwen2-vl-2b-instruct      | Qwen2VLForConditionalGeneration     | SUPPORTED    |
+| internvl2-2b              | InternVLChatModel                   | UNSUPPORTED  |
+
+**UNSUPPORTED** means `dlm export` falls back to the HF-snapshot path
+with an actionable banner. **SUPPORTED** means the LM side converts
+cleanly (Qwen2-VL's vision tower ships separately via an mmproj
+sidecar — single-file GGUF for VL archs is still the upstream follow-
+up). **PARTIAL** (not yet seen for any registered base) would mean
+the probe found only an `MmprojModel` registration for the arch.
+
+Bump the vendored submodule (`scripts/bump-llama-cpp.sh bump <tag>`)
+to refresh these verdicts; the bump script re-runs the probe and
+rewrites the support JSON in the same commit.
+
 ## Refusal matrix
 
 `dlm doctor` refuses VL training on:

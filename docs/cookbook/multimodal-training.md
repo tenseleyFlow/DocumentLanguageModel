@@ -121,9 +121,29 @@ processor slots pixels into.
 
 ## Step 5 — Export
 
-Vision-language bases take the HF-snapshot path (GGUF conversion for
-VL archs is in flux upstream; Sprint 35.4 adds the GGUF gate when
-`llama.cpp`'s converter stabilizes):
+`dlm export` on a VL base probes the vendored llama.cpp for GGUF
+coverage of the base's arch class and routes to one of three paths:
+
+- **SUPPORTED** — llama.cpp's `convert_hf_to_gguf.py` registers the
+  arch (the LM side converts cleanly). The export path will emit
+  GGUF + an Ollama-compatible Modelfile once the single-file VL
+  emission hook lands in dlm. Today the dispatcher falls through to
+  HF-snapshot with a banner noting the status. Of the three
+  registered VL bases, only **qwen2-vl-2b-instruct** is SUPPORTED at
+  the current vendored tag.
+- **PARTIAL** — the arch is registered only on an `MmprojModel`
+  subclass; the vision tower converts but no single-file GGUF covers
+  the full VL model. Falls back to HF-snapshot with a PARTIAL banner.
+  None of the registered bases hit this verdict at the pinned tag.
+- **UNSUPPORTED** — llama.cpp doesn't know the arch at all. Falls
+  back to HF-snapshot with an actionable banner naming the arch
+  class and the vendored tag. **paligemma-3b-mix-224** and
+  **internvl2-2b** are UNSUPPORTED at the pinned tag.
+
+See [docs/hardware/vl-memory.md](../hardware/vl-memory.md#llamacpp-gguf-support-matrix-sprint-354)
+for the current support verdicts; bump the vendored tag with
+`scripts/bump-llama-cpp.sh bump <tag>` to refresh (the script re-runs
+the arch probe + rewrites the support JSON in the same commit).
 
 ```bash
 dlm export my-diagrams.dlm
@@ -189,9 +209,12 @@ support.
   Sprint 35.3 — use `--base qwen2-vl-2b-instruct` or `--base
   internvl2-2b`. See the base-selection section above.
 - **Audio.** Sprint 35.2 ships `::audio path="..." transcript="..."::`.
-- **GGUF export.** Sprint 35.4 adds `llama.cpp` arch detection + the
-  Ollama Modelfile emitter. Until then, HF-snapshot is the only
-  export target for VL.
+- **GGUF export.** Sprint 35.4 shipped the llama.cpp arch detection
+  + VL-aware Modelfile renderer. The final piece is the dlm-side
+  single-file GGUF emitter that actually invokes
+  `convert_hf_to_gguf.py` for a VL adapter; until that lands, even
+  SUPPORTED bases fall through to HF-snapshot. The dispatcher's
+  banner tells you which verdict your base hit.
 - **Multi-image in one section.** Each `::image::` fence carries one
   image; prompts can stack multiple `<image>` tokens by repeating
   `--image` on the CLI.
