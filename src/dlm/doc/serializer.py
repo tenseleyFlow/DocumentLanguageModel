@@ -247,6 +247,18 @@ def _serialize_section(section: Section) -> str:
         if not body.endswith("\n"):
             body += "\n"
         return body
+    if section.type == SectionType.IMAGE:
+        attrs: list[str] = []
+        if section.media_path is not None:
+            attrs.append(f'path="{section.media_path}"')
+        if section.media_alt is not None:
+            attrs.append(f'alt="{section.media_alt}"')
+        attr_blob = (" " + " ".join(attrs)) if attrs else ""
+        fence = f"::{section.type.value}{attr_blob}::\n"
+        body = section.content
+        if body and not body.endswith("\n"):
+            body += "\n"
+        return fence + body
     suffix = f"#{section.adapter}" if section.adapter else ""
     fence = f"::{section.type.value}{suffix}::\n"
     body = section.content

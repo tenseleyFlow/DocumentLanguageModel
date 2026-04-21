@@ -79,14 +79,33 @@ def parse_text(text: str, *, path: Path | None = None) -> ParsedDlm:
 
 _FRONTMATTER_DELIM: Final = "---"
 
-# A fence line is `::<type>::` or `::<type>#<adapter>::`.
+# A fence line is one of:
+#   `::<type>::`                      — bare fence
+#   `::<type>#<adapter>::`            — adapter-routed fence
+#   `::<type> key="val" key="val"::`  — attribute fence (IMAGE, schema v10+)
+#
 # - `<type>` is one of `SectionType` (validated in `_resolve_fence_type`).
 # - `<adapter>` matches the schema's adapter-name grammar: lowercase
 #   alpha start + `[a-z0-9_]` tail, ≤32 chars. Keeps store paths safe
 #   and log output readable.
+# - Attribute form values are double-quoted, ASCII-only, and cannot
+#   contain newlines (enforced at parse time). Currently only the
+#   IMAGE type uses attributes (`path`, `alt`); adding more is a
+#   compatible extension.
 _FENCE_RE: Final[re.Pattern[str]] = re.compile(r"^::([A-Za-z0-9_#-]+)::$")
+_ATTR_FENCE_RE: Final[re.Pattern[str]] = re.compile(
+    r'^::([a-z][a-z0-9_]*)((?:\s+[a-z][a-z0-9_]*="[^"\n]*")+)\s*::$'
+)
+_ATTR_KV_RE: Final[re.Pattern[str]] = re.compile(r'([a-z][a-z0-9_]*)="([^"\n]*)"')
 _ADAPTER_SUFFIX_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _CODE_FENCE_RE: Final[re.Pattern[str]] = re.compile(r"^```")
+
+# Per-type attribute grammar. Keys marked required must appear; unknown
+# keys raise a FenceError. Expanded by future multi-modal types.
+_FENCE_ATTR_SPEC: Final[dict[str, tuple[frozenset[str], frozenset[str]]]] = {
+    # IMAGE: `path` required, `alt` optional.
+    "image": (frozenset({"path"}), frozenset({"path", "alt"})),
+}
 
 
 def _split_frontmatter(text: str, *, path: Path | None) -> tuple[str, str, int]:
@@ -161,8 +180,9 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
     Rules:
 
     - Active type starts as PROSE.
-    - A fence line is exactly `^::<type>::$` with no surrounding
-      whitespace. Recognized types are the values of `SectionType`.
+    - A bare fence line is exactly `^::<type>::$` or `^::<type>#<adapter>::$`.
+    - An attribute fence line is `^::<type> key="val" ...::$` — currently
+      only IMAGE uses this form.
     - Unknown fences raise `FenceError`.
     - Triple-backtick code blocks (```...```) suppress fence
       interpretation for their contents.
@@ -185,6 +205,8 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
     in_code_block = False
     current_type = SectionType.PROSE
     current_adapter: str | None = None
+    current_media_path: str | None = None
+    current_media_alt: str | None = None
     current_lines: list[str] = []
     current_start_line = body_start_line
 
@@ -197,7 +219,7 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
         lines_for_content = list(current_lines)
         auto_harvest = False
         harvest_source: str | None = None
-        if current_type != SectionType.PROSE and lines_for_content:
+        if current_type not in (SectionType.PROSE, SectionType.IMAGE) and lines_for_content:
             marker_match = _HARVEST_MARKER_RE.match(lines_for_content[0])
             if marker_match:
                 auto_harvest = True
@@ -218,6 +240,8 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
                 adapter=current_adapter,
                 auto_harvest=auto_harvest,
                 harvest_source=harvest_source,
+                media_path=current_media_path,
+                media_alt=current_media_alt,
             ),
         )
 
@@ -231,13 +255,34 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
             continue
 
         if not in_code_block:
+            attr_match = _ATTR_FENCE_RE.match(line)
+            if attr_match:
+                fence_type, attrs = _resolve_attr_fence(attr_match, source_line, path)
+                flush()
+                current_type = fence_type
+                current_adapter = None
+                current_media_path = attrs.get("path")
+                current_media_alt = attrs.get("alt")
+                current_lines = []
+                current_start_line = source_line
+                continue
             match = _FENCE_RE.match(line)
             if match:
                 fence_name = match.group(1)
                 fence_type, fence_adapter = _resolve_fence_type(fence_name, source_line, path)
+                if fence_type in _FENCE_ATTR_SPEC:
+                    raise FenceError(
+                        f"fence '::{fence_name}::' requires attributes "
+                        f"(expected e.g. `::{fence_type.value} path=\"...\"::`)",
+                        path=path,
+                        line=source_line,
+                        col=1,
+                    )
                 flush()
                 current_type = fence_type
                 current_adapter = fence_adapter
+                current_media_path = None
+                current_media_alt = None
                 current_lines = []
                 current_start_line = source_line
                 continue
@@ -253,6 +298,76 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
 
     flush()
     return sections
+
+
+def _resolve_attr_fence(
+    match: re.Match[str], line: int, path: Path | None
+) -> tuple[SectionType, dict[str, str]]:
+    """Validate an attribute-form fence and return (type, attrs).
+
+    The attribute grammar is type-specific — `_FENCE_ATTR_SPEC` names
+    the required and allowed keys per type. Required-but-missing keys
+    and unknown keys raise `FenceError`; duplicate keys raise too so
+    `path="a" path="b"` can't silently pick one.
+    """
+    fence_name = match.group(1)
+    attr_blob = match.group(2)
+    try:
+        section_type = SectionType(fence_name)
+    except ValueError as exc:
+        raise FenceError(
+            f"unknown attribute fence '::{fence_name}...::'; attribute form "
+            f"is only valid for types {sorted(_FENCE_ATTR_SPEC)}",
+            path=path,
+            line=line,
+            col=1,
+        ) from exc
+    if fence_name not in _FENCE_ATTR_SPEC:
+        raise FenceError(
+            f"fence '::{fence_name}...::' does not take attributes",
+            path=path,
+            line=line,
+            col=1,
+        )
+    required, allowed = _FENCE_ATTR_SPEC[fence_name]
+
+    attrs: dict[str, str] = {}
+    for kv in _ATTR_KV_RE.finditer(attr_blob):
+        key = kv.group(1)
+        value = kv.group(2)
+        if key in attrs:
+            raise FenceError(
+                f"fence '::{fence_name}...::' repeats attribute {key!r}",
+                path=path,
+                line=line,
+                col=1,
+            )
+        if key not in allowed:
+            raise FenceError(
+                f"fence '::{fence_name}...::' has unknown attribute {key!r} "
+                f"(allowed: {sorted(allowed)})",
+                path=path,
+                line=line,
+                col=1,
+            )
+        if not value.isascii():
+            raise FenceError(
+                f"fence '::{fence_name}...::' attribute {key!r} contains non-ASCII characters",
+                path=path,
+                line=line,
+                col=1,
+            )
+        attrs[key] = value
+
+    missing = required - attrs.keys()
+    if missing:
+        raise FenceError(
+            f"fence '::{fence_name}...::' is missing required attribute(s) {sorted(missing)}",
+            path=path,
+            line=line,
+            col=1,
+        )
+    return section_type, attrs
 
 
 def _resolve_fence_type(name: str, line: int, path: Path | None) -> tuple[SectionType, str | None]:
