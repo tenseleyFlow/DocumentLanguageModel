@@ -1524,9 +1524,7 @@ def _emit_vl_snapshot(
     from dlm.export.errors import ExportError
     from dlm.export.vl_snapshot import run_vl_snapshot_export
 
-    if not skip_gguf_flag_warning and (
-        quant is not None or merged or adapter_mix_raw is not None
-    ):
+    if not skip_gguf_flag_warning and (quant is not None or merged or adapter_mix_raw is not None):
         console.print(
             "[yellow]export:[/yellow] ignoring GGUF-only flags "
             "(--quant / --merged / --adapter-mix) — they're not applicable "
