@@ -101,7 +101,12 @@ class TestMultimodalScaffold:
         from dlm.doc.sections import SectionType
 
         parsed = parse_file(doc)
-        assert parsed.frontmatter.dlm_version == 10
+        # The scaffold pins v10 (when IMAGE fence landed); schema-bump
+        # compatible, so parsing a v10 scaffold returns the current
+        # version (CURRENT_SCHEMA_VERSION) after the identity migrator
+        # runs. Assert `>= 10` so future v11/v12/… bumps don't regress
+        # this probe.
+        assert parsed.frontmatter.dlm_version >= 10
         assert parsed.frontmatter.base_model == "paligemma-3b-mix-224"
         types = [s.type for s in parsed.sections]
         assert SectionType.IMAGE in types
