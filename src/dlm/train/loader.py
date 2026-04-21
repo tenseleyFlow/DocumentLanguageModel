@@ -27,11 +27,15 @@ if TYPE_CHECKING:
 def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:  # pragma: no cover
     """Return an HF `PreTrainedModel` loaded per `plan`.
 
-    Covered by the slow-marked integration test in Sprint 09 rather
-    than unit tests: instantiating even a tiny HF model is >2 s.
-    """
-    from transformers import AutoModelForCausalLM
+    Text bases load via `AutoModelForCausalLM`; vision-language bases
+    (Sprint 35 v1) load via `AutoModelForImageTextToText`, which is the
+    modern AutoClass that replaces the deprecated `AutoModelForVision2Seq`.
+    Both share the quantization + dtype + attention wiring — the only
+    delta is the AutoClass itself.
 
+    Covered by the slow-marked integration test in Sprint 09 / 35 v1
+    rather than unit tests: instantiating even a tiny HF model is >2 s.
+    """
     dtype = _resolve_torch_dtype(plan.precision)
 
     kwargs: dict[str, Any] = {
@@ -43,7 +47,33 @@ def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:  # pragma: 
     if plan.use_qlora:
         kwargs["quantization_config"] = _build_bnb_config(plan)
 
+    if spec.modality == "vision-language":
+        from transformers import AutoModelForImageTextToText
+
+        return AutoModelForImageTextToText.from_pretrained(spec.hf_id, **kwargs)
+
+    from transformers import AutoModelForCausalLM
+
     return AutoModelForCausalLM.from_pretrained(spec.hf_id, **kwargs)
+
+
+def load_processor(spec: BaseModelSpec) -> Any:  # pragma: no cover
+    """Return the HF `ProcessorMixin` for a vision-language base.
+
+    Raises `ValueError` if called on a text-modality spec — callers
+    should branch on `spec.modality` before reaching this path. The
+    processor bundles the tokenizer + image processor + chat template
+    and is what TRL 1.2's `DataCollatorForVisionLanguageModeling`
+    consumes to generate pixel_values + input_ids on-the-fly.
+    """
+    if spec.modality != "vision-language":
+        raise ValueError(
+            f"load_processor: {spec.key!r} is modality='{spec.modality}'; "
+            "processors are only loaded for vision-language bases"
+        )
+    from transformers import AutoProcessor
+
+    return AutoProcessor.from_pretrained(spec.hf_id, revision=spec.revision)
 
 
 def _build_bnb_config(plan: TrainingPlan) -> Any:  # pragma: no cover
