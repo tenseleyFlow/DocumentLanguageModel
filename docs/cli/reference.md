@@ -320,6 +320,27 @@ dlm migrate <path> [--dry-run] [--no-backup]
 | `--dry-run` | false | Print the migrated frontmatter without writing. |
 | `--no-backup` | false | Skip the `.dlm.bak` backup. |
 
+### `dlm cache`
+
+Inspect and manage the per-store tokenized-section cache (Sprint 31).
+The cache speeds up re-training on directive-sourced codebases by
+keying tokenized output on `(section_id, tokenizer_sha, sequence_len)`.
+
+```
+dlm cache show <path> [--json]
+dlm cache prune <path> [--older-than DURATION]
+dlm cache clear <path> [--force]
+```
+
+| Subcommand | Notes |
+|---|---|
+| `show` | Print entry count, size on disk, last-run hit rate. `--json` for machine-readable output. |
+| `prune` | Delete entries not accessed within `--older-than` (e.g. `30d`, `12h`, `45m`). Default `90d`. |
+| `clear` | Wipe the entire cache. Prompts for confirmation unless `--force` is passed. |
+
+See `docs/cookbook/directive-cache.md` for tuning, invalidation
+triggers, and maintenance patterns.
+
 ## Exit codes
 
 | Code | Meaning |

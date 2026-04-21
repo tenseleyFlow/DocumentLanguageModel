@@ -78,6 +78,7 @@ nav:
       - Multi-source training: cookbook/multi-source-training.md
       - Train from a folder: cookbook/train-from-folder.md
       - Training across codebases: cookbook/training-across-codebases.md
+      - Tokenized-section cache: cookbook/directive-cache.md
   - Architecture: architecture.md
   - Determinism: determinism.md
   - Hardware:
