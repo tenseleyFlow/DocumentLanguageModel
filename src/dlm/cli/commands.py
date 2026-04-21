@@ -70,6 +70,17 @@ def init_cmd(
             ),
         ),
     ] = False,
+    audio: Annotated[
+        bool,
+        typer.Option(
+            "--audio",
+            help=(
+                "Scaffold an audio-language .dlm with an `::audio::` section. "
+                "Defaults --base to qwen2-audio-7b-instruct and skips GGUF "
+                "export probes (audio archs are not on llama.cpp's roadmap)."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Bootstrap a new .dlm file with sensible defaults."""
 
@@ -93,20 +104,35 @@ def init_cmd(
         )
         raise typer.Exit(code=1)
 
-    # --multimodal is mutually exclusive with --template (templates pin
-    # their own base + body shape; v1 doesn't ship a VL template yet).
+    # --multimodal / --audio are mutually exclusive with each other and
+    # with --template (templates pin their own base + body shape; v1
+    # doesn't ship media templates yet).
+    if multimodal and audio:
+        console.print(
+            "[red]init:[/red] --multimodal and --audio are mutually exclusive "
+            "(each targets a different modality)."
+        )
+        raise typer.Exit(code=2)
     if multimodal and template is not None:
         console.print(
             "[red]init:[/red] --multimodal and --template are mutually exclusive; "
             "v1 doesn't ship a VL template (see `dlm templates list`)."
         )
         raise typer.Exit(code=2)
+    if audio and template is not None:
+        console.print(
+            "[red]init:[/red] --audio and --template are mutually exclusive; "
+            "v1 doesn't ship an audio template (see `dlm templates list`)."
+        )
+        raise typer.Exit(code=2)
 
-    # --multimodal overrides the text-first --base default. A user who
-    # wants a different VL base (Qwen2-VL / InternVL2 land in Sprint 35.3)
-    # passes --base explicitly; we then verify the pick is VL below.
+    # --multimodal / --audio override the text-first --base default. A
+    # user who wants a different media base passes --base explicitly;
+    # we verify the pick is the right modality below.
     if multimodal and base == "qwen2.5-1.5b":
         base = "paligemma-3b-mix-224"
+    if audio and base == "qwen2.5-1.5b":
+        base = "qwen2-audio-7b-instruct"
 
     # --template resolves the base from the template's meta.yaml; the
     # --base default is kept for the no-template path only. Users who
@@ -132,10 +158,10 @@ def init_cmd(
     else:
         resolved_base = base
 
-    # VL bases can't clear the GGUF-conversion probes (Sprint 35.4 adds
-    # the arch-support gate). Force-skip them so the probe suite doesn't
-    # false-fail the init.
-    if multimodal:
+    # Media bases can't clear the GGUF-conversion probes (VL: Sprint 35.4;
+    # audio: not on llama.cpp's roadmap). Force-skip them so the probe
+    # suite doesn't false-fail the init.
+    if multimodal or audio:
         skip_export_probes = True
 
     try:
@@ -192,14 +218,21 @@ def init_cmd(
         else None
     )
 
-    # --multimodal requires a VL base. Check after resolve so users
-    # pointing at an unknown or text-only hf:org/name get a clear
-    # explanation rather than a schema error deep in parse time.
+    # Media flags require a matching-modality base. Check after resolve
+    # so users pointing at an unknown or wrong-modality hf:org/name get
+    # a clear explanation rather than a schema error deep in parse time.
     if multimodal and spec.modality != "vision-language":
         console.print(
             f"[red]init:[/red] --multimodal requires a vision-language base; "
             f"{spec.key!r} is modality='{spec.modality}'. "
             "Pick --base paligemma-3b-mix-224 or drop --multimodal."
+        )
+        raise typer.Exit(code=2)
+    if audio and spec.modality != "audio-language":
+        console.print(
+            f"[red]init:[/red] --audio requires an audio-language base; "
+            f"{spec.key!r} is modality='{spec.modality}'. "
+            "Pick --base qwen2-audio-7b-instruct or drop --audio."
         )
         raise typer.Exit(code=2)
 
@@ -209,6 +242,8 @@ def init_cmd(
         dlm_id = mint_ulid()
         if multimodal:
             _write_init_scaffold_multimodal(path, spec.key, dlm_id)
+        elif audio:
+            _write_init_scaffold_audio(path, spec.key, dlm_id)
         else:
             _write_init_scaffold(path, spec.key, dlm_id)
 
@@ -352,6 +387,41 @@ What is in this image?
 
 ### A
 Describe what the image shows.
+"""
+    path.write_text(scaffold, encoding="utf-8")
+
+
+def _write_init_scaffold_audio(path: Path, base_model_key: str, dlm_id: str) -> None:
+    """Write an audio-shaped .dlm file at `path` (Sprint 35.2).
+
+    Body shows the `::audio::` attribute fence with the sibling-
+    transcript-friendly `transcript="..."` form so users see the v11
+    grammar on first open. The placeholder path `clips/your-clip.wav`
+    is deliberately non-existent — first `dlm train` refuses with a
+    clear file-missing error rather than silently training on an inert
+    sample.
+
+    `dlm_version: 11` because AUDIO sections require schema v11.
+    """
+    scaffold = f"""---
+dlm_id: {dlm_id}
+dlm_version: 11
+base_model: {base_model_key}
+---
+
+# Your document title
+
+Write prose here. It will train via continued pretraining (CPT) loss.
+
+::audio path="clips/your-clip.wav" transcript="Transcript of the audio clip."::
+
+::instruction::
+
+### Q
+What was said in this recording?
+
+### A
+Describe what you hear in the audio.
 """
     path.write_text(scaffold, encoding="utf-8")
 
