@@ -7,11 +7,16 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
+import dlm.train.gate.orchestrator as gate_orchestrator
+import dlm.train.multi_adapter.trainer as multi_adapter_trainer
 from dlm.base_models import BASE_MODELS
 from dlm.doc.parser import ParsedDlm
 from dlm.doc.schema import (
     AdapterConfig,
     DlmFrontmatter,
+    GateConfig,
     TrainingConfig,
 )
 from dlm.doc.sections import Section, SectionType
@@ -56,13 +61,14 @@ def _mock_trainer_factory(**_: Any) -> MagicMock:
     return sft
 
 
-def _multi_adapter_parsed(dlm_id: str) -> ParsedDlm:
+def _multi_adapter_parsed(dlm_id: str, *, gate_enabled: bool = False) -> ParsedDlm:
     return ParsedDlm(
         frontmatter=DlmFrontmatter(
             dlm_id=dlm_id,
             base_model="smollm2-135m",
             training=TrainingConfig(
                 seed=42,
+                gate=GateConfig(enabled=gate_enabled),
                 adapters={
                     "knowledge": AdapterConfig(),
                     "tone": AdapterConfig(lora_r=4),
@@ -233,3 +239,142 @@ class TestMultiAdapterOrchestration:
         manifest = load_manifest(store.manifest)
         names = [r.adapter_name for r in manifest.training_runs]
         assert sorted(names, key=str) == ["knowledge", "tone"]
+
+
+class TestGatePass:
+    def test_enabled_gate_runs_post_sft_pass(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        dlm_id = "01HZ4X7TGZM3J1A2B3C4D5E6GC"
+        store = _seed_store(tmp_path, dlm_id)
+        parsed = _multi_adapter_parsed(dlm_id, gate_enabled=True)
+        seen: dict[str, object] = {}
+
+        def _fake_run_post_sft_gate(
+            store_arg: object,
+            parsed_arg: object,
+            *,
+            run_id: int,
+            recorder: object,
+            embed: object,
+            input_dim: int,
+            seed: int | None,
+        ) -> None:
+            seen.update(
+                {
+                    "store": store_arg,
+                    "parsed": parsed_arg,
+                    "run_id": run_id,
+                    "recorder": recorder,
+                    "embed": embed,
+                    "input_dim": input_dim,
+                    "seed": seed,
+                }
+            )
+
+        def _embed(prompt: str) -> str:
+            return prompt.upper()
+
+        monkeypatch.setattr(gate_orchestrator, "run_post_sft_gate", _fake_run_post_sft_gate)
+        results = run_all(
+            store,
+            parsed,
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            mode="fresh",
+            trainer_factory=_mock_trainer_factory,
+            gate_embed_factory=lambda: (_embed, 7),
+        )
+        assert seen["store"] == store
+        assert isinstance(seen["recorder"], object)
+        assert seen["parsed"] == parsed
+        assert seen["run_id"] == results[-1].run_id
+        assert callable(seen["embed"])
+        assert seen["input_dim"] == 7
+        assert seen["seed"] is None
+
+    def test_gate_embedder_failure_is_logged(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        dlm_id = "01HZ4X7TGZM3J1A2B3C4D5E6GD"
+        store = _seed_store(tmp_path, dlm_id)
+        caplog.set_level("WARNING")
+
+        def _boom_factory() -> tuple[object, int]:
+            raise RuntimeError("boom")
+
+        run_all(
+            store,
+            _multi_adapter_parsed(dlm_id, gate_enabled=True),
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            mode="fresh",
+            trainer_factory=_mock_trainer_factory,
+            gate_embed_factory=_boom_factory,
+        )
+        assert "gate: embedder setup failed" in caplog.text
+
+    def test_gate_training_failure_is_logged(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        dlm_id = "01HZ4X7TGZM3J1A2B3C4D5E6GE"
+        store = _seed_store(tmp_path, dlm_id)
+        caplog.set_level("WARNING")
+
+        def _raising_gate(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("gate boom")
+
+        def _embed(prompt: str) -> str:
+            return prompt
+
+        monkeypatch.setattr(gate_orchestrator, "run_post_sft_gate", _raising_gate)
+        run_all(
+            store,
+            _multi_adapter_parsed(dlm_id, gate_enabled=True),
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            mode="fresh",
+            trainer_factory=_mock_trainer_factory,
+            gate_embed_factory=lambda: (_embed, 4),
+        )
+        assert "gate: post-SFT pass failed" in caplog.text
+
+
+class TestResolveGateEmbedder:
+    def test_factory_path_is_used(self) -> None:
+        def _embed(prompt: str) -> str:
+            return prompt
+
+        resolved, input_dim = multi_adapter_trainer._resolve_gate_embedder(
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            lambda: (_embed, 9),
+        )
+        assert resolved is _embed
+        assert input_dim == 9
+
+    def test_default_embedder_path_is_used_when_factory_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _embed(prompt: str) -> str:
+            return prompt
+
+        def _fake_default(spec: object, plan: object) -> tuple[object, int]:
+            return _embed, 11
+
+        monkeypatch.setattr(multi_adapter_trainer, "_default_embedder", _fake_default)
+        resolved, input_dim = multi_adapter_trainer._resolve_gate_embedder(
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            None,
+        )
+        assert resolved is _embed
+        assert input_dim == 11

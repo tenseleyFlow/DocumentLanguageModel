@@ -8,12 +8,14 @@ from typing import Any
 
 import pytest
 
+import dlm.train.gate.orchestrator as gate_orchestrator
 from dlm.doc.parser import ParsedDlm
 from dlm.doc.schema import AdapterConfig, DlmFrontmatter, GateConfig, TrainingConfig
 from dlm.doc.sections import Section, SectionType
 from dlm.metrics.events import RunStart
 from dlm.metrics.recorder import MetricsRecorder
 from dlm.store.paths import StorePath
+from dlm.train.gate.errors import GateTrainingError
 from dlm.train.gate.orchestrator import (
     GateProbe,
     probes_from_sections,
@@ -62,6 +64,16 @@ def _prose(content: str, *, adapter: str | None) -> Section:
     )
 
 
+def _preference(content: str, *, adapter: str | None) -> Section:
+    return Section(
+        type=SectionType.PREFERENCE,
+        content=content,
+        start_line=0,
+        adapter=adapter,
+        tags=MappingProxyType({}),
+    )
+
+
 def _parsed(sections: tuple[Section, ...], **fm_kwargs: object) -> ParsedDlm:
     return ParsedDlm(
         frontmatter=_frontmatter(**fm_kwargs),  # type: ignore[arg-type]
@@ -91,6 +103,11 @@ class TestProbesFromSections:
         )
         probes = probes_from_sections(_parsed((_instruction(body, adapter="b"),)))
         assert probes[0].prompt == "First question?"
+
+    def test_extracts_preference_prompt(self) -> None:
+        body = "### Prompt\nWhich answer is better?\n### Chosen\nA\n### Rejected\nB\n"
+        probes = probes_from_sections(_parsed((_preference(body, adapter="b"),)))
+        assert probes == [GateProbe(adapter_name="b", prompt="Which answer is better?")]
 
     def test_unparseable_instruction_is_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
         probes = probes_from_sections(_parsed((_instruction("no Q/A pairs here", adapter="a"),)))
@@ -241,6 +258,33 @@ class TestRunPostSftGate:
             )
         assert rows["a"] == pytest.approx(result.per_adapter_mean_weight["a"])
         assert rows["b"] == pytest.approx(result.per_adapter_mean_weight["b"])
+
+    def test_gate_training_error_returns_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        parsed = _parsed(
+            (
+                _prose("alpha", adapter="a"),
+                _prose("beta", adapter="b"),
+            )
+        )
+        store = StorePath(root=tmp_path)
+        store.ensure_layout()
+        recorder = MetricsRecorder(tmp_path)
+
+        def _raise_gate_error(*args: object, **kwargs: object) -> None:
+            raise GateTrainingError("boom")
+
+        monkeypatch.setattr(gate_orchestrator, "train_gate", _raise_gate_error)
+        result = run_post_sft_gate(
+            store,
+            parsed,
+            run_id=1,
+            recorder=recorder,
+            embed=lambda _p: _tensor(4),
+            input_dim=4,
+        )
+        assert result is None
 
 
 def _tensor(d: int) -> Any:
