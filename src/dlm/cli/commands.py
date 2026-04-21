@@ -937,6 +937,18 @@ def prompt_cmd(
             ),
         ),
     ] = None,
+    gate: Annotated[
+        str,
+        typer.Option(
+            "--gate",
+            help=(
+                "Learned adapter gate (Sprint 34). `auto` (default) uses the "
+                "gate when one exists in the store; `off` forces uniform "
+                "weights across declared adapters. Ignored when --adapter "
+                "explicitly pins a single adapter."
+            ),
+        ),
+    ] = "auto",
     backend: Annotated[
         str,
         typer.Option(
@@ -990,6 +1002,15 @@ def prompt_cmd(
                 f"[red]prompt:[/red] --adapter {adapter!r} is not declared (declared: {declared})."
             )
             raise typer.Exit(code=2)
+
+    if gate not in ("auto", "off"):
+        console.print(f"[red]prompt:[/red] --gate must be `auto` or `off`, got {gate!r}.")
+        raise typer.Exit(code=2)
+    # --adapter explicitly pins a single adapter — gate routing is moot.
+    # We silently ignore --gate in that case (the flag has a non-default
+    # value only when the user cares, and pairing it with --adapter is
+    # not an error, just a no-op).
+
     store = for_dlm(parsed.frontmatter.dlm_id)
     already_accepted = _previously_accepted(store.manifest)
     try:
