@@ -51,7 +51,9 @@ class PinnedVersions(TypedDict, total=False):
 
     Used on resume to detect drift. Missing keys are treated as
     "unknown, don't warn"; present keys that differ trigger a
-    `VersionDriftWarning`.
+    `VersionDriftWarning`. `sway` is recorded when the differential-
+    testing sibling is installed in the same venv so operators can
+    trace which harness produced the reports that drove the run.
     """
 
     torch: str
@@ -59,6 +61,7 @@ class PinnedVersions(TypedDict, total=False):
     peft: str
     trl: str
     bitsandbytes: str | None
+    sway: str | None
 
 
 class TrainingState(TypedDict):
@@ -223,4 +226,8 @@ def capture_runtime_versions() -> PinnedVersions:
             versions[name] = v
     bnb = _v("bitsandbytes")
     versions["bitsandbytes"] = bnb
+    # sway is an optional sibling — probe but don't require. `None`
+    # semantics match bitsandbytes: install-site absence is recorded
+    # explicitly so resume-side drift doesn't false-positive.
+    versions["sway"] = _v("sway")
     return versions

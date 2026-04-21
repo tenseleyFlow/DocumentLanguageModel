@@ -174,3 +174,10 @@ class TestCaptureRuntimeVersions:
         versions = capture_runtime_versions()
         # Value may be None on Apple Silicon (bnb not installed) — but key exists.
         assert "bitsandbytes" in versions
+
+    def test_sway_key_present_even_if_none(self) -> None:
+        """Same shape as bitsandbytes: key always present, `None` when sway is
+        not installed in this venv. Records which probe harness produced the
+        reports that drove the run."""
+        versions = capture_runtime_versions()
+        assert "sway" in versions
