@@ -22,6 +22,26 @@ from dlm.data.instruction_parser import parse_instruction_body
 from dlm.data.preference_parser import parse_preference_body
 from dlm.doc.sections import Section, SectionType
 
+_PROBE_MARKER = "!probe"
+_PROBE_HEADER = f"### Q {_PROBE_MARKER}"
+
+
+def _normalize_probe_markers(body: str) -> str:
+    """Rewrite `### Q !probe` → `### Q` so the strict parser accepts it.
+
+    Mirrors `dlm.eval.probes._normalize_probe_markers` (kept local to
+    avoid a data → eval import). Probe-marked Q/A pairs still train
+    exactly like plain pairs; the marker is only load-bearing for probe
+    extraction. We drop it silently here rather than leak `!probe:` into
+    the training question text.
+    """
+    if _PROBE_HEADER not in body:
+        return body
+    lines = body.splitlines()
+    rewritten = [("### Q" if line.strip() == _PROBE_HEADER else line) for line in lines]
+    return "\n".join(rewritten)
+
+
 Row = dict[str, Any]
 
 
@@ -48,7 +68,8 @@ def _section_to_rows(section: Section) -> list[Row]:
         return [{"text": text, "_dlm_section_id": sid}]
 
     if section.type is SectionType.INSTRUCTION:
-        pairs = parse_instruction_body(section.content, section_id=sid)
+        body = _normalize_probe_markers(section.content)
+        pairs = parse_instruction_body(body, section_id=sid)
         return [
             {
                 "messages": [
