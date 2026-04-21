@@ -10,7 +10,9 @@ import pytest
 
 from dlm.export.ollama.binary import (
     OLLAMA_MIN_VERSION,
+    OLLAMA_VL_MIN_VERSION,
     check_ollama_version,
+    check_vl_ollama_version,
     locate_ollama,
     ollama_version,
 )
@@ -150,3 +152,28 @@ class TestMinVersionGate:
             return_value=bumped,
         ):
             assert check_ollama_version(binary=fake) == bumped
+
+
+class TestVlMinVersionGate:
+    def test_below_vl_minimum_raises(self, tmp_path: Path) -> None:
+        fake = tmp_path / "ollama"
+        fake.write_text("")
+        with (
+            patch(
+                "dlm.export.ollama.binary.ollama_version",
+                return_value=(0, 3, 99),
+            ),
+            pytest.raises(OllamaVersionError) as excinfo,
+        ):
+            check_vl_ollama_version(binary=fake)
+        assert excinfo.value.detected == (0, 3, 99)
+        assert excinfo.value.required == OLLAMA_VL_MIN_VERSION
+
+    def test_exactly_vl_minimum_passes(self, tmp_path: Path) -> None:
+        fake = tmp_path / "ollama"
+        fake.write_text("")
+        with patch(
+            "dlm.export.ollama.binary.ollama_version",
+            return_value=OLLAMA_VL_MIN_VERSION,
+        ):
+            assert check_vl_ollama_version(binary=fake) == OLLAMA_VL_MIN_VERSION
