@@ -60,6 +60,7 @@ ADAPTER_DIR: Final = "adapter"
 REPLAY_DIR: Final = "replay"
 EXPORTS_DIR: Final = "exports"
 CACHE_DIR: Final = "cache"
+TOKENIZED_CACHE_DIR: Final = "tokenized-cache"
 LOGS_DIR: Final = "logs"
 
 # Under adapter/

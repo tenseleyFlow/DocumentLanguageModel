@@ -36,6 +36,7 @@ from dlm.store.layout import (
     REPLAY_CORPUS_FILENAME,
     REPLAY_DIR,
     REPLAY_INDEX_FILENAME,
+    TOKENIZED_CACHE_DIR,
     TRAINING_STATE_FILENAME,
     TRAINING_STATE_SHA_FILENAME,
 )
@@ -163,6 +164,16 @@ class StorePath:
     @property
     def cache(self) -> Path:
         return self.root / CACHE_DIR
+
+    @property
+    def tokenized_cache_dir(self) -> Path:
+        """Per-store tokenized-section cache (Sprint 31).
+
+        Lazy — `TokenizedCache.open` creates the subtree on first
+        use. Separate from `cache/` (which holds HF downloads) so
+        clearing one doesn't nuke the other.
+        """
+        return self.root / TOKENIZED_CACHE_DIR
 
     @property
     def logs(self) -> Path:
