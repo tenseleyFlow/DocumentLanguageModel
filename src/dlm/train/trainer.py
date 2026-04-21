@@ -453,6 +453,10 @@ def run(
             summary_path=str(summary_path),
         )
 
+    # Sprint 31.5: emit the tokenization event if the pre-tokenize pass
+    # fired. Best-effort through the recorder; swallowed on failure.
+    _maybe_record_tokenization(recorder=recorder, run_id=run_id, trainer=sft)
+
     recorder.record_run_end(RunEnd(run_id=run_id, status="ok"))
 
     return TrainingRunResult(
@@ -708,6 +712,24 @@ def _build_real_trainer(  # pragma: no cover
 
     sft_config = SFTConfig(**sft_config_kwargs)
 
+    # Sprint 31.5: pre-tokenize directive-sourced rows and hand TRL an
+    # ``input_ids``-bearing dataset. TRL's ``_prepare_dataset`` checks
+    # ``"input_ids" in column_names`` and skips its own chat-template /
+    # EOS / tokenize passes when true. Cache hits on subsequent runs
+    # skip the tokenizer call entirely — the whole point of Sprint 31.
+    train_ds, val_ds, tokenization_stats = _maybe_pretokenize_datasets(
+        train_ds=train_ds,
+        val_ds=val_ds,
+        parsed=parsed,
+        store=store,
+        tokenizer=tok_bringup.tokenizer,
+    )
+    # The ``formatting_func`` is only consulted on the non-pre-processed
+    # path. When we pre-tokenize, TRL skips it (and logs a warning if
+    # both are present). Drop it on the cached path to keep the logs
+    # clean and make the intent explicit.
+    use_formatting_func = tokenization_stats is None
+
     from dlm.eval import build_callback
 
     # Newer TRL releases (>=0.9) renamed `tokenizer` → `processing_class`.
@@ -715,9 +737,10 @@ def _build_real_trainer(  # pragma: no cover
         "model": peft_model,
         "processing_class": tok_bringup.tokenizer,
         "train_dataset": train_ds,
-        "formatting_func": make_formatting_func(tok_bringup.tokenizer),
         "args": sft_config,
     }
+    if use_formatting_func:
+        trainer_kwargs["formatting_func"] = make_formatting_func(tok_bringup.tokenizer)
     callbacks: list[Any] = []
     if has_val:
         trainer_kwargs["eval_dataset"] = val_ds
@@ -740,7 +763,133 @@ def _build_real_trainer(  # pragma: no cover
 
     if callbacks:
         trainer_kwargs["callbacks"] = callbacks
-    return SFTTrainer(**trainer_kwargs)
+    trainer = SFTTrainer(**trainer_kwargs)
+    # Attach stats so `run()` can emit `record_tokenization` once the
+    # training loop returns. Sprint 26's recorder already owns the
+    # event schema; this is the consumer side.
+    trainer._dlm_tokenization_stats = tokenization_stats  # type: ignore[attr-defined]
+    return trainer
+
+
+def _maybe_record_tokenization(
+    *,
+    recorder: Any,
+    run_id: int,
+    trainer: Any,
+) -> None:
+    """Emit a ``TokenizationEvent`` when the pre-tokenize pass fired.
+
+    Stats are attached to the trainer by ``_build_real_trainer`` (the
+    factory test-seam path skips this because no cache was consulted).
+    Errors are swallowed: metrics are best-effort.
+    """
+    stats = getattr(trainer, "_dlm_tokenization_stats", None)
+    if stats is None:
+        return
+    try:
+        from dlm.metrics import TokenizationEvent
+
+        recorder.record_tokenization(
+            TokenizationEvent(
+                run_id=run_id,
+                total_sections=stats.total_sections,
+                cache_hits=stats.cache_hits,
+                cache_misses=stats.cache_misses,
+                total_tokenize_seconds=stats.total_tokenize_seconds,
+                cache_bytes_after=stats.cache_bytes_after,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — metrics never fail a run
+        _LOG.warning("cache: record_tokenization failed (%s); swallowed", exc)
+
+
+def _maybe_pretokenize_datasets(  # pragma: no cover — real path is covered by slow tests
+    *,
+    train_ds: Any,
+    val_ds: Any,
+    parsed: ParsedDlm,
+    store: StorePath,
+    tokenizer: Any,
+) -> tuple[Any, Any, Any]:
+    """Pre-tokenize both datasets via the tokenized-section cache.
+
+    Returns ``(train_ds, val_ds, stats)``. ``stats`` is a
+    ``TokenizationStats`` when the cache path fired, or ``None`` when
+    we skipped (doc has no directive sources or the cache is disabled).
+
+    Gating rule: enable the cache only when the doc declares
+    ``training.sources`` — directive-sourced runs are where the
+    tokenize cost dominates. In-body-only docs fall through to TRL's
+    own tokenization path.
+
+    Best-effort: any failure drops back to the legacy path without
+    losing the run. The cache is a throughput optimization, not a
+    correctness contract.
+    """
+    training = parsed.frontmatter.training
+    if training.sources is None:
+        return train_ds, val_ds, None
+
+    # Opt-out escape hatch threaded from the CLI (Sprint 31.5 T5 wires
+    # the ``--no-cache`` flag as an env var fallback; once the plan
+    # struct carries the flag this reads from the plan instead).
+    import os
+
+    if os.environ.get("DLM_DISABLE_TOKENIZED_CACHE", "0") == "1":
+        return train_ds, val_ds, None
+
+    try:
+        from datasets import Dataset
+
+        from dlm.directives.cache import TokenizedCache
+        from dlm.train.tokenization import pretokenize_rows
+
+        cache = TokenizedCache.open(store.tokenized_cache_dir)
+        seq_len = training.sequence_len
+
+        train_rows = [dict(r) for r in train_ds]
+        val_rows = [dict(r) for r in val_ds] if len(val_ds) > 0 else []
+
+        tokenized_train, stats_train = pretokenize_rows(
+            train_rows, tokenizer=tokenizer, sequence_len=seq_len, cache=cache
+        )
+        if val_rows:
+            tokenized_val, stats_val = pretokenize_rows(
+                val_rows, tokenizer=tokenizer, sequence_len=seq_len, cache=cache
+            )
+        else:
+            tokenized_val = []
+            stats_val = None
+
+        # Persist manifest + fingerprint so the next run hits the entries
+        # we just populated.
+        from dlm.directives.cache_key import tokenizer_sha256
+
+        cache.save_manifest(tokenizer_sha=tokenizer_sha256(tokenizer))
+
+        # Combine stats across both datasets.
+        from dlm.train.tokenization import TokenizationStats
+
+        total = stats_train.total_sections + (stats_val.total_sections if stats_val else 0)
+        hits = stats_train.cache_hits + (stats_val.cache_hits if stats_val else 0)
+        misses = stats_train.cache_misses + (stats_val.cache_misses if stats_val else 0)
+        seconds = stats_train.total_tokenize_seconds + (
+            stats_val.total_tokenize_seconds if stats_val else 0.0
+        )
+        combined = TokenizationStats(
+            total_sections=total,
+            cache_hits=hits,
+            cache_misses=misses,
+            total_tokenize_seconds=seconds,
+            cache_bytes_after=cache.total_bytes,
+        )
+
+        new_train = Dataset.from_list(tokenized_train) if tokenized_train else train_ds
+        new_val = Dataset.from_list(tokenized_val) if tokenized_val else val_ds
+        return new_train, new_val, combined
+    except Exception as exc:  # noqa: BLE001 — best-effort optimization
+        _LOG.warning("cache: pre-tokenize pass failed (%s); falling back to TRL path", exc)
+        return train_ds, val_ds, None
 
 
 def _emit_vocab_gap_report(train_ds: Any, tokenizer: Any) -> None:  # pragma: no cover
