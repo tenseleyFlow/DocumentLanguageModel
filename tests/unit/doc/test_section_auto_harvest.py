@@ -16,7 +16,7 @@ from dlm.doc.serializer import serialize
 
 _FRONTMATTER = """---
 dlm_id: 01KPQ9X1000000000000000000
-dlm_version: 7
+dlm_version: 8
 base_model: smollm2-135m
 ---
 """
@@ -98,9 +98,9 @@ class TestHarvestIdentity:
 
 
 class TestSchemaVersionBump:
-    def test_parser_accepts_v7(self) -> None:
+    def test_parser_accepts_current(self) -> None:
         parsed = _parsed("::instruction::\n### Q\nhi?\n### A\nhello.\n")
-        assert parsed.frontmatter.dlm_version == 7
+        assert parsed.frontmatter.dlm_version == 8
 
     def test_v6_document_still_parses(self) -> None:
         """A v6 document without the new fields parses cleanly under v7

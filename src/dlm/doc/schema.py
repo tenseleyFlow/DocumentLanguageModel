@@ -22,7 +22,7 @@ _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 # Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
 _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 7
+CURRENT_SCHEMA_VERSION: Final[int] = 8
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
@@ -104,6 +104,36 @@ def _default_cpt() -> CptConfig:
     return CptConfig()
 
 
+class GateConfig(BaseModel):
+    """Learned MoE-style adapter gate (Sprint 34).
+
+    When `enabled`, a small MLP trained post-SFT routes each prompt to
+    a weighted combination of the document's named adapters. Applied
+    uniformly across adapter layers (per-layer routing is the research
+    follow-up).
+
+    `cold_start_floor` is the minimum number of supervising sections
+    per adapter below which gate training is skipped and inference
+    defaults to uniform weights — small corpora overfit a tiny router.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    hidden_proj_dim: int = Field(64, ge=8, le=2048)
+    steps: int = Field(200, ge=1, le=10000)
+    lr: float = Field(3e-4, gt=0.0, le=1.0)
+    cold_start_floor: int = Field(4, ge=1, le=1024)
+    # Entropy-regularization weight on the gate loss. Higher values
+    # discourage mode collapse (one adapter takes all the weight);
+    # lower values let the gate commit harder when data justifies it.
+    entropy_lambda: float = Field(0.01, ge=0.0, le=1.0)
+
+
+def _default_gate() -> GateConfig:
+    return GateConfig()
+
+
 class AdapterConfig(BaseModel):
     """One named adapter in a multi-adapter document.
 
@@ -182,6 +212,10 @@ class TrainingConfig(BaseModel):
     seed: int = 42
     preference: PreferenceConfig = Field(default_factory=_default_preference)
     cpt: CptConfig = Field(default_factory=_default_cpt)
+    # Learned adapter gate (Sprint 34). Only meaningful when `adapters`
+    # declares two or more named adapters — a gate over a single
+    # adapter is a tautology. Enforced at validate-time below.
+    gate: GateConfig = Field(default_factory=_default_gate)
     # Named adapters for multi-adapter composition. When set, the flat
     # `adapter`/`lora_*`/`target_modules`/`learning_rate` fields must
     # stay at their defaults — mixing the two shapes creates ambiguous
@@ -230,6 +264,16 @@ class TrainingConfig(BaseModel):
                     f"name (must match {_ADAPTER_NAME_RE.pattern})"
                 )
         return v
+
+    @model_validator(mode="after")
+    def _gate_requires_multiple_adapters(self) -> TrainingConfig:
+        if self.gate.enabled and (self.adapters is None or len(self.adapters) < 2):
+            raise ValueError(
+                "training.gate.enabled=true requires training.adapters "
+                "with two or more named adapters (a gate over a single "
+                "adapter has nothing to route between)"
+            )
+        return self
 
     @model_validator(mode="after")
     def _flat_and_named_are_mutually_exclusive(self) -> TrainingConfig:
