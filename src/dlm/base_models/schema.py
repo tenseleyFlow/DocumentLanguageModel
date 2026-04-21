@@ -109,6 +109,15 @@ class BaseModelSpec(BaseModel):
         ...,
         description="True iff the license allows bundling the base inside a .dlm.pack.",
     )
+    # trust_remote_code: `True` for bases whose HF class lives in the
+    # model's own repo (custom `modeling_*.py` files) rather than in
+    # transformers. Picking such a base as `base_model:` in a .dlm is
+    # the user's informed acknowledgment — the registry entry carries
+    # a docstring caveat, vl-memory.md + the cookbook flag it, and the
+    # loader only passes `trust_remote_code=True` to HF when this is
+    # `True` on the spec. Defaults to False so non-custom bases can
+    # never accidentally opt into remote code.
+    trust_remote_code: bool = False
 
     # Size + context hints.
     size_gb_fp16: float = Field(..., gt=0)
