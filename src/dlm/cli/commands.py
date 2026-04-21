@@ -1887,15 +1887,6 @@ def show_cmd(
         raise typer.Exit(code=1) from exc
 
     training_cache = _summarize_training_cache(store.tokenized_cache_dir, store.root)
-    # Sprint 31.6: surface the per-document cache config (intent)
-    # alongside `training_cache` (on-disk state). Intent survives even
-    # when nothing's been trained yet.
-    cache_cfg = parsed.frontmatter.training.cache
-    training_cache_config: dict[str, object] = {
-        "enabled": cache_cfg.enabled,
-        "max_bytes": cache_cfg.max_bytes,
-        "prune_older_than_days": cache_cfg.prune_older_than_days,
-    }
     gate = _summarize_gate(store)
 
     if json_out:
