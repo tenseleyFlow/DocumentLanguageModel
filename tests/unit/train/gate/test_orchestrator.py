@@ -271,6 +271,7 @@ class TestRunPostSftGate:
         store = StorePath(root=tmp_path)
         store.ensure_layout()
         recorder = MetricsRecorder(tmp_path)
+        recorder.record_run_start(RunStart(run_id=1, adapter_version=1, phase="sft", seed=42))
 
         def _raise_gate_error(*args: object, **kwargs: object) -> None:
             raise GateTrainingError("boom")
@@ -285,6 +286,16 @@ class TestRunPostSftGate:
             input_dim=4,
         )
         assert result is None
+
+        # Divergence emits one `mode="diverged"` GateEvent per declared
+        # adapter so `dlm show` surfaces the failure instead of silently
+        # skipping the gate.
+        from dlm.metrics import queries as _queries
+
+        events = _queries.gate_events_for_run(tmp_path, 1)
+        assert {e.adapter_name for e in events} == {"a", "b"}
+        assert all(e.mode == "diverged" for e in events)
+        assert all(e.mean_weight == 0.0 and e.sample_count == 0 for e in events)
 
 
 def _tensor(d: int) -> Any:
