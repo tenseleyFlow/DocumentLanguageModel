@@ -64,8 +64,11 @@ dlm cache prune /path/to/doc.dlm --older-than 30d   # 30 days
 dlm cache prune /path/to/doc.dlm --older-than 12h   # 12 hours
 ```
 
-Default cutoff is `90d`. Stale entries accumulate after tokenizer
-bumps or long breaks from a corpus — `prune` keeps disk bounded.
+Default cutoff is `90d`, overridable per-doc via
+`training.cache.prune_older_than_days` in the frontmatter. The CLI
+flag still wins when explicitly passed. Stale entries accumulate
+after tokenizer bumps or long breaks from a corpus — `prune` keeps
+disk bounded.
 
 **Clear everything** — nuclear option:
 
@@ -76,15 +79,53 @@ dlm cache clear /path/to/doc.dlm
 
 ## Tuning
 
-The cache caps at **10 GiB by default**. A 50K-file corpus
-tokenized at `sequence_len: 2048` is roughly 200 MB of int64 IDs, so
-the default fits many codebases. LRU eviction keeps it bounded:
-oldest-accessed entries go first, current-run entries are
+The cache caps at **10 GiB by default**. LRU eviction keeps it
+bounded: oldest-accessed entries go first, current-run entries are
 protected (a cold cache won't self-starve).
 
-Future knobs (not yet wired): `training.cache.max_bytes` in the
-frontmatter will let a single `.dlm` tune its own cap. Until then,
-caches are capped at the 10 GiB default.
+Override per-doc in the frontmatter:
+
+```yaml
+training:
+  cache:
+    enabled: true             # default; set false to always skip the cache
+    max_bytes: 2147483648     # 2 GiB — suits a tiny fixed corpus
+    prune_older_than_days: 30 # default cutoff for `dlm cache prune`
+```
+
+All three fields are optional; pre-v9 docs inherit the defaults via
+the Pydantic factory.
+
+## Sizing the cache
+
+Rough rule of thumb for a token cache entry: **one int64 tensor of
+shape `(sequence_len,)` per section**, plus a small attention mask,
+plus npz framing overhead. Budget ≈ `sequence_len × 8 bytes × 1.3`
+per section. A few worked examples:
+
+| Corpus | `sequence_len` | Per-entry | Entries | Steady-state size |
+|---|---|---|---|---|
+| 1K files | 2048 | ~21 KiB | ~1K | ~21 MiB |
+| 10K files | 2048 | ~21 KiB | ~10K | ~210 MiB |
+| 50K files | 2048 | ~21 KiB | ~50K | ~1 GiB |
+| 50K files | 8192 | ~85 KiB | ~50K | ~4 GiB |
+| 50K files | 32768 | ~340 KiB | ~50K | ~16 GiB (exceeds default cap) |
+
+If the steady-state size exceeds your `max_bytes`, LRU eviction
+keeps kicking fresh entries out on every run — defeating the cache.
+Either raise the cap or narrow the corpus with `--include` globs.
+
+**Suggested sizing policy:**
+
+- Corpus `< max_bytes / 2`: default 10 GiB is fine, no knob needed.
+- Corpus `~ max_bytes`: raise `max_bytes` to 2× steady-state, or
+  accept that older entries evict.
+- Corpus `>> max_bytes`: drop `sequence_len`, add `exclude` globs,
+  or set `enabled: false` and accept the re-tokenize cost.
+
+For a bounded-size project (fixtures, small codebase, tutorial),
+consider tightening `max_bytes` to something like 2 GiB — keeps disk
+footprint small and makes eviction a non-event.
 
 ## Invalidation triggers
 
@@ -162,9 +203,9 @@ the flag picks them back up. No frontmatter change required.
   codebase tokenize twice. A future sprint may add cross-store
   deduplication; v1 keeps caches per-store for simplicity.
 - **Disk pressure on huge corpora.** A 50K-file corpus at
-  `sequence_len: 8192` can hit the 10 GiB cap quickly. Either trim
-  via `--include` globs or plan for a `max_bytes` frontmatter knob
-  in a follow-up sprint.
+  `sequence_len: 8192` can hit the 10 GiB cap quickly. Raise
+  `training.cache.max_bytes`, trim via `--include` globs, or set
+  `enabled: false` and accept the re-tokenize cost.
 
 ## What ships today
 
@@ -181,10 +222,10 @@ the flag picks them back up. No frontmatter change required.
   against the reference tokenizer).
 - **`--no-cache` opt-out** on `dlm train` for debugging and
   determinism cross-checks.
+- **`training.cache` frontmatter knobs** — per-`.dlm` overrides for
+  `enabled`, `max_bytes`, and `prune_older_than_days`.
 
 Future follow-ups:
 
-- **`training.cache.max_bytes` frontmatter knob** — per-`.dlm`
-  tuning of the default 10 GiB cap (schema v8→v9).
 - **Distributed / cross-store cache sharing** — explicit non-goal
   today.
