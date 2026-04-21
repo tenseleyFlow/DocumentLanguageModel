@@ -186,10 +186,11 @@ disable_error_code = ["no-untyped-call"]
 testpaths = ["tests"]
 addopts = [
     "-ra",
-    "-m", "not slow and not gpu and not online",
+    "-m", "not slow and not gpu and not online and not vl",
 ]
 markers = [
     "slow: expensive; deselected by default",
     "gpu: requires CUDA; skipped on CPU/MPS runners",
     "online: touches the network; skipped in offline CI",
+    "vl: vision-language; requires a GPU + VL HF weights; deselected by default",
 ]
