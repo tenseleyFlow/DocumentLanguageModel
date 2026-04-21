@@ -12,10 +12,17 @@ Design choices:
 
 - Rows carry `audio_path` + `audio_blob_sha` (not decoded waveforms).
   This keeps the HF `Dataset` rows small and lets the collator decide
-  whether to decode per-batch or hit the cache. v1 decodes per-batch
-  via `soundfile` + hands the waveform to the HF processor; the cache
-  from `preprocess_audio` applies to the standalone inference path and
-  the slow integration test exercises both.
+  whether to decode per-batch or hit the cache.
+- The optional `WaveformCache` (Sprint 35.2 deferred-item follow-up)
+  memoizes the `soundfile decode → mono-mix → truncate` pipeline on
+  disk, keyed on `(blob_sha, sample_rate, max_length_ms)`. The HF
+  processor's feature extractor still runs every batch — caching its
+  output would require re-implementing Qwen2-Audio's text-expansion
+  logic (the processor derives per-audio placeholder counts from
+  `feature_attention_mask`). The waveform cache covers the step that
+  actually dominates per-batch CPU time on a small corpus (decoding
+  a 30 s .wav is a few hundred ms; re-running on every epoch adds
+  up).
 - Labels = `input_ids` with pad positions masked to `-100`. This is
   full-sequence training (the model predicts every non-pad token
   including the audio placeholder expansion). Instruction-tuning
@@ -40,6 +47,8 @@ from typing import Any
 
 import numpy as np
 
+from dlm.data.audio_cache import WaveformCache, WaveformCacheKey
+
 _LOG = logging.getLogger(__name__)
 
 _IGNORE_INDEX = -100  # HF convention — CrossEntropyLoss skips these positions
@@ -63,6 +72,10 @@ class AudioLmCollator:
     max_length:
         Optional token-length cap for the text side (post-expansion).
         `None` uses the processor's built-in limit.
+    waveform_cache:
+        Optional `WaveformCache` for memoizing decoded + mono-mixed
+        + truncated waveforms across training epochs. `None` decodes
+        fresh every batch (the pre-deferred behavior).
     """
 
     def __init__(
@@ -72,11 +85,14 @@ class AudioLmCollator:
         sample_rate: int,
         max_length_seconds: float,
         max_length: int | None = None,
+        waveform_cache: WaveformCache | None = None,
     ) -> None:
         self._processor = processor
         self._sample_rate = sample_rate
         self._max_length_seconds = max_length_seconds
         self._max_length = max_length
+        self._waveform_cache = waveform_cache
+        self._max_length_ms = int(round(max_length_seconds * 1000))
 
         tokenizer = getattr(processor, "tokenizer", None)
         if tokenizer is None:
@@ -103,7 +119,10 @@ class AudioLmCollator:
                     "AudioLmCollator: row is missing required keys "
                     f"({set(row.keys())}); expected audio_path + text"
                 )
-            waveforms.append(self._load_waveform(Path(row["audio_path"])))
+            blob_sha = row.get("audio_blob_sha")
+            waveforms.append(
+                self._load_waveform(Path(row["audio_path"]), blob_sha=blob_sha)
+            )
             texts.append(row["text"])
 
         # One processor call over the whole batch: it handles padding
@@ -127,13 +146,34 @@ class AudioLmCollator:
         batch["labels"] = labels
         return dict(batch)
 
-    def _load_waveform(self, path: Path) -> np.ndarray:
+    def _load_waveform(
+        self, path: Path, *, blob_sha: str | None = None
+    ) -> np.ndarray:
         """Decode one audio blob into a mono float32 waveform.
 
+        When `waveform_cache` is configured and `blob_sha` is provided,
+        hits the on-disk cache keyed on
+        `(blob_sha, sample_rate, max_length_ms)`. Cache miss → decode
+        via `soundfile`, mono-mix, truncate, populate cache.
+
         Refuses on sample-rate mismatch (same gate as
-        `preprocess_audio`). Truncates to the configured duration.
-        Stereo-to-mono by channel averaging.
+        `preprocess_audio`). Stereo-to-mono by channel averaging.
+        Truncates to the configured duration.
         """
+        # Cache lookup: only when both the cache is configured and the
+        # row carries a blob sha (rows built before Sprint 35.2 T7 may
+        # not have one; skip the cache rather than break them).
+        cache_key: WaveformCacheKey | None = None
+        if self._waveform_cache is not None and blob_sha is not None:
+            cache_key = WaveformCacheKey(
+                blob_sha=blob_sha,
+                sample_rate=self._sample_rate,
+                max_length_ms=self._max_length_ms,
+            )
+            hit = self._waveform_cache.get(cache_key)
+            if hit is not None:
+                return hit
+
         import soundfile as sf  # type: ignore[import-untyped]
 
         data, native_sr = sf.read(str(path), dtype="float32", always_2d=False)
@@ -150,4 +190,8 @@ class AudioLmCollator:
         max_samples = int(round(self._max_length_seconds * self._sample_rate))
         if mono.shape[0] > max_samples:
             mono = mono[:max_samples]
+
+        if cache_key is not None and self._waveform_cache is not None:
+            self._waveform_cache.put(cache_key, mono)
+
         return mono
