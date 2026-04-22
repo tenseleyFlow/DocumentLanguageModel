@@ -8,14 +8,14 @@ The formula deliberately trades accuracy for simplicity:
           + lora_state(r, alpha, target_modules_fraction)
           + safety_margin(20%)
 
-Accuracy targets (Sprint 05 DoD, audit F26):
+Accuracy targets:
 
 - within 30% of measured peak for SmolLM2-135M LoRA on CPU CI
 - within 40% for Qwen2.5-1.5B LoRA on CUDA CI (gpu-marked)
 
-The runtime OOM guard in Sprint 09 is the safety net; this estimator is
-advisory. The planner's job is to pick sane defaults — OOM is recoverable
-by the user bumping `grad_accum`.
+The runtime OOM guard is the safety net; this estimator is advisory.
+The planner's job is to pick sane defaults — OOM is recoverable by the
+user bumping `grad_accum`.
 """
 
 from __future__ import annotations

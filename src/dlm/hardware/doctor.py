@@ -43,14 +43,14 @@ def doctor(
 ) -> DoctorResult:
     """Probe capabilities, optionally resolve a reference plan.
 
-    The CLI calls this without a `training_config` (`dlm doctor`); Sprint
-    13 passes one through (`dlm doctor mydoc.dlm`). Either way, the
+    The CLI calls this without a `training_config` (`dlm doctor`); it
+    can also pass one through (`dlm doctor mydoc.dlm`). Either way, the
     capabilities are always reported; the plan is best-effort.
 
-    `world_size` (Sprint 23 / audit-08 M1) is threaded into
-    `resolve(...)` so `effective_batch_size = micro_batch × grad_accum
-    × world_size` reflects the multi-GPU reality in worker ranks.
-    The `dlm train` CLI detects the DDP world_size via
+    `world_size` is threaded into `resolve(...)` so
+    `effective_batch_size = micro_batch × grad_accum × world_size`
+    reflects the multi-GPU reality in worker ranks. The `dlm train`
+    CLI detects the DDP world_size via
     `dlm.train.distributed.detect_world_size()` and passes it here;
     single-process callers default to 1.
     """

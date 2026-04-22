@@ -1,8 +1,8 @@
 """Capabilities probe — everything the planner needs to know about the host.
 
 `probe()` is the single entry point that drives `dlm doctor` and
-Sprint 09's training-plan resolution. Every field is a simple scalar or
-a small mapping so it can be serialized to JSON without custom encoders.
+training-plan resolution. Every field is a simple scalar or a small
+mapping so it can be serialized to JSON without custom encoders.
 
 Determinism class (audit F20):
 
@@ -179,7 +179,7 @@ def _has_flash_attention(
     """FlashAttention 2 availability by backend + arch.
 
     - NVIDIA: `flash_attn` + SM ≥ 8.0 (Ampere+).
-    - ROCm (Sprint 22): AMD's `flash_attn` fork exists for CDNA
+    - ROCm: AMD's `flash_attn` fork exists for CDNA
       (gfx90a MI200, gfx942 MI300) and is landing for RDNA3. We gate
       on the same bf16-capable arch allowlist — if an arch is too old
       for bf16 it can't run FA2 either — and on the `flash_attn`
@@ -196,7 +196,7 @@ def _has_flash_attention(
     return False
 
 
-# --- ROCm arch helpers (Sprint 22) -------------------------------------------
+# --- ROCm arch helpers -------------------------------------------------------
 
 
 def _get_rocm_arch(backend: Backend, torch: object) -> str | None:
@@ -251,10 +251,10 @@ def _module_available(name: str) -> bool:
 def _has_mlx_inference(backend: Backend) -> bool:
     """True iff MLX inference is runnable on this host.
 
-    Sprint 21: MLX is darwin-arm64 only. Off-platform installs of `mlx`
-    via pip would be a packaging mistake, but we still gate on backend
-    to avoid reporting True for a misconfigured CUDA box that happens
-    to have an mlx dist lying around.
+    MLX is darwin-arm64 only. Off-platform installs of `mlx` via pip
+    would be a packaging mistake, but we still gate on backend to
+    avoid reporting True for a misconfigured CUDA box that happens to
+    have an mlx dist lying around.
     """
     if backend != Backend.MPS:
         return False
@@ -274,9 +274,9 @@ def _rocm_version(torch: object) -> str | None:
 def _accelerate_version() -> str | None:
     """Read `accelerate.__version__` without importing the heavy side.
 
-    Sprint 23 reports accelerate in the doctor so users can tell
-    whether multi-GPU (`dlm train --gpus`) is available. Absent
-    install → None; doctor renders "not installed".
+    The doctor reports accelerate so users can tell whether multi-GPU
+    (`dlm train --gpus`) is available. Absent install → None; doctor
+    renders "not installed".
     """
     try:
         from importlib.metadata import PackageNotFoundError, version

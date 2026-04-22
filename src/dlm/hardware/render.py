@@ -1,7 +1,7 @@
 """Human-readable renderer for `dlm doctor` output.
 
-Kept separate from `doctor.py` so Sprint 13's CLI can theme the output
-with `rich` if desired without the core module pulling rich in.
+Kept separate from `doctor.py` so the CLI can theme the output with
+`rich` if desired without the core module pulling rich in.
 """
 
 from __future__ import annotations

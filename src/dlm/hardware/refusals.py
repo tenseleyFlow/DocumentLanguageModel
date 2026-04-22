@@ -70,14 +70,14 @@ def check_refusals(
         # with `avg_lora_r × base_params`; 0.1 GB floor keeps tiny
         # multi-adapter setups from false-greenlighting.
         #
-        # Multi-GPU note (audit-08 M4): DDP replicates the model across
-        # ranks (each GPU holds the full base + adapter state), so
+        # Multi-GPU note: DDP replicates the model across ranks (each
+        # GPU holds the full base + adapter state), so
         # `world_size` does NOT divide the per-GPU VRAM math. The
         # formula stays conservative when scaled by rank count — we
         # never want to greenlight a config that fits on N GPUs
         # individually but not on any single one. Sharded /
         # FSDP / ZeRO-3 paths would need a different calculation
-        # (they're out of scope for Sprint 23).
+        # (they're out of scope here).
         avg_lora_r = _avg_lora_r(training)
         base_gb = base_params * 0.5 / 1e9  # 4-bit base
         per_adapter_gb = max(0.1, base_params * avg_lora_r / (1e9 * 64))
@@ -107,15 +107,14 @@ def check_refusals(
 def check_multi_gpu_refusals(caps: Capabilities, world_size: int) -> None:
     """Refuse multi-GPU configurations that can't reasonably work.
 
-    Sprint 23 scope: CUDA only. MPS doesn't do DDP; CPU multi-process
-    training is technically possible but a terrible user experience.
-    Heterogeneous CUDA GPUs (different SM families) produce
-    inconsistent mixed-precision results — refuse rather than let the
-    slower arch silently dictate the precision.
+    Current multi-GPU support is CUDA only. MPS doesn't do DDP; CPU
+    multi-process training is technically possible but a terrible user
+    experience. Heterogeneous CUDA GPUs (different SM families)
+    produce inconsistent mixed-precision results — refuse rather than
+    let the slower arch silently dictate the precision.
 
-    ROCm multi-GPU is explicitly out of scope for this sprint per the
-    sprint 23 plan — refuse with a pointer so users don't chase
-    phantom bugs.
+    ROCm multi-GPU is explicitly out of scope for now — refuse with a
+    pointer so users don't chase phantom bugs.
     """
     if world_size < 2:
         return

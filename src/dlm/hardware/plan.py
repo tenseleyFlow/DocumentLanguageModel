@@ -41,11 +41,11 @@ CUDA_BUDGET_FRACTION: Final[float] = 0.85  # leave ~15% headroom on CUDA
 class TrainingPlan:
     """Resolved training plan for the current host.
 
-    Fields mirror the knobs the trainer (Sprint 09) actually consumes.
-    `world_size` (Sprint 23) is the number of data-parallel ranks; 1
-    on single-GPU / single-process paths. `effective_batch_size`
-    already folds `world_size` in, so users reading the plan don't
-    have to multiply themselves.
+    Fields mirror the knobs the trainer actually consumes.
+    `world_size` is the number of data-parallel ranks; 1 on
+    single-GPU / single-process paths. `effective_batch_size` already
+    folds `world_size` in, so users reading the plan don't have to
+    multiply themselves.
     """
 
     precision: Precision
@@ -88,17 +88,16 @@ def resolve(
     and step-time estimates are recomputed against the adjusted
     micro-batch.
 
-    `num_adapters` lets multi-adapter callers surface the count so
-    F28 (multi-adapter QLoRA VRAM refusal) can fire before training
-    starts. Single-adapter docs keep the default.
+    `num_adapters` lets multi-adapter callers surface the count so the
+    multi-adapter QLoRA VRAM refusal can fire before training starts.
+    Single-adapter docs keep the default.
 
-    `world_size` (Sprint 23) is the number of data-parallel ranks.
-    Multiplies the reported `effective_batch_size` (each rank
-    processes a micro-batch independently) and scales the per-rank
-    step-time estimate down — more GPUs, less wall-clock time per
-    global step up to comm overhead. `world_size > 1` triggers the
-    multi-GPU refusal matrix (MPS/CPU refusal, heterogeneous CUDA
-    refusal).
+    `world_size` is the number of data-parallel ranks. Multiplies the
+    reported `effective_batch_size` (each rank processes a
+    micro-batch independently) and scales the per-rank step-time
+    estimate down — more GPUs, less wall-clock time per global step
+    up to comm overhead. `world_size > 1` triggers the multi-GPU
+    refusal matrix (MPS/CPU refusal, heterogeneous CUDA refusal).
     """
     if world_size < 1:
         raise ValueError(f"world_size must be >= 1, got {world_size}")
