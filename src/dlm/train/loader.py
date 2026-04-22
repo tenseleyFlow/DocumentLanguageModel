@@ -43,7 +43,7 @@ def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:  # pragma: 
 
     kwargs: dict[str, Any] = {
         "revision": spec.revision,
-        "torch_dtype": dtype,
+        "dtype": dtype,
         "attn_implementation": plan.attn_implementation,
     }
 

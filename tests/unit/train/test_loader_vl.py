@@ -88,6 +88,9 @@ class TestLoadBaseModelDispatch:
         causal.from_pretrained.assert_called_once()
         called_hf_id = causal.from_pretrained.call_args.args[0]
         assert called_hf_id == "test/text"
+        kwargs = causal.from_pretrained.call_args.kwargs
+        assert "dtype" in kwargs
+        assert "torch_dtype" not in kwargs
 
     def test_vl_spec_uses_image_text_to_text(self) -> None:
         sentinel = MagicMock(name="vl_instance")

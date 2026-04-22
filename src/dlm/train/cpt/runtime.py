@@ -90,9 +90,13 @@ def dapt_sft_config_overrides(
     at `learning_rate * min_lr_rate` instead of zero — matching our
     DAPT curve. The warmup-ratio bump to 20% is literature-default for
     domain-adaptive pretraining.
+
+    We thread that ratio through `warmup_steps` because current
+    `TrainingArguments` interprets values `< 1` as ratios and the
+    dedicated `warmup_ratio` knob is deprecated.
     """
     return {
         "lr_scheduler_type": "cosine_with_min_lr",
-        "warmup_ratio": warmup_ratio,
+        "warmup_steps": warmup_ratio,
         "lr_scheduler_kwargs": {"min_lr_rate": floor_ratio},
     }

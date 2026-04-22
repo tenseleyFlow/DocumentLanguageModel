@@ -595,6 +595,23 @@ def _default_early_stop_config() -> EarlyStopConfig:
     return EarlyStopConfig(patience=3, threshold=0.0, metric="eval_loss")
 
 
+def _warmup_steps_from_ratio(warmup_ratio: float) -> float:
+    """Encode a warmup ratio through `warmup_steps`.
+
+    Current transformers / TRL deprecate `warmup_ratio`, but
+    `TrainingArguments.get_warmup_steps()` still interprets
+    `warmup_steps < 1` as a ratio of total training steps.
+    """
+    return warmup_ratio
+
+
+def _dataloader_pin_memory_for_model(model: Any) -> bool:
+    """Disable `pin_memory` on MPS, where PyTorch warns and ignores it."""
+    device = getattr(model, "device", None)
+    device_type = getattr(device, "type", None)
+    return device_type != "mps"
+
+
 def _hf_early_stop_flag(sft: Any) -> bool | None:
     """Read HF's real early-stop signal, or return None if unavailable.
 
@@ -808,7 +825,7 @@ def _build_real_trainer(  # pragma: no cover
         "gradient_accumulation_steps": plan.grad_accum,
         "learning_rate": eff_lr,
         "lr_scheduler_type": parsed.frontmatter.training.lr_scheduler,
-        "warmup_ratio": parsed.frontmatter.training.warmup_ratio,
+        "warmup_steps": _warmup_steps_from_ratio(parsed.frontmatter.training.warmup_ratio),
         "max_steps": max_steps if max_steps is not None else -1,
         # Honor the frontmatter `optimizer` choice. transformers picks
         # the right backend: `adamw_torch` → torch native, `adamw_bnb_8bit`
@@ -828,6 +845,7 @@ def _build_real_trainer(  # pragma: no cover
         "data_seed": seed,
         "bf16": plan.precision == "bf16",
         "fp16": plan.precision == "fp16",
+        "dataloader_pin_memory": _dataloader_pin_memory_for_model(base_model),
         "report_to": ["none"],
         "save_strategy": "no",  # we own checkpoint commit
         # Modern transformers refuses load_best_model_at_end=True when

@@ -84,9 +84,9 @@ class TestDaptOverrides:
         ov = dapt_sft_config_overrides()
         assert ov["lr_scheduler_type"] == "cosine_with_min_lr"
 
-    def test_warmup_ratio_default_20_percent(self) -> None:
+    def test_warmup_steps_default_20_percent_ratio(self) -> None:
         ov = dapt_sft_config_overrides()
-        assert ov["warmup_ratio"] == pytest.approx(0.2)
+        assert ov["warmup_steps"] == pytest.approx(0.2)
 
     def test_floor_ratio_default(self) -> None:
         ov = dapt_sft_config_overrides()
@@ -98,4 +98,4 @@ class TestDaptOverrides:
 
     def test_custom_warmup_respected(self) -> None:
         ov = dapt_sft_config_overrides(warmup_ratio=0.3)
-        assert ov["warmup_ratio"] == pytest.approx(0.3)
+        assert ov["warmup_steps"] == pytest.approx(0.3)

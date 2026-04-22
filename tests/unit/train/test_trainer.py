@@ -325,6 +325,22 @@ class TestEvalCadence:
         assert cfg.metric == "eval_loss"
         assert cfg.greater_is_better is False
 
+    def test_warmup_steps_preserve_ratio(self) -> None:
+        from dlm.train.trainer import _warmup_steps_from_ratio
+
+        assert _warmup_steps_from_ratio(0.1) == pytest.approx(0.1)
+
+    def test_mps_disables_dataloader_pin_memory(self) -> None:
+        from dlm.train.trainer import _dataloader_pin_memory_for_model
+
+        mps_model = SimpleNamespace(device=SimpleNamespace(type="mps"))
+        cuda_model = SimpleNamespace(device=SimpleNamespace(type="cuda"))
+        unknown_model = SimpleNamespace()
+
+        assert _dataloader_pin_memory_for_model(mps_model) is False
+        assert _dataloader_pin_memory_for_model(cuda_model) is True
+        assert _dataloader_pin_memory_for_model(unknown_model) is True
+
     def test_hf_early_stop_flag_respects_control(self) -> None:
         """`sft.control.should_training_stop` is the authoritative signal."""
         from dlm.train.trainer import _hf_early_stop_flag
