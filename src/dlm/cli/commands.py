@@ -66,7 +66,8 @@ def init_cmd(
             help=(
                 "Scaffold a vision-language .dlm with an `::image::` section. "
                 "Defaults --base to paligemma-3b-mix-224 and skips GGUF "
-                "export probes (Sprint 35.4 will add VL GGUF support)."
+                "export probes because current GGUF export does not "
+                "support vision-language bases."
             ),
         ),
     ] = False,
@@ -158,9 +159,8 @@ def init_cmd(
     else:
         resolved_base = base
 
-    # Media bases can't clear the GGUF-conversion probes (VL: Sprint 35.4;
-    # audio: not on llama.cpp's roadmap). Force-skip them so the probe
-    # suite doesn't false-fail the init.
+    # Media bases can't clear the GGUF-conversion probes. Force-skip
+    # them so the probe suite doesn't false-fail the init.
     if multimodal or audio:
         skip_export_probes = True
 
@@ -189,10 +189,10 @@ def init_cmd(
             skip_export_probes=skip_export_probes,
         )
 
-    # NOW apply the template — license has already been accepted (either
-    # by --i-accept-license or interactive prompt), so pass the
-    # acceptance through. apply_template enforces the license contract
-    # at its boundary (audit-09 m2).
+    # NOW apply the template — license has already been accepted
+    # (either by --i-accept-license or interactive prompt), so pass
+    # the acceptance through. apply_template enforces the license
+    # contract at its boundary.
     applied_result = None
     if template is not None:
         from dlm.templates import TemplateError, apply_template
@@ -249,7 +249,7 @@ def init_cmd(
 
     # Create the store + write the initial manifest so `dlm show` sees
     # the license record and `dlm train` has a prior manifest to diff
-    # against (audit-05 B2).
+    # against.
     from dlm.store.manifest import Manifest, save_manifest
     from dlm.store.paths import for_dlm
 
@@ -278,10 +278,10 @@ def init_cmd(
 def _previously_accepted(store_manifest_path: Path) -> bool:
     """Return True iff the store manifest already holds a LicenseAcceptance.
 
-    `dlm prompt` and `dlm export` operate on an already-trained adapter;
-    the gated-base license was accepted at `dlm train --i-accept-license`
-    time and persisted into `manifest.license_acceptance` (Sprint 12b).
-    Replaying that acceptance here is correct; silently hardcoding
+    `dlm prompt` and `dlm export` operate on an already-trained
+    adapter; the gated-base license was accepted during training and
+    persisted into `manifest.license_acceptance`. Replaying that
+    acceptance here is correct; silently hardcoding
     `accept_license=True` is not — it would let a never-accepted
     gated base slip through.
     """
@@ -293,8 +293,8 @@ def _previously_accepted(store_manifest_path: Path) -> bool:
     try:
         manifest = load_manifest(store_manifest_path)
     except (ManifestCorruptError, OSError):
-        # Audit-05 N2: narrow from bare `Exception` so programmer bugs
-        # propagate instead of being silently treated as "no acceptance."
+        # Narrow from bare `Exception` so programmer bugs propagate
+        # instead of being silently treated as "no acceptance."
         return False
     return manifest.license_acceptance is not None
 
@@ -355,7 +355,7 @@ Your example answer.
 
 
 def _write_init_scaffold_multimodal(path: Path, base_model_key: str, dlm_id: str) -> None:
-    """Write a VL-shaped .dlm file at `path` (Sprint 35 v1).
+    """Write a VL-shaped .dlm file at `path`.
 
     Body shows the `::image::` attribute fence + a caption so users
     see the v10 grammar on first open. The placeholder path
@@ -392,7 +392,7 @@ Describe what the image shows.
 
 
 def _write_init_scaffold_audio(path: Path, base_model_key: str, dlm_id: str) -> None:
-    """Write an audio-shaped .dlm file at `path` (Sprint 35.2).
+    """Write an audio-shaped .dlm file at `path`.
 
     Body shows the `::audio::` attribute fence with the sibling-
     transcript-friendly `transcript="..."` form so users see the v11
@@ -708,8 +708,8 @@ def train_cmd(
         raise typer.Exit(code=2)
     mode: Literal["fresh", "resume"] = "resume" if resume else "fresh"
 
-    # Sprint 23: --gpus dispatches to accelerate launch when >1 device
-    # is selected. The single-GPU path falls through to the existing
+    # --gpus dispatches to accelerate launch when >1 device is
+    # selected. The single-GPU path falls through to the existing
     # in-process trainer; a bare `--gpus 1` is a no-op (users can use
     # it to lock the visible device set via CUDA_VISIBLE_DEVICES
     # without spawning a subprocess).
@@ -744,10 +744,10 @@ def train_cmd(
     elif ignore_lock:
         lock_mode = "ignore"
 
-    # Sprint 31.5: `--no-cache` bypasses the tokenized-section cache for
-    # this run. Plumbed as an env var because the trainer's pre-tokenize
-    # helper already reads one — the CLI flag is a discoverable surface
-    # over the same switch. Rolling the flag into `TrainingPlan` is a
+    # `--no-cache` bypasses the tokenized-section cache for this run.
+    # Plumbed as an env var because the trainer's pre-tokenize helper
+    # already reads one — the CLI flag is a discoverable surface over
+    # the same switch. Rolling the flag into `TrainingPlan` is a
     # deferred refactor; the env var is sufficient for the user-facing
     # contract and survives `accelerate launch` re-invocations.
     if no_cache:
@@ -793,8 +793,8 @@ def train_cmd(
             raise typer.Exit(code=2) from None
         rpc_config = (host, port, token)
 
-    # Sprint 30: directory targets → auto-scaffold `<dir>/.dlm/corpus.dlm`
-    # (or reuse an existing one). After this block, `path` always points
+    # Directory targets auto-scaffold `<dir>/.dlm/corpus.dlm` (or
+    # reuse an existing one). After this block, `path` always points
     # at an actual `.dlm` file that the rest of the flow can parse.
     just_scaffolded = False
     if path.is_dir():
@@ -843,7 +843,7 @@ def train_cmd(
             "Acceptance will be persisted in the store manifest."
         )
         raise typer.Exit(code=1) from exc
-    # Audit-08 M1: detect the DDP world_size set by `accelerate launch`
+    # Detect the DDP world_size set by `accelerate launch`
     # (WORLD_SIZE env var) and thread it into the doctor so the plan's
     # effective_batch_size reflects the rank count. Single-process
     # runs read 1 and the plan math is unchanged.
@@ -861,11 +861,10 @@ def train_cmd(
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
 
-    # Audit-09 B1: dlm init writes a manifest as part of store provisioning;
-    # train_cmd's scaffold-dir branch did not, so the next load_manifest
-    # crashed with ManifestCorruptError. When we just scaffolded a fresh
-    # .dlm, mirror init_cmd's manifest write. Guarded by exists() so
-    # --rescaffold (same dlm_id, prior store) preserves training history.
+    # `dlm init` writes a manifest as part of store provisioning. When
+    # we just scaffolded a fresh `.dlm`, mirror that manifest write
+    # here too. Guarded by exists() so --rescaffold (same dlm_id,
+    # prior store) preserves training history.
     if just_scaffolded and not store.manifest.exists():
         from dlm.base_models import is_gated
         from dlm.base_models.license import require_acceptance
@@ -964,9 +963,9 @@ def train_cmd(
     if result.final_train_loss is not None:
         sys.stdout.write(f"{result.final_train_loss}\n")
 
-    # Sprint 25: --watch keeps the training context alive and re-runs
-    # incremental cycles on file change. Entered AFTER the initial
-    # train so the loop resumes from a real committed adapter.
+    # --watch keeps the training context alive and re-runs incremental
+    # cycles on file change. Entered AFTER the initial train so the
+    # loop resumes from a real committed adapter.
     if watch:
         if watch_repl:
             console.print(
@@ -1117,7 +1116,7 @@ def _strip_gpus_from_argv(argv: list[str]) -> list[str]:
     Skips argv[0] (script path) — `accelerate launch -m <entry>`
     provides the rank entrypoint separately, so the launcher forwards
     argv[1:] minus the multi-GPU flag. Delegates to the shared
-    `strip_gpus_flag` helper (audit-08 N1).
+    `strip_gpus_flag` helper.
     """
     from dlm.train.distributed.gpus import strip_gpus_flag
 
@@ -1158,7 +1157,7 @@ def prompt_cmd(
         typer.Option(
             "--gate",
             help=(
-                "Learned adapter gate (Sprint 34). `auto` (default) uses the "
+                "Learned adapter gate. `auto` (default) uses the "
                 "gate when one exists in the store; `off` forces uniform "
                 "weights across declared adapters. Ignored when --adapter "
                 "explicitly pins a single adapter."
@@ -1183,7 +1182,7 @@ def prompt_cmd(
             help=(
                 "Attach an image file to the prompt. Repeat for multiple "
                 "images; each expands to the base's image-token placeholder. "
-                "Requires a vision-language base (Sprint 35 v1: PaliGemma)."
+                "Requires a vision-language base."
             ),
         ),
     ] = None,
@@ -1195,7 +1194,7 @@ def prompt_cmd(
                 "Attach an audio file (.wav/.flac/.ogg) to the prompt. "
                 "Repeat for multiple clips; each expands to the base's "
                 "audio-token placeholder. Requires an audio-language base "
-                "(Sprint 35.2: Qwen2-Audio-7B-Instruct)."
+                "(for example Qwen2-Audio-7B-Instruct)."
             ),
         ),
     ] = None,
@@ -1273,7 +1272,7 @@ def prompt_cmd(
         raise typer.Exit(code=1) from exc
     caps = doctor().capabilities
 
-    # --- VL path (Sprint 35 v1) ---------------------------------------
+    # --- VL path -------------------------------------------------------
     # The VL branch has its own model / processor / adapter loader and
     # its own generate function. `--image` and vision-language bases
     # must appear together; each alone is a usage error.
@@ -1308,7 +1307,7 @@ def prompt_cmd(
         )
         return
 
-    # --- Audio path (Sprint 35.2) -------------------------------------
+    # --- Audio path ----------------------------------------------------
     if audio_paths and not dispatch.accepts_audio:
         console.print(
             f"[red]prompt:[/red] --audio is only valid with audio-language bases; "
@@ -1386,7 +1385,7 @@ def _dispatch_vl_prompt(  # pragma: no cover
     """Run the VL generate path. Keeps `prompt_cmd` readable.
 
     Pragma'd from unit coverage because it calls the VL HF stack.
-    Covered by the slow-marked Sprint 35 v1 integration test (T12).
+    Covered by the slow-marked vision-language integration test (T12).
     """
     import sys
 
@@ -1458,7 +1457,7 @@ def _dispatch_audio_prompt(  # pragma: no cover
     """Run the audio-LM generate path. Keeps `prompt_cmd` readable.
 
     Pragma'd from unit coverage because it calls the audio HF stack.
-    Covered by the slow-marked Sprint 35.2 integration test (T12).
+    Covered by the slow-marked audio integration test (T12).
     """
     import sys
 
@@ -1710,13 +1709,13 @@ def export_cmd(
 
     store = for_dlm(parsed.frontmatter.dlm_id)
 
-    # Gate-driven static mix. Sprint 34: when the doc has an enabled
-    # gate AND the user didn't pass --adapter-mix / --adapter, freeze
-    # the learned gate to per-adapter weights for the GGUF export
-    # path. Dynamic routing only lives in the `dlm prompt` flow; the
-    # runtime can't evaluate the torch gate, so we substitute the
-    # prior here. A CLI --adapter-mix wins — users who know what they
-    # want get full control.
+    # Gate-driven static mix: when the doc has an enabled gate and the
+    # user didn't pass --adapter-mix / --adapter, freeze the learned
+    # gate to per-adapter weights for the GGUF export path. Dynamic
+    # routing only lives in the `dlm prompt` flow; the runtime can't
+    # evaluate the torch gate, so we substitute the prior here. A CLI
+    # --adapter-mix wins — users who know what they want get full
+    # control.
     if mix_entries is None and adapter is None:
         from dlm.export.gate_fallback import resolve_and_announce
 
@@ -3180,9 +3179,9 @@ def serve_cmd(
     parsed = parse_file(path)
     dlm_id = parsed.frontmatter.dlm_id
 
-    # Audit-09 M3: pack() calls load_manifest(), which crashes with an
-    # unhelpful "store manifest corrupt" error on a .dlm that's never
-    # been trained. Surface the true cause instead.
+    # pack() calls load_manifest(), which crashes with an unhelpful
+    # "store manifest corrupt" error on a .dlm that's never been
+    # trained. Surface the true cause instead.
     store = for_dlm(dlm_id)
     if not store.manifest.exists():
         console.print(
@@ -3224,7 +3223,7 @@ def serve_cmd(
     console.print("[dim]stopped.[/dim]")
 
 
-# ---- Sprint 31: dlm cache show | prune | clear -----------------------
+# ---- Cache Commands --------------------------------------------------
 
 
 def cache_show_cmd(
@@ -3324,9 +3323,9 @@ def cache_prune_cmd(
             raise typer.Exit(code=2)
         cutoff_label = older_than
     else:
-        # Sprint 31.6: fall back to the frontmatter's per-doc default.
-        # Pre-v9 docs get the CacheConfig default of 90 days via the
-        # Pydantic factory on parse.
+        # Fall back to the frontmatter's per-doc default. Pre-v9 docs
+        # get the CacheConfig default of 90 days via the Pydantic
+        # factory on parse.
         days = parsed.frontmatter.training.cache.prune_older_than_days
         seconds = float(days) * 86400.0
         cutoff_label = f"{days}d"
