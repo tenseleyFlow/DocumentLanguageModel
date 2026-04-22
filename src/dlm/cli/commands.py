@@ -1944,7 +1944,7 @@ def pack_cmd(
     from rich.console import Console
 
     from dlm.doc.errors import DlmParseError
-    from dlm.pack.errors import BaseLicenseRefusedError
+    from dlm.pack.errors import BaseLicenseRefusedError, PackError
     from dlm.pack.packer import pack
 
     console = Console(stderr=True)
@@ -1959,6 +1959,9 @@ def pack_cmd(
             licensee_acceptance_url=licensee,
         )
     except BaseLicenseRefusedError as exc:
+        console.print(f"[red]pack:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except PackError as exc:
         console.print(f"[red]pack:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     except DlmParseError as exc:

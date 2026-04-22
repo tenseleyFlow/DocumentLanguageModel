@@ -74,3 +74,19 @@ class BaseLicenseRefusedError(PackError):
         )
         self.base_key = base_key
         self.license_url = license_url
+
+
+class PackExecutableFileError(PackError):
+    """Pack refused because a would-be-packed store file has execute bits set.
+
+    The pack format normalizes file modes to deterministic 0o644 / 0o755
+    headers. Refusing executable files keeps that normalization honest:
+    we never silently strip an x-bit from user data.
+    """
+
+    def __init__(self, relpath: str) -> None:
+        super().__init__(
+            f"store file {relpath!r} is executable; pack refuses to silently strip "
+            "the x-bit. Clear the executable bit or move the file out of the store."
+        )
+        self.relpath = relpath

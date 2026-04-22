@@ -41,7 +41,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from dlm.pack.errors import BaseLicenseRefusedError
+from dlm.pack.errors import BaseLicenseRefusedError, PackExecutableFileError
 from dlm.pack.format import (
     CURRENT_PACK_FORMAT_VERSION,
     ContentType,
@@ -264,11 +264,21 @@ def _stage_tree(
         if relpath == store.lock.name:
             # The lockfile itself is state-of-this-process only.
             continue
+        _assert_no_executable_files(child, store_root=store.root)
         dest = store_dst / relpath
         if child.is_dir():
             shutil.copytree(child, dest, symlinks=False)
         else:
             shutil.copy2(child, dest)
+
+
+def _assert_no_executable_files(path: Path, *, store_root: Path) -> None:
+    """Refuse pack inputs that would lose executable bits in tar normalization."""
+
+    candidates = [path] if path.is_file() else sorted(p for p in path.rglob("*") if p.is_file())
+    for candidate in candidates:
+        if candidate.stat().st_mode & 0o111:
+            raise PackExecutableFileError(candidate.relative_to(store_root).as_posix())
 
 
 def _normalize_tarinfo(info: tarfile.TarInfo) -> tarfile.TarInfo:

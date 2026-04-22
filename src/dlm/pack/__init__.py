@@ -21,6 +21,7 @@ from __future__ import annotations
 from dlm.pack.errors import (
     BaseLicenseRefusedError,
     PackError,
+    PackExecutableFileError,
     PackFormatVersionError,
     PackIntegrityError,
     PackLayoutError,
@@ -45,6 +46,7 @@ __all__ = [
     "HEADER_FILENAME",
     "MANIFEST_FILENAME",
     "PackError",
+    "PackExecutableFileError",
     "PackFormatVersionError",
     "PackHeader",
     "PackIntegrityError",

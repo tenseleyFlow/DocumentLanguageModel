@@ -12,7 +12,7 @@ import pytest
 from typer.testing import CliRunner
 
 from dlm.cli.app import app
-from dlm.pack.errors import BaseLicenseRefusedError
+from dlm.pack.errors import BaseLicenseRefusedError, PackExecutableFileError
 from dlm.pack.packer import _platform_hint, pack
 
 
@@ -222,6 +222,23 @@ class TestStoreLock:
         assert observed.get("second_acquire") == "blocked"
         # The packer is the same process — holder_pid matches ours.
         assert observed.get("holder_pid") == _os.getpid()
+
+
+class TestExecutableBitRefusal:
+    def test_refuses_executable_file_in_store_tree(self, tmp_path: Path) -> None:
+        doc = _scaffold_doc_and_store(tmp_path)
+
+        from dlm.doc.parser import parse_file
+        from dlm.store.paths import for_dlm
+
+        parsed = parse_file(doc)
+        store = for_dlm(parsed.frontmatter.dlm_id)
+        hook = store.root / "resume.sh"
+        hook.write_text("#!/bin/sh\necho nope\n", encoding="utf-8")
+        hook.chmod(0o755)
+
+        with pytest.raises(PackExecutableFileError, match="resume\\.sh"):
+            pack(doc)
 
 
 class TestPlatformHint:
