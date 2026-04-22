@@ -56,6 +56,7 @@ class TestInferGgufArch:
         ("architecture", "expected"),
         [
             ("LlamaForCausalLM", "llama"),
+            ("SmolLM3ForCausalLM", "llama"),
             ("Qwen2ForCausalLM", "qwen2"),
             ("Qwen3ForCausalLM", "qwen3"),
             ("MistralForCausalLM", "llama"),
@@ -76,6 +77,7 @@ class TestInferTemplate:
     @pytest.mark.parametrize(
         ("hf_id", "architecture", "expected"),
         [
+            ("HuggingFaceTB/SmolLM3-3B", "SmolLM3ForCausalLM", "smollm3"),
             ("meta-llama/Llama-3.2-1B-Instruct", "LlamaForCausalLM", "llama3"),
             ("meta-llama/llama3-base", "LlamaForCausalLM", "llama3"),
             ("microsoft/Phi-3.5-mini-instruct", "Phi3ForCausalLM", "phi3"),

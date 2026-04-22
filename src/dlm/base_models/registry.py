@@ -20,7 +20,7 @@ Notes on individual entries:
   bundling into a `.dlm.pack`
   (`redistributable=False`) — enforced by the pack gate and
   share-protocol refusal.
-- SmolLM2 and Phi-3.5-mini are permissive (Apache-2.0 / MIT).
+- SmolLM2 / SmolLM3 and Phi-3.5-mini are permissive (Apache-2.0 / MIT).
 - `size_gb_fp16` is approximate; the hardware doctor uses it to seed
   VRAM estimates, which then get refined by runtime checks.
 """
@@ -218,6 +218,28 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         context_length=131_072,
         context_length_effective=8_192,
         recommended_seq_len=4096,
+    ),
+    BaseModelSpec(
+        key="smollm3-3b",
+        hf_id="HuggingFaceTB/SmolLM3-3B",
+        # Placeholder SHA: format-valid, not a real HF commit. The
+        # weekly `scripts/refresh-registry.py --check` run surfaces
+        # drift and prints the live value for manual review.
+        revision="5e6f7890abcdeffedcba0987654321abc2d3e4f5",
+        architecture="SmolLM3ForCausalLM",
+        params=3_000_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="smollm3",
+        gguf_arch="llama",
+        tokenizer_pre="smollm",
+        license_spdx="Apache-2.0",
+        license_url="https://huggingface.co/HuggingFaceTB/SmolLM3-3B",
+        requires_acceptance=False,
+        redistributable=True,
+        size_gb_fp16=6.2,
+        context_length=65_536,
+        recommended_seq_len=4096,
+        reasoning_tuned=True,
     ),
     BaseModelSpec(
         key="smollm2-135m",

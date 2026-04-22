@@ -58,3 +58,29 @@ class TestLlama33RegistryEntry:
     def test_license_url_uses_current_meta_landing_page(self) -> None:
         spec = BASE_MODELS["llama-3.3-8b-instruct"]
         assert spec.license_url == "https://llama.meta.com/llama3/license"
+
+
+class TestSmolLM3RegistryEntry:
+    def test_entry_present(self) -> None:
+        assert "smollm3-3b" in BASE_MODELS
+
+    def test_live_hf_id_and_architecture_match_current_release(self) -> None:
+        spec = BASE_MODELS["smollm3-3b"]
+        assert spec.hf_id == "HuggingFaceTB/SmolLM3-3B"
+        assert spec.architecture == "SmolLM3ForCausalLM"
+        assert spec.template == "smollm3"
+        assert spec.gguf_arch == "llama"
+        assert spec.tokenizer_pre == "smollm"
+
+    def test_entry_tracks_reasoning_first_defaults(self) -> None:
+        spec = BASE_MODELS["smollm3-3b"]
+        assert spec.reasoning_tuned is True
+        assert spec.suggested_prompt_temperature == pytest.approx(0.6)
+
+    def test_entry_is_open_and_long_context(self) -> None:
+        spec = BASE_MODELS["smollm3-3b"]
+        assert spec.license_spdx == "Apache-2.0"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+        assert spec.context_length == 65_536
+        assert spec.recommended_seq_len == 4096

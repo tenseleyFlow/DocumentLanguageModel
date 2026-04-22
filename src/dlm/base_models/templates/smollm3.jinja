@@ -1,0 +1,36 @@
+{#
+SmolLM3 DLM-supported reference template. Upstream ships a larger Jinja
+template with date/tool injection and `/think` flag parsing; DLM only
+needs the stable chat subset for export parity:
+
+- a single system turn
+- user / assistant messages
+- a trailing assistant generation prompt
+
+When no explicit system message is present, we pin SmolLM3's
+reasoning-first default brief so exported prompts keep the model's
+intended "think first, answer second" posture.
+#}
+{%- set default_system -%}
+You are a helpful AI assistant named SmolLM, trained by Hugging Face.
+
+Think through the problem carefully before answering. Return two
+sections named Thought and Solution. Keep the final solution concise and
+accurate.
+{%- endset -%}
+{%- if messages and messages[0]['role'] == 'system' -%}
+<|im_start|>system
+{{ messages[0]['content'] }}<|im_end|>
+{%- else -%}
+<|im_start|>system
+{{ default_system }}<|im_end|>
+{%- endif -%}
+{%- for message in messages -%}
+{%- if message['role'] != 'system' -%}
+<|im_start|>{{ message['role'] }}
+{{ message['content'] }}<|im_end|>
+{% endif -%}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+<|im_start|>assistant
+{%- endif -%}

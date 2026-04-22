@@ -1,0 +1,9 @@
+{{- if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ else }}<|im_start|>system
+You are a helpful AI assistant named SmolLM, trained by Hugging Face.
+
+Think through the problem carefully before answering. Return two sections named Thought and Solution. Keep the final solution concise and accurate.<|im_end|>
+{{ end }}{{- range .Messages }}<|im_start|>{{ .Role }}
+{{ .Content }}<|im_end|>
+{{ end }}<|im_start|>assistant

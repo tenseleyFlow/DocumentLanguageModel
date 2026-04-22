@@ -100,7 +100,15 @@ class BaseModelSpec(BaseModel):
     params: int = Field(..., gt=0, description="Parameter count; drives hardware doctor.")
     target_modules: list[str] = Field(..., min_length=1)
     template: Literal[
-        "chatml", "llama3", "phi3", "mistral", "paligemma", "qwen2-audio", "qwen2-vl", "internvl2"
+        "chatml",
+        "smollm3",
+        "llama3",
+        "phi3",
+        "mistral",
+        "paligemma",
+        "qwen2-audio",
+        "qwen2-vl",
+        "internvl2",
     ]
     gguf_arch: str = Field(..., min_length=1, description="Name llama.cpp's converter uses.")
     tokenizer_pre: str = Field(..., min_length=1, description="Pre-tokenizer label.")

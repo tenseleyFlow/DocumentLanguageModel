@@ -69,6 +69,7 @@ class TestLicenseFields:
             "qwen3-1.7b",
             "qwen3-4b",
             "qwen3-8b",
+            "smollm3-3b",
             "smollm2-135m",
             "smollm2-360m",
             "smollm2-1.7b",

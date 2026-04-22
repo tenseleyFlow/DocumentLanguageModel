@@ -23,7 +23,7 @@ from typing import Final, Literal
 
 from dlm.export.ollama.errors import TemplateRegistryError
 
-Dialect = Literal["chatml", "llama3", "phi3", "mistral"]
+Dialect = Literal["chatml", "smollm3", "llama3", "phi3", "mistral"]
 
 _TEMPLATES_DIR: Final[Path] = Path(__file__).resolve().parent / "templates"
 
@@ -61,6 +61,16 @@ _REGISTRY: Final[dict[Dialect, DialectTemplate]] = {
         # prevents runaway prompt-continuation when the model tries to
         # synthesize a new turn instead of yielding.
         default_stops=("<|im_end|>", "<|endoftext|>", "<|im_start|>"),
+    ),
+    "smollm3": DialectTemplate(
+        dialect="smollm3",
+        template_path=_TEMPLATES_DIR / "smollm3.gotmpl",
+        # SmolLM3 keeps ChatML turn framing but ships a reasoning-first
+        # instruct prompt. Stop on the turn delimiters so Ollama
+        # yields instead of hallucinating another role block.
+        default_stops=("<|im_end|>", "<|end_of_text|>", "<|im_start|>"),
+        default_temperature=0.6,
+        default_top_p=0.95,
     ),
     "llama3": DialectTemplate(
         dialect="llama3",

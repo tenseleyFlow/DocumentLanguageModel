@@ -13,17 +13,17 @@ from dlm.export.ollama.template_registry import (
 
 
 class TestRegistryCoverage:
-    def test_all_four_dialects_registered(self) -> None:
-        assert set(registered_dialects()) == {"chatml", "llama3", "phi3", "mistral"}
+    def test_all_five_dialects_registered(self) -> None:
+        assert set(registered_dialects()) == {"chatml", "smollm3", "llama3", "phi3", "mistral"}
 
-    @pytest.mark.parametrize("dialect", ["chatml", "llama3", "phi3", "mistral"])
+    @pytest.mark.parametrize("dialect", ["chatml", "smollm3", "llama3", "phi3", "mistral"])
     def test_each_template_file_exists(self, dialect: str) -> None:
         row = get_template(dialect)
         assert row.template_path.is_file()
         body = row.read_template()
         assert body  # non-empty
 
-    @pytest.mark.parametrize("dialect", ["chatml", "llama3", "phi3", "mistral"])
+    @pytest.mark.parametrize("dialect", ["chatml", "smollm3", "llama3", "phi3", "mistral"])
     def test_each_has_default_stops(self, dialect: str) -> None:
         row = get_template(dialect)
         assert row.default_stops  # at least one
@@ -32,6 +32,7 @@ class TestRegistryCoverage:
         ("dialect", "required"),
         [
             ("chatml", {"<|im_end|>", "<|im_start|>"}),
+            ("smollm3", {"<|im_end|>", "<|im_start|>"}),
             ("llama3", {"<|eot_id|>", "<|start_header_id|>"}),
             ("phi3", {"<|end|>", "<|user|>", "<|assistant|>"}),
             ("mistral", {"</s>", "[/INST]", "[INST]"}),
@@ -64,6 +65,12 @@ class TestDialectShapes:
         assert "<|im_start|>" in text
         assert "<|im_end|>" in text
 
+    def test_smollm3_has_reasoning_system_prompt(self) -> None:
+        text = load_template_text("smollm3")
+        assert "<|im_start|>system" in text
+        assert "Thought" in text
+        assert "Solution" in text
+
     def test_llama3_has_header_markers(self) -> None:
         text = load_template_text("llama3")
         assert "<|start_header_id|>" in text
@@ -77,3 +84,8 @@ class TestDialectShapes:
         text = load_template_text("mistral")
         assert "[INST]" in text
         assert "[/INST]" in text
+
+    def test_smollm3_uses_reasoning_sampling_defaults(self) -> None:
+        row = get_template("smollm3")
+        assert row.default_temperature == pytest.approx(0.6)
+        assert row.default_top_p == pytest.approx(0.95)

@@ -87,7 +87,7 @@ class TestTargetModules:
 
 
 class TestLiteralConstraints:
-    @pytest.mark.parametrize("template", ["chatml", "llama3", "phi3", "mistral"])
+    @pytest.mark.parametrize("template", ["chatml", "smollm3", "llama3", "phi3", "mistral"])
     def test_template_literals_accepted(self, template: str) -> None:
         spec = _minimal(template=template)
         assert spec.template == template

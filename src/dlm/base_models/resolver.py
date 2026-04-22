@@ -28,7 +28,7 @@ from dlm.base_models.errors import (
 from dlm.base_models.registry import BASE_MODELS, known_keys
 from dlm.base_models.schema import BaseModelSpec
 
-TemplateDialect = Literal["chatml", "llama3", "phi3", "mistral"]
+TemplateDialect = Literal["chatml", "smollm3", "llama3", "phi3", "mistral"]
 
 _LOG = logging.getLogger(__name__)
 
@@ -224,6 +224,7 @@ def _estimate_params(config: object) -> int:
 def _infer_gguf_arch(architecture: str) -> str:
     mapping = {
         "LlamaForCausalLM": "llama",
+        "SmolLM3ForCausalLM": "llama",
         "Qwen2ForCausalLM": "qwen2",
         "Qwen3ForCausalLM": "qwen3",
         "MistralForCausalLM": "llama",
@@ -237,6 +238,8 @@ def _infer_gguf_arch(architecture: str) -> str:
 def _infer_template(hf_id: str, architecture: str) -> TemplateDialect:
     """Best-effort template dialect picker for `hf:` synthesis."""
     lower = hf_id.lower()
+    if "smollm3" in lower or architecture.startswith("SmolLM3"):
+        return "smollm3"
     if "llama-3" in lower or "llama3" in lower:
         return "llama3"
     if architecture.startswith("Phi"):
