@@ -1,4 +1,4 @@
-"""In-place frontmatter migration — the write path (Sprint 12b).
+"""In-place frontmatter migration — the write path.
 
 Complements `dlm.doc.versioned.validate_versioned` (the *read* path
 used by `parse_file`). The read path migrates in memory and never

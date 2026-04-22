@@ -1,7 +1,7 @@
 """Typed parser errors with `file:line:col` location reporting.
 
 All subclasses of `DlmParseError` carry `(path, line, col)` so CLI error
-reporting (Sprint 13) can format diagnostics uniformly.
+reporting can format diagnostics uniformly.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ class SchemaValidationError(DlmParseError):
 class DlmVersionError(DlmParseError):
     """`dlm_version` is present but isn't a version this parser implements.
 
-    Sprint 12b's migration framework is the home for promoting older
+    The migration framework is the home for promoting older
     documents; this error's message points there.
     """
 

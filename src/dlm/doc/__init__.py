@@ -8,9 +8,9 @@ The public surface is:
 - `Section`, `SectionType` — body section model
 - `DlmParseError` and its subclasses — typed errors with file:line:col
 
-Sprint 12b owns the schema migration framework (`dlm.doc.migrations`);
-this module's parser only accepts `dlm_version: 1` and raises
-`DlmVersionError` for anything else.
+The schema migration framework lives under `dlm.doc.migrations`; this
+module's parser raises `DlmVersionError` when a document can't be
+promoted to the current schema.
 """
 
 from __future__ import annotations

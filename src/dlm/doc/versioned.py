@@ -1,4 +1,4 @@
-"""Versioned frontmatter validation — run migrations before Pydantic (Sprint 12b).
+"""Versioned frontmatter validation — run migrations before Pydantic.
 
 The plain `DlmFrontmatter.model_validate(raw)` path refuses unknown
 keys (`extra="forbid"`) and would therefore reject *any* v2+ document

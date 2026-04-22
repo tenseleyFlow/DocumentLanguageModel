@@ -44,7 +44,7 @@ def apply_pending(
         if version == target_version:
             return current, applied
         if version > target_version:
-            # Audit-05 M7: forward-dated document — refuse rather than
+            # Forward-dated document — refuse rather than
             # silently reporting "already at target". The read-path
             # (parse_file) already raises DlmVersionError on future
             # versions; migrate should match that contract.

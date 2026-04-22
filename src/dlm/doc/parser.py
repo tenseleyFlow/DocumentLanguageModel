@@ -145,7 +145,7 @@ def _split_frontmatter(text: str, *, path: Path | None) -> tuple[str, str, int]:
 def _validate_frontmatter(yaml_text: str, *, path: Path | None) -> DlmFrontmatter:
     """YAML-parse → migrate-if-needed → Pydantic-validate.
 
-    The Sprint 12b migration dispatcher runs between YAML parse and
+    The migration dispatcher runs between YAML parse and
     Pydantic validate, so an older-but-known schema is upgraded to the
     current shape before `extra="forbid"` enforcement.
     """

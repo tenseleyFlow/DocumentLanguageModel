@@ -66,7 +66,7 @@ def _serialize_frontmatter(fm: DlmFrontmatter) -> str:
             nested = _emit_nested_mapping(value, indent=2)
             if not nested:
                 # All-default nested block — skip the header too so we
-                # don't emit an empty `training:` line (audit-05 M2).
+                # don't emit an empty `training:` line.
                 continue
             lines.append(f"{key}:")
             lines.extend(nested)
@@ -79,13 +79,13 @@ def _serialize_frontmatter(fm: DlmFrontmatter) -> str:
 def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
     """Emit a nested training/export/dpo block.
 
-    Audit-05 M2: suppress fields that equal their schema default so
+    Suppress fields that equal their schema default so
     re-serializing a minimal `.dlm` doesn't bloat it with every
-    inlined default. Idempotency (Sprint 03 DoD) is preserved — the
+    inlined default. Idempotency is preserved — the
     parser's defaults match the suppressed values, so round-trip
     stability holds at the model level.
 
-    Nested `BaseModel` values (e.g. `TrainingConfig.dpo` from Sprint 17)
+    Nested `BaseModel` values (e.g. `TrainingConfig.preference`)
     recurse with deeper indent; all-default sub-blocks are skipped.
     """
     pad = " " * indent

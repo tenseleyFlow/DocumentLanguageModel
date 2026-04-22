@@ -80,7 +80,7 @@ class Section:
     content hash.
 
     `tags` is the optional free-form metadata map flowed from
-    `.dlm/training.yaml` (Sprint 30). Consumers (weighting, filtering,
+    `.dlm/training.yaml`. Consumers (weighting, filtering,
     sway probes) read these; the trainer's row-production path
     ignores them. Like `adapter`, tags are **not** part of `section_id`
     — metadata churn doesn't invalidate replay identity.
