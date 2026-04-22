@@ -401,6 +401,44 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         recommended_seq_len=2048,
         reasoning_tuned=True,
     ),
+    # Mistral Small 3.1 24B Instruct — Apache-2.0 multimodal base with
+    # native vision support and 128k context.
+    #
+    # The Sprint 40 draft treated this as text-only; the live HF
+    # config is `Mistral3ForConditionalGeneration` with both text and
+    # vision towers, so we register it as vision-language. The current
+    # processor config pins `[IMG]` as the image placeholder and a
+    # longest edge of 1540 px. DLM's current `VlPreprocessorPlan`
+    # abstraction is fixed-size only, so we conservatively pin
+    # 1540×1540 here until dynamic ranges land.
+    BaseModelSpec(
+        key="mistral-small-3.1-24b-instruct",
+        hf_id="mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+        # Placeholder SHA: format-valid, not a real HF commit. The
+        # weekly `scripts/refresh-registry.py --check` run surfaces
+        # drift and prints the live value for manual review.
+        revision="ab0cdeffedcba0987654321abc2d3e4f5a6b7c8d",
+        architecture="Mistral3ForConditionalGeneration",
+        params=24_000_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="mistral",
+        gguf_arch="mistral3",
+        tokenizer_pre="tekken",
+        license_spdx="Apache-2.0",
+        license_url="https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+        requires_acceptance=False,
+        redistributable=True,
+        size_gb_fp16=48.0,
+        context_length=131_072,
+        recommended_seq_len=4096,
+        modality="vision-language",
+        vl_preprocessor_plan=VlPreprocessorPlan(
+            target_size=(1540, 1540),
+            resize_policy="fixed",
+            image_token="[IMG]",
+            num_image_tokens=3025,
+        ),
+    ),
     # --- Vision-language bases ----------------------------------------------
     # PaliGemma-3B-mix-224 — Google's instruction-tuned VL base built on
     # Gemma-2B + SigLIP-So400m. Gated under the Gemma license; cannot

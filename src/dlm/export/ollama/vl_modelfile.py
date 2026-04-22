@@ -100,6 +100,7 @@ _VL_FALLBACK_STOPS_BY_ARCH: dict[str, tuple[str, ...]] = {
     "PaliGemmaForConditionalGeneration": ("<eos>",),
     "Qwen2VLForConditionalGeneration": ("<|im_end|>", "<|endoftext|>"),
     "InternVLChatModel": ("<|im_end|>", "<|endoftext|>", "</s>"),
+    "Mistral3ForConditionalGeneration": ("</s>", "[INST]"),
 }
 _VL_FALLBACK_STOPS_DEFAULT: tuple[str, ...] = ("<|im_end|>", "<eos>")
 

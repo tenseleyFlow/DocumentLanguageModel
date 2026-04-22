@@ -143,6 +143,7 @@ _VL_BASE_KEYS: tuple[str, ...] = (
     "paligemma-3b-mix-224",
     "qwen2-vl-2b-instruct",
     "internvl2-2b",
+    "mistral-small-3.1-24b-instruct",
 )
 
 
@@ -239,14 +240,14 @@ class TestInternVL2RegistryEntry:
 
 
 class TestDistinctVlBases:
-    """The three VL bases occupy distinct rows — no silent duplicates."""
+    """The VL bases occupy distinct rows with no silent duplicates."""
 
     def test_all_keys_unique(self) -> None:
-        assert len(set(_VL_BASE_KEYS)) == 3
+        assert len(set(_VL_BASE_KEYS)) == 4
 
     def test_hf_ids_distinct(self) -> None:
         hf_ids = {BASE_MODELS[k].hf_id for k in _VL_BASE_KEYS}
-        assert len(hf_ids) == 3
+        assert len(hf_ids) == 4
 
     def test_image_tokens_distinct_per_base(self) -> None:
         """Each VL base uses its native image-token string.
@@ -259,15 +260,15 @@ class TestDistinctVlBases:
             BASE_MODELS[k].vl_preprocessor_plan.image_token  # type: ignore[union-attr]
             for k in _VL_BASE_KEYS
         }
-        assert len(tokens) == 3
+        assert len(tokens) == 4
 
 
 class TestCountVlRegistryEntries:
     """Defend against accidental regression to the PaliGemma-only state."""
 
-    def test_at_least_three_vl_bases_registered(self) -> None:
+    def test_at_least_four_vl_bases_registered(self) -> None:
         vl_count = sum(1 for s in BASE_MODELS.values() if s.modality == "vision-language")
-        assert vl_count >= 3
+        assert vl_count >= 4
 
 
 class TestTrustRemoteCodeOptIn:
@@ -282,6 +283,7 @@ class TestTrustRemoteCodeOptIn:
         """PaliGemma + Qwen2-VL use standard AutoModel classes."""
         assert BASE_MODELS["paligemma-3b-mix-224"].trust_remote_code is False
         assert BASE_MODELS["qwen2-vl-2b-instruct"].trust_remote_code is False
+        assert BASE_MODELS["mistral-small-3.1-24b-instruct"].trust_remote_code is False
 
     def test_internvl2_opts_in(self) -> None:
         """InternVL2 requires trust_remote_code because InternVLChatModel
@@ -295,3 +297,32 @@ class TestTrustRemoteCodeOptIn:
                 assert spec.trust_remote_code is False, (
                     f"{key} unexpectedly opts into trust_remote_code"
                 )
+
+
+class TestMistralSmall31RegistryEntry:
+    """Sprint 40 refresh: Mistral Small 3.1 lands as VL, not text-only."""
+
+    def test_entry_present(self) -> None:
+        assert "mistral-small-3.1-24b-instruct" in BASE_MODELS
+
+    def test_apache_permissive(self) -> None:
+        spec = BASE_MODELS["mistral-small-3.1-24b-instruct"]
+        assert spec.license_spdx == "Apache-2.0"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+
+    def test_modality_and_architecture(self) -> None:
+        spec = BASE_MODELS["mistral-small-3.1-24b-instruct"]
+        assert spec.modality == "vision-language"
+        assert spec.architecture == "Mistral3ForConditionalGeneration"
+        assert spec.template == "mistral"
+        assert spec.gguf_arch == "mistral3"
+        assert spec.tokenizer_pre == "tekken"
+
+    def test_pinned_preprocessing_plan(self) -> None:
+        spec = BASE_MODELS["mistral-small-3.1-24b-instruct"]
+        plan = spec.vl_preprocessor_plan
+        assert plan is not None
+        assert plan.target_size == (1540, 1540)
+        assert plan.image_token == "[IMG]"
+        assert plan.num_image_tokens == 3025

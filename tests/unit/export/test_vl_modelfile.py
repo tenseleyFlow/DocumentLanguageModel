@@ -226,3 +226,21 @@ class TestStopsFallback:
         out = render_vl_modelfile(ctx)
         assert 'PARAMETER stop "<|im_end|>"' in out
         assert 'PARAMETER stop "<eos>"' in out
+
+    def test_mistral3_uses_mistral_family_stops(self, tmp_path: Path) -> None:
+        spec = _fake_vl_spec()
+        object.__setattr__(spec, "architecture", "Mistral3ForConditionalGeneration")
+        adapter_dir = tmp_path / "adapter"
+        adapter_dir.mkdir()
+        ctx = VlModelfileContext(
+            spec=spec,
+            plan=_fake_plan(),
+            adapter_dir=adapter_dir,
+            base_gguf_name="base.Q4_K_M.gguf",
+            adapter_gguf_name=None,
+            dlm_id="01JZZZZZZZZZZZZZZZZZZZZZZZ",
+            adapter_version=1,
+        )
+        out = render_vl_modelfile(ctx)
+        assert 'PARAMETER stop "</s>"' in out
+        assert 'PARAMETER stop "[INST]"' in out
