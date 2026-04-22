@@ -66,6 +66,9 @@ class TestLicenseFields:
             "qwen2.5-0.5b",
             "qwen2.5-1.5b",
             "qwen2.5-coder-1.5b",
+            "qwen3-1.7b",
+            "qwen3-4b",
+            "qwen3-8b",
             "smollm2-135m",
             "smollm2-360m",
             "smollm2-1.7b",
@@ -82,11 +85,11 @@ class TestLicenseFields:
 class TestArchitectureShapes:
     """Templates, gguf_arch, and target_modules match the architecture family."""
 
-    def test_qwen_entries_use_qwen2_gguf_arch(self) -> None:
+    def test_qwen25_entries_use_qwen2_gguf_arch(self) -> None:
         for key, entry in BASE_MODELS.items():
             # Audio-language Qwen2 variants carry a distinct gguf_arch
             # (no llama.cpp converter support) and a multi-modal template.
-            if not key.startswith("qwen") or entry.modality != "text":
+            if not key.startswith("qwen2.5") or entry.modality != "text":
                 continue
             assert entry.gguf_arch == "qwen2"
             assert entry.architecture == "Qwen2ForCausalLM"
@@ -110,6 +113,8 @@ class TestArchitectureShapes:
             BASE_MODELS[k].size_gb_fp16 for k in ("qwen2.5-0.5b", "qwen2.5-1.5b", "qwen2.5-3b")
         ]
         assert qwen_sizes == sorted(qwen_sizes)
+        qwen3_sizes = [BASE_MODELS[k].size_gb_fp16 for k in ("qwen3-1.7b", "qwen3-4b", "qwen3-8b")]
+        assert qwen3_sizes == sorted(qwen3_sizes)
         smol_sizes = [
             BASE_MODELS[k].size_gb_fp16 for k in ("smollm2-135m", "smollm2-360m", "smollm2-1.7b")
         ]
