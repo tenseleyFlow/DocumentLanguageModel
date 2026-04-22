@@ -23,12 +23,13 @@ class TestQwen3RegistryEntries:
         assert spec.tokenizer_pre == "qwen2"
 
     @pytest.mark.parametrize("key", _QWEN3_KEYS)
-    def test_qwen3_family_is_open_and_not_reasoning_tuned(self, key: str) -> None:
+    def test_qwen3_family_is_open_and_reasoning_tuned(self, key: str) -> None:
         spec = BASE_MODELS[key]
         assert spec.license_spdx == "Apache-2.0"
         assert spec.requires_acceptance is False
         assert spec.redistributable is True
-        assert spec.reasoning_tuned is False
+        assert spec.reasoning_tuned is True
+        assert spec.suggested_prompt_temperature == pytest.approx(0.6)
 
     def test_qwen3_8b_uses_upper_bound_size_hint(self) -> None:
         spec = BASE_MODELS["qwen3-8b"]

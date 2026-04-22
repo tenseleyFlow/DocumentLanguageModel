@@ -103,7 +103,7 @@ def render_modelfile(ctx: ModelfileContext) -> str:
     temperature = (
         ctx.override_temperature
         if ctx.override_temperature is not None
-        else template_row.default_temperature
+        else ctx.spec.suggested_prompt_temperature
     )
     top_p = ctx.override_top_p if ctx.override_top_p is not None else template_row.default_top_p
     param_lines = build_param_lines(

@@ -124,6 +124,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         size_gb_fp16=3.4,
         context_length=32_768,
         recommended_seq_len=2048,
+        reasoning_tuned=True,
     ),
     BaseModelSpec(
         key="qwen3-4b",
@@ -142,6 +143,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         size_gb_fp16=8.0,
         context_length=32_768,
         recommended_seq_len=2048,
+        reasoning_tuned=True,
     ),
     BaseModelSpec(
         key="qwen3-8b",
@@ -160,6 +162,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         size_gb_fp16=16.0,
         context_length=32_768,
         recommended_seq_len=2048,
+        reasoning_tuned=True,
     ),
     BaseModelSpec(
         key="llama-3.2-1b",

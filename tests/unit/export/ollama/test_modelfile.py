@@ -33,6 +33,7 @@ def _adapter_dir(tmp_path: Path, **extra: object) -> Path:
 def _ctx(
     tmp_path: Path,
     *,
+    spec: object | None = None,
     merged: bool = False,
     system_prompt: str | None = None,
     adapter: Path | None = None,
@@ -43,7 +44,7 @@ def _ctx(
 ) -> ModelfileContext:
     plan = ExportPlan(quant="Q4_K_M", merged=merged)
     return ModelfileContext(
-        spec=_SPEC,
+        spec=_SPEC if spec is None else spec,
         plan=plan,
         adapter_dir=adapter or _adapter_dir(tmp_path),
         base_gguf_name="base.Q4_K_M.gguf",
@@ -125,7 +126,7 @@ class TestShape:
         assert "PARAMETER top_p 0.5" in text
 
     def test_unset_overrides_fall_back_to_dialect(self, tmp_path: Path) -> None:
-        """When overrides are None, the dialect defaults are emitted unchanged."""
+        """When overrides are None, the spec + dialect defaults are emitted."""
         text = render_modelfile(_ctx(tmp_path))
         # chatml defaults aren't zero/one, but we can assert both PARAMETER lines exist.
         assert "PARAMETER temperature 0.2" not in text  # would be present if override bled in
@@ -136,6 +137,10 @@ class TestShape:
 
     def test_trailing_newline(self, tmp_path: Path) -> None:
         assert render_modelfile(_ctx(tmp_path)).endswith("\n")
+
+    def test_reasoning_tuned_spec_drives_default_temperature(self, tmp_path: Path) -> None:
+        text = render_modelfile(_ctx(tmp_path, spec=BASE_MODELS["qwen3-1.7b"]))
+        assert "PARAMETER temperature 0.6" in text
 
 
 class TestStops:
