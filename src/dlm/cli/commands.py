@@ -1776,19 +1776,24 @@ def export_cmd(
     store.ensure_layout()
 
     # VL bases: arch-probe + try single-file GGUF on SUPPORTED (with
-    # fallback to HF-snapshot on refusal or subprocess failure). We
-    # still need the resolved plan + cached base dir for the GGUF
-    # path, so resolve those first, then let the dispatcher decide
-    # whether to use them.
+    # fallback to HF-snapshot on refusal or subprocess failure). A
+    # missing local base snapshot should not hard-fail the whole
+    # export — the dispatcher can still emit the HF-snapshot path
+    # without GGUF context.
     if export_dispatch.accepts_images:
+        gguf_emission_context = None
         try:
             cached_vl = download_spec(spec, local_files_only=True)
         except RuntimeError as exc:
-            console.print(
-                f"[red]export:[/red] base model not in local cache "
-                f"— run `dlm train` first.\n  {exc}"
-            )
-            raise typer.Exit(code=1) from exc
+            _ = exc
+        else:
+            gguf_emission_context = {
+                "plan": plan,
+                "cached_base_dir": cached_vl.path,
+                "source_dlm_path": path.resolve(),
+                "training_sequence_len": parsed.frontmatter.training.sequence_len,
+                "dlm_version": f"v{parsed.frontmatter.dlm_version}",
+            }
         try:
             dispatch_result = export_dispatch.dispatch_export(
                 store=store,
@@ -1797,13 +1802,7 @@ def export_cmd(
                 quant=quant,
                 merged=merged,
                 adapter_mix_raw=adapter_mix,
-                gguf_emission_context={
-                    "plan": plan,
-                    "cached_base_dir": cached_vl.path,
-                    "source_dlm_path": path.resolve(),
-                    "training_sequence_len": parsed.frontmatter.training.sequence_len,
-                    "dlm_version": f"v{parsed.frontmatter.dlm_version}",
-                },
+                gguf_emission_context=gguf_emission_context,
             )
         except ExportError as exc:
             console.print(f"[red]export:[/red] {exc}")

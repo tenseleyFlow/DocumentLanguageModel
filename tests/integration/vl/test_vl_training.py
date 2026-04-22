@@ -133,7 +133,9 @@ def test_vl_one_cycle_end_to_end(  # pragma: no cover — slow + vl
     aren't locally cached.
     """
     import dlm.train as dlm_train
+    from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
+    from dlm.hardware import doctor
     from dlm.store.manifest import load_manifest
     from dlm.store.paths import for_dlm
 
@@ -150,16 +152,21 @@ def test_vl_one_cycle_end_to_end(  # pragma: no cover — slow + vl
 
     parsed = parse_file(doc)
     store = for_dlm(parsed.frontmatter.dlm_id, home=tmp_home)
+    spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
+    plan = doctor(training_config=parsed.frontmatter.training).plan
+    if plan is None:
+        pytest.skip("no viable plan on this host — VL body needs a real trainer")
 
     # Cap steps to 1 so the test completes on commodity hardware.
-    result = dlm_train.run(
-        doc,
+    dlm_train.run(
+        store,
+        parsed,
+        spec,
+        plan,
         mode="fresh",
         seed=42,
         max_steps=1,
-        home=tmp_home,
     )
-    assert result is not None
 
     # Adapter committed under v0001/.
     adapter_dir = store.resolve_current_adapter()
