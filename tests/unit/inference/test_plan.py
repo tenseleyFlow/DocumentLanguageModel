@@ -69,7 +69,7 @@ class TestQLoRAOnMPS:
         assert plan.precision == "fp16"
         assert plan.dequantize_on_load is True
         assert plan.attn_implementation == "sdpa"
-        assert "F05" in plan.reason
+        assert "QLoRA adapter on mps host" in plan.reason
 
 
 class TestLoRANonCUDA:
@@ -134,7 +134,7 @@ class TestAuditM1UseQloraFlag:
         _write_training_run(tmp_path, use_qlora=False)
         plan = resolve_inference(tmp_path, _caps(backend=Backend.MPS))
         assert plan.dequantize_on_load is False
-        assert "F05" not in plan.reason
+        assert "QLoRA adapter" not in plan.reason
 
     def test_qlora_flag_wins_over_missing_bnb_pin(self, tmp_path: Path) -> None:
         """Explicit use_qlora=True triggers dequantize even without bnb pin."""
@@ -142,7 +142,7 @@ class TestAuditM1UseQloraFlag:
         _write_training_run(tmp_path, use_qlora=True)
         plan = resolve_inference(tmp_path, _caps(backend=Backend.MPS))
         assert plan.dequantize_on_load is True
-        assert "F05" in plan.reason
+        assert "QLoRA adapter on mps host" in plan.reason
 
     def test_legacy_fallback_when_training_run_missing(self, tmp_path: Path) -> None:
         """Pre-audit-05 adapters only have `pinned_versions.json`.

@@ -26,9 +26,12 @@ _TOKEN = "test-token-123"
 @pytest.fixture
 def server() -> Iterator[ProbeRpcServer]:
     queue = InjectedProbeQueue(capacity=4)
-    srv = ProbeRpcServer(
-        host="127.0.0.1", port=0, token=_TOKEN, queue=queue, next_cycle_eta_s=lambda: 42
-    )
+    try:
+        srv = ProbeRpcServer(
+            host="127.0.0.1", port=0, token=_TOKEN, queue=queue, next_cycle_eta_s=lambda: 42
+        )
+    except PermissionError as exc:
+        pytest.skip(f"loopback bind blocked on this host: {exc}")
     srv.start()
     try:
         yield srv
