@@ -5,7 +5,7 @@ The `Manifest` model owns:
 - Identity: `dlm_id`, `created_at`, `updated_at`, `schema_version`.
 - Base model resolution: key, HF revision, sha256.
 - Adapter state: current version number and its checksums.
-- Training runs and exports (typed lists, populated by Sprints 09 and 12).
+- Training runs and exports (typed lists).
 - Content-delta tracking: `content_hashes` section_id → last-trained hash.
 - Pinned versions of every tool in the stack (mirrored into `dlm.lock`).
 
@@ -14,9 +14,8 @@ writes go to a tmp sibling then `os.replace` atomically onto the final
 filename. Round-trip is **byte-identical** (sorted keys, ISO 8601
 datetimes, trailing LF).
 
-Sprint 12b owns the schema migration framework; when it lands,
-`load_manifest` will dispatch through the migrator on a lower
-`schema_version`.
+Manifest migration is intentionally separate; lower `schema_version`
+values are promoted through the migration layer before normal load.
 """
 
 from __future__ import annotations
@@ -40,8 +39,7 @@ CURRENT_MANIFEST_SCHEMA_VERSION: Final[int] = 1
 class TrainingRunSummary(BaseModel):
     """One row in `manifest.training_runs`.
 
-    Owned by Sprint 09 (which writes instances); Sprint 04 ships the
-    schema so the Manifest model validates end-to-end today.
+    Stored here so the manifest model validates end-to-end.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -58,12 +56,12 @@ class TrainingRunSummary(BaseModel):
     status: Literal["running", "completed", "failed", "cancelled"] = "completed"
     pinned_versions: dict[str, str] = Field(default_factory=dict)
     # Relative path (from store root) to the `logs/train-*.summary.json`
-    # file Sprint 10 writes alongside the adapter. `dlm show` (Sprint 13)
+    # file written alongside the adapter. `dlm show`
     # reads this to surface "how did the last run go?" without globbing.
-    # `None` for runs recorded before audit-05 M3.
+    # `None` for older recorded runs.
     summary_path: str | None = None
     # The named adapter this run trained (multi-adapter documents).
-    # `None` for flat single-adapter runs. Audit-07 M1: without this
+    # `None` for flat single-adapter runs. Without this
     # field, multi-adapter stores can't attribute a TrainingRunSummary
     # to its adapter.
     adapter_name: str | None = None
@@ -78,8 +76,7 @@ class TrainingRunSummary(BaseModel):
 class ExportSummary(BaseModel):
     """One row in `manifest.exports`.
 
-    Owned by Sprint 12 (which writes instances); same rationale as
-    TrainingRunSummary — shipping the type here unblocks validation.
+    Stored here for the same reason as `TrainingRunSummary`.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -107,7 +104,7 @@ class ExportSummary(BaseModel):
 
 
 def _utcnow() -> datetime:
-    # Timezone-aware UTC (audit-03 M2 — `datetime.utcnow()` is deprecated
+    # Timezone-aware UTC (`datetime.utcnow()` is deprecated
     # in Py3.12). We strip tzinfo so the serialized JSON stays the same
     # naive-ISO-8601 form every downstream consumer already expects.
     return datetime.now(UTC).replace(tzinfo=None, microsecond=0)
@@ -132,7 +129,7 @@ def _empty_exports() -> list[ExportSummary]:
 class Manifest(BaseModel):
     """Per-store narrative + content-delta index + version pins.
 
-    Frozen (audit-03 hygiene) — updates go through `touch()` /
+    Frozen — updates go through `touch()` /
     `model_copy()` to produce a new instance; mutation would bypass the
     atomic write contract anyway.
     """
@@ -152,7 +149,7 @@ class Manifest(BaseModel):
     adapter_sha256: str | None = None
     adapter_config_sha256: str | None = None
     # Per-adapter version attribution for multi-adapter stores
-    # (audit-07 M1). For flat stores this stays empty; for multi-adapter
+    # only. For flat stores this stays empty; for multi-adapter
     # stores it holds `{name: latest_version}` so `dlm show` can answer
     # "which adapter is at which version?" without scanning the disk.
     adapter_versions: dict[str, int] = Field(default_factory=_empty_int_dict)
@@ -164,12 +161,12 @@ class Manifest(BaseModel):
     pinned_versions: dict[str, str] = Field(default_factory=_empty_dict)
 
     # Source `.dlm` file we were last associated with. Used for orphan
-    # detection (Sprint 04 `inspect`); updated by CLI ops (Sprint 13).
+    # detection; updated by CLI operations.
     source_path: Path | None = None
 
-    # License acceptance fingerprint (Sprint 12b). `None` on
-    # non-gated bases or stores predating Sprint 12b. Sprint 15's
-    # repo-level `dlm.lock` mirrors this; divergence triggers a
+    # License acceptance fingerprint. `None` on
+    # non-gated bases or older stores. The per-store
+    # `dlm.lock` mirrors this; divergence triggers a
     # re-check on the next `dlm train`.
     license_acceptance: LicenseAcceptance | None = None
 
@@ -196,7 +193,7 @@ def load_manifest(path: Path) -> Manifest:
     Raises `ManifestCorruptError` with the decoded reason when parsing
     fails (invalid JSON, schema violation, unknown fields). On
     `schema_version` mismatch, the current implementation also raises —
-    Sprint 12b's migrator will replace this behavior with a dispatch.
+    the migration layer replaces that refusal on older versions.
     """
     try:
         raw = path.read_text(encoding="utf-8")

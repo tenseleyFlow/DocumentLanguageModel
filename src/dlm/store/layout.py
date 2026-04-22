@@ -41,8 +41,8 @@ either flat or multi-adapter at parse time. The flat layout lives under
 `adapter/versions/` directly; the multi-adapter layout nests one level
 deeper under `adapter/<name>/versions/`.
 
-Subdirectories are created lazily on first write by the sprint that owns
-them — `ensure_layout()` only creates the top-level skeleton.
+Subdirectories are created lazily on first write by the subsystem that
+owns them — `ensure_layout()` only creates the top-level skeleton.
 """
 
 from __future__ import annotations
@@ -81,7 +81,7 @@ ALWAYS_CREATE_DIRS: Final = (
     ADAPTER_DIR,
     LOGS_DIR,
 )
-# These are created lazily by their owning sprint:
-# - replay/ by Sprint 08
-# - exports/<quant>/ by Sprint 11
-# - cache/<slug>/ by Sprint 06
+# These are created lazily by their owning subsystems:
+# - replay/
+# - exports/<quant>/
+# - cache/<slug>/

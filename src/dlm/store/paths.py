@@ -12,7 +12,7 @@
 
 Callers that need CLI `--home` override should resolve it and pass the
 value into `dlm_home(override=...)` — env + CLI precedence is enforced
-in the CLI layer (Sprint 13).
+in the CLI layer.
 """
 
 from __future__ import annotations
@@ -171,7 +171,7 @@ class StorePath:
 
     @property
     def tokenized_cache_dir(self) -> Path:
-        """Per-store tokenized-section cache (Sprint 31).
+        """Per-store tokenized-section cache.
 
         Lazy — `TokenizedCache.open` creates the subtree on first
         use. Separate from `cache/` (which holds HF downloads) so
@@ -181,7 +181,7 @@ class StorePath:
 
     @property
     def blob_dir(self) -> Path:
-        """Per-store content-addressed blob directory (Sprint 35 v1).
+        """Per-store content-addressed blob directory.
 
         Layout: `blobs/<sha-prefix>/<sha>.<ext>` where `<sha-prefix>`
         is the first two hex chars of the blob's sha256 (a 256-way
@@ -192,7 +192,7 @@ class StorePath:
 
     @property
     def vl_cache_dir(self) -> Path:
-        """Per-store VL preprocessor tensor cache (Sprint 35 v1).
+        """Per-store VL preprocessor tensor cache.
 
         Keyed on `(blob_sha, processor_sha, target_size)` — orthogonal
         to the tokenized-section cache, which keys on
@@ -202,7 +202,7 @@ class StorePath:
 
     @property
     def audio_cache_dir(self) -> Path:
-        """Per-store audio preprocessor tensor cache (Sprint 35.2).
+        """Per-store audio preprocessor tensor cache.
 
         Parallel to `vl_cache_dir`. Keyed on
         `(blob_sha, processor_sha, sample_rate, max_length_seconds)` —
@@ -345,7 +345,7 @@ class StorePath:
         return self._resolve_pointer(self.adapter_current_pointer)
 
     def _resolve_pointer(self, pointer: Path) -> Path | None:
-        """Shared pointer-resolution helper (audit-08 N7).
+        """Shared pointer-resolution helper.
 
         Reads the pointer file, strips whitespace, joins to the store
         root, and enforces that the resolved target stays inside the

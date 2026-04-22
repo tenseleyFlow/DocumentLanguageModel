@@ -5,8 +5,8 @@ weights, optimizer state, replay corpus, and exports. This module owns
 path resolution, the manifest schema + atomic I/O, the exclusive file
 lock, and read-only inspection for `dlm show`.
 
-Sprint 04 lands the skeleton and contracts. Sprints 08/09/11/12/12b
-populate the subdirs and extend the manifest.
+The store starts as a small stable skeleton and grows lazily as replay,
+training, export, and migration features populate their own subtrees.
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 `inspect_store()` walks a store, computes summary statistics, and — when
 given the path to the source `.dlm` — flags orphaned stores whose source
 is missing or has the wrong `dlm_id`. The returned `StoreInspection`
-dataclass is the backing for Sprint 13's `dlm show` CLI.
+dataclass is the backing for the `dlm show` CLI.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ _LOG = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class NamedAdapterState:
-    """Per-named-adapter snapshot for multi-adapter stores (audit-07 M2)."""
+    """Per-named-adapter snapshot for multi-adapter stores."""
 
     name: str
     has_current: bool
@@ -55,10 +55,10 @@ class StoreInspection:
     source_path: Path | None
     orphaned: bool
     # Mirrored from the manifest so the CLI can render them without a
-    # second load; keep in sync with Sprint 13's output format.
+    # second load; keep in sync with the CLI output format.
     content_hashes: dict[str, str] = field(default_factory=dict)
     pinned_versions: dict[str, str] = field(default_factory=dict)
-    # Named multi-adapter state (audit-07 M2). Empty for flat stores;
+    # Named multi-adapter state. Empty for flat stores;
     # populated from `adapter/<name>/versions/...` subdirectories on
     # multi-adapter stores. Used by `dlm show` to surface per-adapter
     # version pointers that the flat `adapter_version` field can't.
@@ -69,7 +69,7 @@ def inspect_store(store: StorePath, *, source_path: Path | None = None) -> Store
     """Walk `store` and produce a `StoreInspection`.
 
     Raises `ManifestCorruptError` if the manifest is unreadable — caller
-    decides whether to treat that as user-facing error (Sprint 13 will).
+    decides whether to treat that as a user-facing error.
     """
     manifest = load_manifest(store.manifest)
     effective_source = source_path or manifest.source_path
@@ -112,7 +112,7 @@ def _is_orphaned(source_path: Path | None, expected_dlm_id: str) -> bool:
     missing file, parse errors, invalid encoding, or I/O errors reading
     the file. Unexpected exceptions (e.g., a bug in the parser) are left
     to propagate so bugs surface instead of silently marking stores
-    orphan (audit-03 M1).
+    orphaned.
     """
     if source_path is None:
         return False
@@ -163,7 +163,7 @@ def _discover_named_adapters(store: StorePath) -> list[NamedAdapterState]:
 
     Excludes the flat-layout entries (`versions/`, `current.txt`). A
     named-adapter dir is any other directory under `adapter/` that
-    contains a `versions/` subdirectory — the Sprint 20a layout
+    contains a `versions/` subdirectory — the named-adapter layout
     signature.
     """
     if not store.adapter.exists():

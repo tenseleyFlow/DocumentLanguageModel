@@ -27,7 +27,7 @@ class ManifestVersionError(ManifestCorruptError):
 
     Structurally a `ManifestCorruptError` subclass so callers that only
     catch the parent still see version mismatches; semantically distinct
-    for callers (like Sprint 12b's migrator) that promote rather than
+    for callers that promote rather than
     reject.
     """
 

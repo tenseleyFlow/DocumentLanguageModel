@@ -1,4 +1,4 @@
-"""Content-addressed blob store (Sprint 35 v1).
+"""Content-addressed blob store.
 
 Stores binary payloads (image files for now, audio later) keyed by
 sha256 of the raw bytes. The store lives under each `.dlm` store's
@@ -38,7 +38,7 @@ from dlm.store.errors import StoreError
 _BLOB_SHA_PREFIX_LEN: Final[int] = 2
 _KNOWN_EXTENSIONS: Final[frozenset[str]] = frozenset(
     {
-        # Images (Sprint 35 v1).
+        # Images.
         ".png",
         ".jpg",
         ".jpeg",
@@ -46,7 +46,7 @@ _KNOWN_EXTENSIONS: Final[frozenset[str]] = frozenset(
         ".gif",
         ".bmp",
         ".tiff",
-        # Audio (Sprint 35.2). `.mp3` / `.m4a` deferred to 35.2
+        # Audio. `.mp3` / `.m4a` are still deferred
         # follow-up — soundfile can't decode them without ffmpeg/
         # libsndfile MP3 support, which we don't require in v1.
         ".wav",
