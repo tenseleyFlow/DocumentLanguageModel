@@ -24,6 +24,8 @@ from dlm.hardware.backend import Backend
 from dlm.hardware.capabilities import Capabilities
 
 CPU_PARAM_BUDGET: Final[int] = 200_000_000  # audit F24
+MPS_FORCE_ONLY_HEADROOM_FRACTION: Final[float] = 0.85
+MPS_MIN_BASE_BYTES_PER_PARAM: Final[float] = 2.0  # fp16 floor; default fp32 is worse
 
 
 class ResolutionError(Exception):
@@ -40,8 +42,9 @@ def check_refusals(
 ) -> None:
     """Raise `ResolutionError` on any hard-refusal combination.
 
-    `force=True` only bypasses the CPU parameter-budget refusal, not
-    QLoRA-on-MPS or similar which would produce outright failures.
+    `force=True` bypasses policy refusals that are about expected
+    practicality (CPU over-budget, giant LoRA bases on MPS). It does
+    not bypass outright incompatibilities like QLoRA-on-MPS.
 
     `num_adapters` is the count of declared adapters (``len(training.adapters)``
     or 1 for single-adapter docs). When >1 and QLoRA is requested, F28
@@ -52,6 +55,8 @@ def check_refusals(
 
     if adapter_choice == "qlora":
         _refuse_qlora(caps)
+
+    _refuse_large_mps_base(caps, base_params, force=force)
 
     if (
         adapter_choice == "qlora"
@@ -215,3 +220,29 @@ def _refuse_qlora(caps: Capabilities) -> None:
             "Install with `uv sync --extra cuda` (once the extra lands) or set "
             "`adapter: lora`.",
         )
+
+
+def _refuse_large_mps_base(caps: Capabilities, base_params: int, *, force: bool) -> None:
+    """Refuse giant LoRA-on-MPS bases unless the user opts in with force.
+
+    Even the best-case LoRA path on MPS needs a full-precision-ish base
+    copy in unified memory. We conservatively use an fp16 floor here:
+    if that alone would consume >85% of unified memory, the default path
+    refuses. The actual default MPS precision is fp32, so the real
+    training footprint is usually larger.
+    """
+    if caps.backend != Backend.MPS or caps.unified_memory_gb is None or force:
+        return
+
+    min_base_gb = (base_params * MPS_MIN_BASE_BYTES_PER_PARAM) / (1024**3)
+    budget_gb = caps.unified_memory_gb * MPS_FORCE_ONLY_HEADROOM_FRACTION
+    if min_base_gb <= budget_gb:
+        return
+
+    raise ResolutionError(
+        "Refusing this base on Apple Silicon by default: even an fp16 "
+        f"base copy is ~{min_base_gb:.1f} GiB vs ~{budget_gb:.1f} GiB "
+        f"usable headroom from {caps.unified_memory_gb:.0f} GiB unified memory. "
+        "MPS defaults to fp32, so the real footprint is higher. Pass "
+        "`--force` only if you want to override this policy on a large-memory host.",
+    )

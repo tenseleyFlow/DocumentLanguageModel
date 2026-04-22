@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from dlm.doc.schema import AdapterConfig, TrainingConfig
-from dlm.hardware.capabilities import probe
+from dlm.hardware.capabilities import Capabilities, probe
 from dlm.hardware.refusals import (
     CPU_PARAM_BUDGET,
     ResolutionError,
@@ -23,6 +25,10 @@ def _cfg(**overrides: object) -> TrainingConfig:
     data: dict[str, object] = {"adapter": "lora"}
     data.update(overrides)
     return TrainingConfig.model_validate(data)
+
+
+def _with_unified_memory(caps: Capabilities, unified_memory_gb: float) -> Capabilities:
+    return replace(caps, unified_memory_gb=unified_memory_gb)
 
 
 class TestQloraRefusals:
@@ -106,6 +112,25 @@ class TestLoraOnAllBackends:
         with force_cpu():
             caps = probe()
         check_refusals(_cfg(adapter="lora"), caps, base_params=100_000_000)
+
+    def test_large_mps_base_refused_without_force(self) -> None:
+        with force_mps():
+            caps = probe()
+        caps = _with_unified_memory(caps, 48.0)
+        with pytest.raises(ResolutionError, match="Apple Silicon.*Pass `--force`"):
+            check_refusals(_cfg(adapter="lora"), caps, base_params=24_000_000_000)
+
+    def test_large_mps_base_force_bypasses_policy_refusal(self) -> None:
+        with force_mps():
+            caps = probe()
+        caps = _with_unified_memory(caps, 48.0)
+        check_refusals(_cfg(adapter="lora"), caps, base_params=24_000_000_000, force=True)
+
+    def test_mid_tier_mps_base_stays_allowed(self) -> None:
+        with force_mps():
+            caps = probe()
+        caps = _with_unified_memory(caps, 48.0)
+        check_refusals(_cfg(adapter="lora"), caps, base_params=9_000_000_000)
 
 
 class TestMultiGpuRefusals:

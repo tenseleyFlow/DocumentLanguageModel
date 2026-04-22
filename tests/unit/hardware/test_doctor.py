@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import replace
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from dlm.cli.app import app
 from dlm.hardware import DoctorResult, TrainingPlan, doctor, render_text
 from dlm.hardware.backend import Backend
-from dlm.hardware.capabilities import Capabilities
+from dlm.hardware.capabilities import Capabilities, probe
 from tests.fixtures.hardware_mocks import force_cpu, force_cuda, force_mps
 
 
@@ -30,6 +32,17 @@ class TestDoctorResult:
         assert result.plan is None
         assert result.plan_error is not None
         assert "MPS detected" in result.plan_error
+
+    def test_large_mps_base_records_force_only_error(self) -> None:
+        with force_mps():
+            caps = probe()
+        caps = replace(caps, unified_memory_gb=48.0)
+        with patch("dlm.hardware.doctor.probe", return_value=caps):
+            result = doctor(base_params=24_000_000_000)
+        assert result.plan is None
+        assert result.plan_error is not None
+        assert "Apple Silicon" in result.plan_error
+        assert "--force" in result.plan_error
 
 
 class TestJsonSerialization:
