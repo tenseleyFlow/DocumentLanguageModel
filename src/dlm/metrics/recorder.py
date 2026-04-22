@@ -10,7 +10,10 @@ Two entry shapes:
   explicitly. Used from `trainer.run` where we know the run_id.
 - Callback: `DlmTrainerCallback` plugs into HuggingFace's
   `TrainerCallback` protocol so TRL's `on_log` / `on_evaluate` /
-  `on_train_end` map onto the event stream.
+  `on_train_end` map onto the event stream. The trainer attaches it
+  to the live `SFTTrainer` so step + eval records stream into SQLite
+  and the JSONL step log as each log entry is produced — no post-hoc
+  `state.log_history` walk after training completes.
 
 Best-effort throughout: a failed write is logged and swallowed so a
 metrics hiccup never kills training.
@@ -35,7 +38,7 @@ from dlm.metrics.events import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from dlm.train.logger import StepLogger
 
 _LOG = logging.getLogger(__name__)
 
@@ -192,16 +195,28 @@ class DlmTrainerCallback:  # pragma: no cover - heavy trainer hook
 
     `on_log` fires for step-level loss records; `on_evaluate` fires
     with the eval metrics dict. The callback reads `state.global_step`
-    and matches it with the events the recorder expects.
+    and emits both the SQLite events (via `MetricsRecorder`) and the
+    JSONL step record (via the optional `StepLogger`) — so nothing
+    downstream needs to walk `trainer.state.log_history` after the
+    training loop returns.
+
+    A best-effort `try/except` wraps each record call: a metrics write
+    failing in the middle of training must never abort the run.
 
     Not a unit-test target — the HF TrainerCallback surface requires
     real trainer state. The `MetricsRecorder.record_*` methods are
     the tested surface.
     """
 
-    def __init__(self, recorder: MetricsRecorder, run_id: int) -> None:
+    def __init__(
+        self,
+        recorder: MetricsRecorder,
+        run_id: int,
+        step_logger: StepLogger | None = None,
+    ) -> None:
         self._recorder = recorder
         self._run_id = run_id
+        self._step_logger = step_logger
 
     def on_log(
         self,
@@ -215,15 +230,33 @@ class DlmTrainerCallback:  # pragma: no cover - heavy trainer hook
             return
         if "loss" not in logs:
             return
-        self._recorder.record_step(
-            StepEvent(
-                run_id=self._run_id,
-                step=int(state.global_step),
-                loss=float(logs["loss"]),
-                lr=_maybe_float(logs.get("learning_rate")),
-                grad_norm=_maybe_float(logs.get("grad_norm")),
+        step = int(state.global_step)
+        loss = float(logs["loss"])
+        lr = _maybe_float(logs.get("learning_rate"))
+        grad_norm = _maybe_float(logs.get("grad_norm"))
+        try:
+            self._recorder.record_step(
+                StepEvent(
+                    run_id=self._run_id,
+                    step=step,
+                    loss=loss,
+                    lr=lr,
+                    grad_norm=grad_norm,
+                )
             )
-        )
+        except Exception as exc:  # noqa: BLE001 - metrics must never kill training
+            _LOG.warning("metrics record_step failed: %s (swallowed)", exc)
+        if self._step_logger is not None:
+            try:
+                self._step_logger.log_step(
+                    step=step,
+                    loss=loss,
+                    lr=lr if lr is not None else 0.0,
+                    grad_norm=grad_norm,
+                    val_loss=_maybe_float(logs.get("eval_loss")),
+                )
+            except Exception as exc:  # noqa: BLE001 - JSONL must never kill training
+                _LOG.warning("step logger log_step failed: %s (swallowed)", exc)
 
     def on_evaluate(
         self,
@@ -235,14 +268,17 @@ class DlmTrainerCallback:  # pragma: no cover - heavy trainer hook
     ) -> None:
         if metrics is None:
             return
-        self._recorder.record_eval(
-            EvalEvent(
-                run_id=self._run_id,
-                step=int(state.global_step),
-                val_loss=_maybe_float(metrics.get("eval_loss")),
-                perplexity=_maybe_float(metrics.get("eval_perplexity")),
+        try:
+            self._recorder.record_eval(
+                EvalEvent(
+                    run_id=self._run_id,
+                    step=int(state.global_step),
+                    val_loss=_maybe_float(metrics.get("eval_loss")),
+                    perplexity=_maybe_float(metrics.get("eval_perplexity")),
+                )
             )
-        )
+        except Exception as exc:  # noqa: BLE001 - metrics must never kill training
+            _LOG.warning("metrics record_eval failed: %s (swallowed)", exc)
 
 
 def _maybe_float(value: Any) -> float | None:

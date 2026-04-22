@@ -265,6 +265,13 @@ def run(
             directive_discovered=directive_discovered,
         )
 
+        # Register the metrics + JSONL callback on the live trainer so
+        # step / eval records stream into SQLite and the JSONL step log
+        # as each log entry is produced. Guarded for the factory
+        # test-seam path: a mock trainer may not expose `add_callback`,
+        # and its log_history is always empty anyway.
+        _attach_dlm_trainer_callback(sft, recorder=recorder, run_id=run_id, step_logger=log)
+
         # 6. Run the training loop.
         start = time.perf_counter()
         train_result = sft.train()
@@ -275,60 +282,13 @@ def run(
         final_train_loss = _maybe_float(getattr(train_result, "training_loss", None))
 
         # 7. Extract final eval metrics from trainer.state.log_history.
-        #    Sprint 10: the SFTTrainer calls compute_metrics at each
-        #    eval_steps; the last logged `eval_loss` + perplexity are
-        #    the authoritative post-run numbers.
+        #    The callback above streams step + eval records as the
+        #    training loop runs; log_history here is read only for the
+        #    post-run NaN guard, the summary aggregator, and the
+        #    mixed-mode loss split.
         from dlm.eval import summarize_eval_state
 
         log_history = list(getattr(sft.state, "log_history", []))
-
-        # Audit-08 P2: emit per-step records into the JSONL log from
-        # HF's log_history. Sprint 10 shipped `StepLogger.log_step`
-        # but never wired a call site — the test_one_cycle test
-        # asserts at least one step record lands. We iterate the
-        # training-log entries (those with a `loss` field) and emit
-        # a step event for each. Live-streaming via a TrainerCallback
-        # is a future refinement; post-hoc dump is enough to satisfy
-        # the observability contract.
-        from dlm.metrics import EvalEvent, StepEvent
-
-        for entry in log_history:
-            if not isinstance(entry, dict):
-                continue
-            step_num = entry.get("step") or entry.get("global_step")
-            if step_num is None:
-                continue
-            step_int = int(step_num)
-            # Step rows (training loss + lr + grad_norm).
-            if "loss" in entry:
-                log.log_step(
-                    step=step_int,
-                    loss=float(entry["loss"]),
-                    lr=float(entry.get("learning_rate", 0.0)),
-                    grad_norm=_maybe_float(entry.get("grad_norm")),
-                    val_loss=_maybe_float(entry.get("eval_loss")),
-                )
-                recorder.record_step(
-                    StepEvent(
-                        run_id=run_id,
-                        step=step_int,
-                        loss=float(entry["loss"]),
-                        lr=_maybe_float(entry.get("learning_rate")),
-                        grad_norm=_maybe_float(entry.get("grad_norm")),
-                    )
-                )
-            # Eval rows (separate DB table). HF log_history interleaves
-            # train `loss` entries and eval `eval_loss` entries; record
-            # whichever is present.
-            if "eval_loss" in entry:
-                recorder.record_eval(
-                    EvalEvent(
-                        run_id=run_id,
-                        step=step_int,
-                        val_loss=_maybe_float(entry.get("eval_loss")),
-                        perplexity=_maybe_float(entry.get("eval_perplexity")),
-                    )
-                )
 
         # NaN-eval guard (redundant with the weight gate, intentional).
         # Raises `NaNEvalError` so the run fails before we touch disk.
@@ -865,6 +825,30 @@ def _build_real_trainer(  # pragma: no cover
     # event schema; this is the consumer side.
     trainer._dlm_tokenization_stats = tokenization_stats  # type: ignore[attr-defined]
     return trainer
+
+
+def _attach_dlm_trainer_callback(
+    trainer: Any,
+    *,
+    recorder: Any,
+    run_id: int,
+    step_logger: StepLogger,
+) -> None:
+    """Register `DlmTrainerCallback` on a live HF/TRL trainer.
+
+    Guarded for the factory test-seam: mock trainers won't have
+    `add_callback`, and their log_history is empty anyway. Errors are
+    swallowed so the metrics wiring never takes down training.
+    """
+    add_callback = getattr(trainer, "add_callback", None)
+    if add_callback is None:
+        return
+    try:
+        from dlm.metrics.recorder import DlmTrainerCallback
+
+        add_callback(DlmTrainerCallback(recorder, run_id, step_logger=step_logger))
+    except Exception as exc:  # noqa: BLE001 - metrics must never kill training
+        _LOG.warning("failed to attach DlmTrainerCallback: %s (swallowed)", exc)
 
 
 def _maybe_record_tokenization(
