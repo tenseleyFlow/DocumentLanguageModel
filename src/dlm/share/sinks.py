@@ -5,7 +5,7 @@ Four schemes recognized today:
 - `hf:<org>/<repo>`     → HuggingFace Hub
 - `https://...`         → generic HTTPS URL
 - `http://...`          → generic HTTPS URL (warns on insecure scheme)
-- `peer://host:port/<path>?token=...` → LAN peer (Sprint 28 serve)
+- `peer://host:port/<path>?token=...` → LAN peer
 - `<local/path>` OR `/abs/path`       → local filesystem
 
 Everything else raises `UnknownSinkError`.

@@ -1,4 +1,4 @@
-"""`dlm train --watch` — save-to-train loop (Sprint 25).
+"""`dlm train --watch` — save-to-train loop.
 
 Heavy imports (`watchfiles`, the trainer) are deferred so this
 module's collection cost is small. Public surface:
