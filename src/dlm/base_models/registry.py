@@ -15,8 +15,9 @@ Notes on individual entries:
   plus a pack-time attestation checkbox would encode this properly —
   deferred follow-up work. Until then, users at the scale threshold
   must consult the license text themselves.
-- Llama-3.2 models are gated on HuggingFace (`requires_acceptance=True`)
-  and their license does NOT permit bundling into a `.dlm.pack`
+- Llama-3.2 / 3.3 models are gated on HuggingFace
+  (`requires_acceptance=True`) and their license does NOT permit
+  bundling into a `.dlm.pack`
   (`redistributable=False`) — enforced by the pack gate and
   share-protocol refusal.
 - SmolLM2 and Phi-3.5-mini are permissive (Apache-2.0 / MIT).
@@ -194,6 +195,28 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         redistributable=False,
         size_gb_fp16=6.5,
         context_length=131_072,
+        recommended_seq_len=4096,
+    ),
+    BaseModelSpec(
+        key="llama-3.3-8b-instruct",
+        hf_id="meta-llama/Llama-3.3-8B-Instruct",
+        # Placeholder SHA: format-valid, not a real HF commit. The
+        # weekly `scripts/refresh-registry.py --check` run surfaces
+        # drift and prints the live value for manual review.
+        revision="4d5e6f7890abcdeffedcba0987654321abc2d3e4",
+        architecture="LlamaForCausalLM",
+        params=8_000_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="llama3",
+        gguf_arch="llama",
+        tokenizer_pre="llama-bpe",
+        license_spdx="Other",
+        license_url="https://www.llama.com/llama3_3/license/",
+        requires_acceptance=True,
+        redistributable=False,
+        size_gb_fp16=16.5,
+        context_length=131_072,
+        context_length_effective=8_192,
         recommended_seq_len=4096,
     ),
     BaseModelSpec(

@@ -55,8 +55,8 @@ class TestLicenseFields:
             )
 
     def test_llama_entries_are_gated_and_nonredistributable(self) -> None:
-        """Explicit check: Llama-3.2 has Meta license gating."""
-        for key in ("llama-3.2-1b", "llama-3.2-3b"):
+        """Explicit check: shipped Llama entries keep the Meta gating pattern."""
+        for key in ("llama-3.2-1b", "llama-3.2-3b", "llama-3.3-8b-instruct"):
             entry = BASE_MODELS[key]
             assert entry.requires_acceptance is True
             assert entry.redistributable is False
@@ -96,7 +96,7 @@ class TestArchitectureShapes:
             assert entry.template == "chatml"
 
     def test_llama_entries_use_llama_gguf_arch(self) -> None:
-        for key in ("llama-3.2-1b", "llama-3.2-3b"):
+        for key in ("llama-3.2-1b", "llama-3.2-3b", "llama-3.3-8b-instruct"):
             entry = BASE_MODELS[key]
             assert entry.gguf_arch == "llama"
             assert entry.architecture == "LlamaForCausalLM"

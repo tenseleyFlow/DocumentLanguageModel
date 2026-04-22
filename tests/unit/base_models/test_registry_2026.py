@@ -34,3 +34,23 @@ class TestQwen3RegistryEntries:
         spec = BASE_MODELS["qwen3-8b"]
         assert spec.params == 8_000_000_000
         assert spec.size_gb_fp16 == pytest.approx(16.0)
+
+
+class TestLlama33RegistryEntry:
+    def test_entry_present(self) -> None:
+        assert "llama-3.3-8b-instruct" in BASE_MODELS
+
+    def test_follows_existing_llama_gating_pattern(self) -> None:
+        spec = BASE_MODELS["llama-3.3-8b-instruct"]
+        assert spec.architecture == "LlamaForCausalLM"
+        assert spec.template == "llama3"
+        assert spec.gguf_arch == "llama"
+        assert spec.requires_acceptance is True
+        assert spec.redistributable is False
+        assert spec.license_spdx == "Other"
+
+    def test_effective_context_hint_is_lower_than_nominal(self) -> None:
+        spec = BASE_MODELS["llama-3.3-8b-instruct"]
+        assert spec.context_length == 131_072
+        assert spec.context_length_effective == 8_192
+        assert spec.effective_context_length == 8_192
