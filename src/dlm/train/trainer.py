@@ -175,6 +175,7 @@ def run(
     trainer_factory: Callable[..., Any] | None = None,
     adapter_name: str | None = None,
     world_size: int | None = None,
+    strict_metrics: bool = False,
 ) -> TrainingRunResult:
     """Execute one training cycle end-to-end.
 
@@ -203,6 +204,10 @@ def run(
     `adapter/<name>/current.txt` rather than the flat paths. When
     `None`, uses the flat single-adapter layout (backward-compatible
     with `.dlm` files that don't declare `training.adapters`).
+
+    `strict_metrics` promotes every SQLite metrics-write failure to a
+    hard error. Without it, the run-start/run-end anchors still raise,
+    while incremental metrics streams degrade to logged best-effort.
     """
     ctx = run_preflight(
         store=store,
@@ -217,6 +222,7 @@ def run(
         trainer_factory=trainer_factory,
         adapter_name=adapter_name,
         world_size=world_size,
+        strict_metrics=strict_metrics,
     )
 
     with StepLogger(ctx.log_path) as log:
@@ -225,7 +231,7 @@ def run(
         result = commit_and_record(ctx, loop_result, log)
 
     # Sprint 31.5: emit the tokenization event if the pre-tokenize pass
-    # fired. Best-effort through the recorder; swallowed on failure.
+    # fired. The recorder owns the strict-vs-best-effort policy.
     _maybe_record_tokenization(recorder=ctx.recorder, run_id=ctx.run_id, trainer=loop_result.sft)
 
     ctx.recorder.record_run_end(RunEnd(run_id=ctx.run_id, status="ok"))
@@ -246,6 +252,7 @@ def run_preflight(
     trainer_factory: Callable[..., Any] | None,
     adapter_name: str | None,
     world_size: int | None,
+    strict_metrics: bool,
 ) -> PreflightContext:
     """Resolve everything the training loop + commit phase will need.
 
@@ -309,9 +316,9 @@ def run_preflight(
     replay = ReplayStore.at(store.replay_corpus, store.replay_index)
 
     # Sprint 26: open the metrics recorder early so RunStart lands
-    # even if the training loop fails partway. Best-effort — failures
-    # here are logged and swallowed to keep training the priority.
-    recorder = MetricsRecorder(store.root)
+    # even if the training loop fails partway. RunStart/RunEnd are
+    # hard-fail anchors; incremental writes obey the recorder policy.
+    recorder = MetricsRecorder(store.root, strict=strict_metrics)
     recorder.record_run_start(
         RunStart(
             run_id=run_id,
@@ -987,26 +994,23 @@ def _maybe_record_tokenization(
 
     Stats are attached to the trainer by ``_build_real_trainer`` (the
     factory test-seam path skips this because no cache was consulted).
-    Errors are swallowed: metrics are best-effort.
+    The recorder owns whether a write is best-effort or hard-fail.
     """
     stats = getattr(trainer, "_dlm_tokenization_stats", None)
     if stats is None:
         return
-    try:
-        from dlm.metrics import TokenizationEvent
+    from dlm.metrics import TokenizationEvent
 
-        recorder.record_tokenization(
-            TokenizationEvent(
-                run_id=run_id,
-                total_sections=stats.total_sections,
-                cache_hits=stats.cache_hits,
-                cache_misses=stats.cache_misses,
-                total_tokenize_seconds=stats.total_tokenize_seconds,
-                cache_bytes_after=stats.cache_bytes_after,
-            )
+    recorder.record_tokenization(
+        TokenizationEvent(
+            run_id=run_id,
+            total_sections=stats.total_sections,
+            cache_hits=stats.cache_hits,
+            cache_misses=stats.cache_misses,
+            total_tokenize_seconds=stats.total_tokenize_seconds,
+            cache_bytes_after=stats.cache_bytes_after,
         )
-    except Exception as exc:  # noqa: BLE001 — metrics never fail a run
-        _LOG.warning("cache: record_tokenization failed (%s); swallowed", exc)
+    )
 
 
 def _maybe_pretokenize_datasets(  # pragma: no cover — real path is covered by slow tests

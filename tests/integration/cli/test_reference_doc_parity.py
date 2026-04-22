@@ -40,6 +40,7 @@ def test_reference_doc_covers_audited_train_flags() -> None:
         "--policy",
         "--rescaffold",
         "--phase",
+        "--strict-metrics",
         "--skip-export-probes",
     ):
         assert flag in help_text

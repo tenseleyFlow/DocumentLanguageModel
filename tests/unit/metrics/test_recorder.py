@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+
+import pytest
 
 from dlm.metrics.db import metrics_db_path
 from dlm.metrics.events import EvalEvent, ExportEvent, RunEnd, RunStart, StepEvent
@@ -17,6 +22,12 @@ def _select_all(db_path: Path, table: str) -> list[tuple]:
     finally:
         conn.close()
     return rows
+
+
+@contextmanager
+def _failing_connect(_store_root: Path) -> Iterator[sqlite3.Connection]:
+    raise sqlite3.OperationalError("database is locked")
+    yield sqlite3.connect(":memory:")
 
 
 class TestRunLifecycle:
@@ -111,15 +122,69 @@ class TestExports:
 
 
 class TestBestEffort:
-    def test_write_after_missing_parent_silently_no_ops(self, tmp_path: Path) -> None:
-        """A metrics-write failure must not raise — training is the
-        priority, not telemetry."""
-        # Point at a path where the DB can't be opened. The recorder
-        # should swallow the sqlite error.
-        bogus = tmp_path / "nonexistent" / "really" / "no"
-        rec = MetricsRecorder(bogus)
-        # The connect() helper creates parent dirs, so this actually
-        # succeeds. Force a real error by passing a readonly dir.
-        bogus.parent.parent.mkdir(parents=True, exist_ok=True)
+    def test_step_write_logs_error_once_per_stream(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Per-step writes stay best-effort, but only one ERROR lands per run."""
+        import dlm.metrics.recorder as recorder_mod
+
+        monkeypatch.setattr(recorder_mod, "connect", _failing_connect)
+        caplog.set_level(logging.ERROR, logger="dlm.metrics.recorder")
+        rec = MetricsRecorder(tmp_path)
         rec.record_step(StepEvent(run_id=1, step=0, loss=1.0))
-        # No exception → pass.
+        rec.record_step(StepEvent(run_id=1, step=1, loss=0.9))
+
+        messages = [record.message for record in caplog.records]
+        assert len(messages) == 1
+        assert "metrics step write failed" in messages[0]
+        assert caplog.records[0].levelno == logging.ERROR
+
+    def test_eval_failure_logs_once_even_after_repeat(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import dlm.metrics.recorder as recorder_mod
+
+        monkeypatch.setattr(recorder_mod, "connect", _failing_connect)
+        caplog.set_level(logging.ERROR, logger="dlm.metrics.recorder")
+        rec = MetricsRecorder(tmp_path)
+        rec.record_eval(EvalEvent(run_id=1, step=1, val_loss=1.0))
+        rec.record_eval(EvalEvent(run_id=1, step=2, val_loss=0.9))
+
+        messages = [record.message for record in caplog.records]
+        assert len(messages) == 1
+        assert "metrics eval write failed" in messages[0]
+
+
+class TestAnchorWrites:
+    def test_run_start_raises_on_sqlite_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.recorder as recorder_mod
+
+        monkeypatch.setattr(recorder_mod, "connect", _failing_connect)
+        rec = MetricsRecorder(tmp_path)
+
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            rec.record_run_start(RunStart(run_id=1, adapter_version=1, phase="sft", seed=42))
+
+    def test_run_end_raises_on_sqlite_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.recorder as recorder_mod
+
+        rec = MetricsRecorder(tmp_path)
+        rec.record_run_start(RunStart(run_id=1, adapter_version=1, phase="sft", seed=42))
+        monkeypatch.setattr(recorder_mod, "connect", _failing_connect)
+
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            rec.record_run_end(RunEnd(run_id=1, status="ok"))

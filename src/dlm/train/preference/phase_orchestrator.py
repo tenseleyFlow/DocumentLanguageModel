@@ -92,6 +92,7 @@ def run_phases(
     lock_mode: LockMode = "default",
     capabilities: Capabilities | None = None,
     world_size: int | None = None,
+    strict_metrics: bool = False,
     sft_runner: SftRunner | None = None,
     dpo_runner: PreferenceRunner | None = None,
 ) -> list[PhaseResult]:
@@ -129,6 +130,7 @@ def run_phases(
             "max_steps": max_steps,
             "lock_mode": lock_mode,
             "capabilities": capabilities,
+            "strict_metrics": strict_metrics,
         }
         if world_size is not None:
             sft_kwargs["world_size"] = world_size

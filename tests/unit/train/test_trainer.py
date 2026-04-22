@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
+
+import pytest
 
 from dlm.base_models import BASE_MODELS
 from dlm.doc.parser import ParsedDlm
@@ -385,3 +389,76 @@ class TestRunBranches:
                     _plan(),
                     trainer_factory=_mock_trainer_factory,
                 )
+
+
+class TestStrictMetrics:
+    def test_step_write_failure_raises_when_strict_metrics_enabled(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from contextlib import contextmanager
+
+        import dlm.metrics.recorder as recorder_mod
+        from dlm.metrics.db import connect as real_connect
+
+        store = for_dlm("01STRICTMETRICS", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(
+            store.manifest,
+            Manifest(dlm_id="01STRICTMETRICS", base_model="smollm2-135m"),
+        )
+        spec = BASE_MODELS["smollm2-135m"]
+
+        call_count = {"count": 0}
+
+        @contextmanager
+        def flaky_connect(store_root: Path) -> Iterator[sqlite3.Connection]:
+            call_count["count"] += 1
+            if call_count["count"] == 2:
+                raise sqlite3.OperationalError("step write failed")
+            with real_connect(store_root) as conn:
+                yield conn
+
+        monkeypatch.setattr(recorder_mod, "connect", flaky_connect)
+
+        callback_holder: dict[str, object] = {}
+
+        def _callback_factory(**_: Any) -> MagicMock:
+            sft = MagicMock()
+            state = SimpleNamespace(global_step=7, epoch=1.0, best_metric=0.87, log_history=[])
+            sft.state = state
+            sft.optimizer = SimpleNamespace(state_dict=lambda: {"lr": 1e-4})
+            sft.lr_scheduler = SimpleNamespace(state_dict=lambda: {"step": 7})
+            sft.scaler = None
+            sft.control = SimpleNamespace(should_training_stop=False)
+
+            def _save_model(path: str) -> None:
+                p = Path(path)
+                p.mkdir(parents=True, exist_ok=True)
+                (p / "adapter_config.json").write_text("{}")
+                (p / "adapter_model.safetensors").write_bytes(b"\x00" * 64)
+
+            def _add_callback(callback: object) -> None:
+                callback_holder["callback"] = callback
+
+            def _train() -> SimpleNamespace:
+                callback = callback_holder["callback"]
+                assert hasattr(callback, "on_log")
+                callback.on_log(None, state, None, logs={"loss": 1.0})  # type: ignore[attr-defined]
+                return SimpleNamespace(training_loss=1.23)
+
+            sft.add_callback.side_effect = _add_callback
+            sft.train.side_effect = _train
+            sft.save_model.side_effect = _save_model
+            return sft
+
+        with pytest.raises(sqlite3.OperationalError, match="step write failed"):
+            run(
+                store,
+                _parsed(),
+                spec,
+                _plan(),
+                trainer_factory=_callback_factory,
+                strict_metrics=True,
+            )

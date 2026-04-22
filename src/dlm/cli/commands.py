@@ -482,6 +482,13 @@ def train_cmd(
             help="Skip dlm.lock validation and don't write a new lock.",
         ),
     ] = False,
+    strict_metrics: Annotated[
+        bool,
+        typer.Option(
+            "--strict-metrics",
+            help="Promote metrics SQLite write failures to hard errors.",
+        ),
+    ] = False,
     gpus: Annotated[
         str | None,
         typer.Option(
@@ -664,6 +671,7 @@ def train_cmd(
     ] = False,
 ) -> None:
     """Train / retrain a .dlm against its base model."""
+    import sqlite3
     import sys
 
     from rich.console import Console
@@ -892,7 +900,11 @@ def train_cmd(
             lock_mode=lock_mode,
             capabilities=doctor().capabilities,
             world_size=ws,
+            strict_metrics=strict_metrics,
         )
+    except sqlite3.Error as exc:
+        console.print(f"[red]metrics:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
     except LockValidationError as exc:
         console.print(f"[red]lock:[/red] {exc}")
         console.print(

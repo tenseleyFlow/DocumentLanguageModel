@@ -15,14 +15,21 @@ Two entry shapes:
   and the JSONL step log as each log entry is produced — no post-hoc
   `state.log_history` walk after training completes.
 
-Best-effort throughout: a failed write is logged and swallowed so a
-metrics hiccup never kills training.
+Failure policy is intentionally split:
+
+- run-start / run-end writes are anchor records and raise on SQLite
+  failure.
+- incremental writes (steps / evals / tokenization / gate / export)
+  stay best-effort by default, but log at ERROR once per event stream.
+- `dlm train --strict-metrics` promotes every write failure to a hard
+  error by constructing the recorder in strict mode.
 """
 
 from __future__ import annotations
 
 import logging
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -52,22 +59,39 @@ class MetricsRecorder:
     minimal.
     """
 
-    def __init__(self, store_root: Path) -> None:
+    def __init__(self, store_root: Path, *, strict: bool = False) -> None:
         self._store_root = store_root
+        self._strict = strict
+        self._logged_failures: set[str] = set()
 
-    def _with_conn(self, fn: Any) -> None:
-        """Open a connection, run `fn(conn)`, best-effort swallow errors.
+    def _with_conn(
+        self,
+        fn: Callable[[sqlite3.Connection], None],
+        *,
+        failure_key: str,
+        hard_fail: bool,
+    ) -> None:
+        """Open a connection, run `fn(conn)`, enforce the recorder policy.
 
-        SQLite errors here should never take down a training run.
-        Metrics are a nice-to-have; correctness of the actual
-        checkpoint + manifest + lock is the contract that matters.
+        Anchor writes (run start/end) always raise because downstream
+        queries key off them. Other event streams are best-effort
+        unless the recorder was created with `strict=True`.
         """
         try:
             with connect(self._store_root) as conn:
                 fn(conn)
                 conn.commit()
         except sqlite3.Error as exc:
-            _LOG.warning("metrics write failed: %s (swallowed)", exc)
+            if hard_fail or self._strict:
+                raise
+            if failure_key in self._logged_failures:
+                return
+            self._logged_failures.add(failure_key)
+            _LOG.error(
+                "metrics %s write failed: %s (best-effort; continuing)",
+                failure_key,
+                exc,
+            )
 
     def record_run_start(self, event: RunStart) -> None:
         def _do(conn: sqlite3.Connection) -> None:
@@ -84,7 +108,7 @@ class MetricsRecorder:
                 ),
             )
 
-        self._with_conn(_do)
+        self._with_conn(_do, failure_key="run_start", hard_fail=True)
 
     def record_run_end(self, event: RunEnd) -> None:
         def _do(conn: sqlite3.Connection) -> None:
@@ -93,7 +117,7 @@ class MetricsRecorder:
                 (event.ended_at, event.status, event.run_id),
             )
 
-        self._with_conn(_do)
+        self._with_conn(_do, failure_key="run_end", hard_fail=True)
 
     def record_step(self, event: StepEvent) -> None:
         def _do(conn: sqlite3.Connection) -> None:
@@ -113,7 +137,7 @@ class MetricsRecorder:
                 ),
             )
 
-        self._with_conn(_do)
+        self._with_conn(_do, failure_key="step", hard_fail=False)
 
     def record_eval(self, event: EvalEvent) -> None:
         def _do(conn: sqlite3.Connection) -> None:
@@ -131,7 +155,7 @@ class MetricsRecorder:
                 ),
             )
 
-        self._with_conn(_do)
+        self._with_conn(_do, failure_key="eval", hard_fail=False)
 
     def record_tokenization(self, event: TokenizationEvent) -> None:
         def _do(conn: sqlite3.Connection) -> None:
@@ -151,7 +175,7 @@ class MetricsRecorder:
                 ),
             )
 
-        self._with_conn(_do)
+        self._with_conn(_do, failure_key="tokenization", hard_fail=False)
 
     def record_gate(self, event: GateEvent) -> None:
         def _do(conn: sqlite3.Connection) -> None:
@@ -169,7 +193,7 @@ class MetricsRecorder:
                 ),
             )
 
-        self._with_conn(_do)
+        self._with_conn(_do, failure_key="gate", hard_fail=False)
 
     def record_export(self, event: ExportEvent) -> None:
         def _do(conn: sqlite3.Connection) -> None:
@@ -187,7 +211,7 @@ class MetricsRecorder:
                 ),
             )
 
-        self._with_conn(_do)
+        self._with_conn(_do, failure_key="export", hard_fail=False)
 
 
 class DlmTrainerCallback:  # pragma: no cover - heavy trainer hook
@@ -200,8 +224,9 @@ class DlmTrainerCallback:  # pragma: no cover - heavy trainer hook
     downstream needs to walk `trainer.state.log_history` after the
     training loop returns.
 
-    A best-effort `try/except` wraps each record call: a metrics write
-    failing in the middle of training must never abort the run.
+    The recorder owns the SQLite failure policy. In the default mode,
+    per-step/per-eval writes degrade to one ERROR log per stream; in
+    strict mode they raise out of the callback and abort training.
 
     Not a unit-test target — the HF TrainerCallback surface requires
     real trainer state. The `MetricsRecorder.record_*` methods are
@@ -234,18 +259,15 @@ class DlmTrainerCallback:  # pragma: no cover - heavy trainer hook
         loss = float(logs["loss"])
         lr = _maybe_float(logs.get("learning_rate"))
         grad_norm = _maybe_float(logs.get("grad_norm"))
-        try:
-            self._recorder.record_step(
-                StepEvent(
-                    run_id=self._run_id,
-                    step=step,
-                    loss=loss,
-                    lr=lr,
-                    grad_norm=grad_norm,
-                )
+        self._recorder.record_step(
+            StepEvent(
+                run_id=self._run_id,
+                step=step,
+                loss=loss,
+                lr=lr,
+                grad_norm=grad_norm,
             )
-        except Exception as exc:  # noqa: BLE001 - metrics must never kill training
-            _LOG.warning("metrics record_step failed: %s (swallowed)", exc)
+        )
         if self._step_logger is not None:
             try:
                 self._step_logger.log_step(
@@ -255,7 +277,7 @@ class DlmTrainerCallback:  # pragma: no cover - heavy trainer hook
                     grad_norm=grad_norm,
                     val_loss=_maybe_float(logs.get("eval_loss")),
                 )
-            except Exception as exc:  # noqa: BLE001 - JSONL must never kill training
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
                 _LOG.warning("step logger log_step failed: %s (swallowed)", exc)
 
     def on_evaluate(
@@ -268,17 +290,14 @@ class DlmTrainerCallback:  # pragma: no cover - heavy trainer hook
     ) -> None:
         if metrics is None:
             return
-        try:
-            self._recorder.record_eval(
-                EvalEvent(
-                    run_id=self._run_id,
-                    step=int(state.global_step),
-                    val_loss=_maybe_float(metrics.get("eval_loss")),
-                    perplexity=_maybe_float(metrics.get("eval_perplexity")),
-                )
+        self._recorder.record_eval(
+            EvalEvent(
+                run_id=self._run_id,
+                step=int(state.global_step),
+                val_loss=_maybe_float(metrics.get("eval_loss")),
+                perplexity=_maybe_float(metrics.get("eval_perplexity")),
             )
-        except Exception as exc:  # noqa: BLE001 - metrics must never kill training
-            _LOG.warning("metrics record_eval failed: %s (swallowed)", exc)
+        )
 
 
 def _maybe_float(value: Any) -> float | None:

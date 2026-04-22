@@ -57,6 +57,7 @@ dlm train <path> [--resume|--fresh] [--seed N] [--max-steps N]
                  [--phase {sft,preference,all}]
                  [--i-accept-license]
                  [--strict-lock|--update-lock|--ignore-lock]
+                 [--strict-metrics]
                  [--base <key>] [--include GLOB]... [--exclude GLOB]...
                  [--recursive|--no-recursive] [--name NAME]
                  [--policy {strict,permissive}] [--rescaffold]
@@ -74,6 +75,7 @@ dlm train <path> [--resume|--fresh] [--seed N] [--max-steps N]
 | `--strict-lock` | false | Fail on any `dlm.lock` drift (even WARN). |
 | `--update-lock` | false | Bypass validation; always write a fresh `dlm.lock`. |
 | `--ignore-lock` | false | Bypass validation; don't write `dlm.lock`. |
+| `--strict-metrics` | false | Promote metrics SQLite write failures to hard errors instead of best-effort degradation. Run-start / run-end are always hard-fail anchors; this flag extends that policy to step, eval, tokenization, and export streams. |
 | `--gpus SPEC` | single-process | Multi-GPU training via Accelerate. `all` uses every visible CUDA device; `N` uses the first N; `0,1` selects exact device ids. Dispatches to `accelerate launch` when >1 device is selected. Refused on MPS/CPU/ROCm; heterogeneous CUDA SMs refused. |
 | `--watch` | false | Save-to-train mode (Sprint 25). After the initial train, block on filesystem events and re-run bounded-step retrains on each settled save. |
 | `--watch-max-steps N` | 100 | Per-cycle step cap for `--watch`. Keeps cycles responsive. |

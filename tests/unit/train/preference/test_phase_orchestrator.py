@@ -145,6 +145,23 @@ class TestDispatcherSftOnly:
         sft.assert_called_once()
         dpo.assert_not_called()
 
+    def test_sft_phase_forwards_strict_metrics_to_sft_runner(self) -> None:
+        sft = MagicMock(return_value=_FakeRunResult(adapter_version=1))
+
+        run_phases(
+            store=MagicMock(),
+            parsed=_parsed([_prose()]),
+            spec=MagicMock(),
+            plan=MagicMock(),
+            phase="sft",
+            strict_metrics=True,
+            sft_runner=sft,
+            dpo_runner=MagicMock(),
+        )
+
+        _, kwargs = sft.call_args
+        assert kwargs["strict_metrics"] is True
+
     def test_sft_phase_skips_when_no_sft_content(self) -> None:
         sft = MagicMock()
         dpo = MagicMock()
