@@ -129,9 +129,7 @@ class TestServePublicSafety:
     the command refuses earlier for an untrained doc; we verify that
     refusal happens BEFORE any public bind could occur."""
 
-    def test_serve_public_on_untrained_refuses_before_bind(
-        self, tmp_path: Path
-    ) -> None:
+    def test_serve_public_on_untrained_refuses_before_bind(self, tmp_path: Path) -> None:
         doc = tmp_path / "doc.dlm"
         _write_minimal_dlm(doc)
 
@@ -154,9 +152,7 @@ class TestServePublicSafety:
         # Must not have reached the bind step — no "serving" banner.
         assert "serving" not in result.output
 
-    def test_serve_public_with_ack_on_untrained_still_refuses(
-        self, tmp_path: Path
-    ) -> None:
+    def test_serve_public_with_ack_on_untrained_still_refuses(self, tmp_path: Path) -> None:
         """Even with the public-ack flag, an untrained doc is refused
         at the earlier guard. Confirms the manifest guard gates
         BEFORE the bind gate, so public bind never happens on an
