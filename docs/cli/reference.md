@@ -26,7 +26,9 @@ Bootstrap a new `.dlm` file with a fresh ULID, create the per-store
 directory, and persist the license-acceptance record (audit-05 B2).
 
 ```
-dlm init <path> [--base <key>] [--template <name>] [--multimodal]
+dlm init <path> [--base <key>] [--template <name>]
+                [--multimodal | --audio]
+                [--skip-export-probes]
                 [--i-accept-license] [--force]
 ```
 
@@ -34,7 +36,9 @@ dlm init <path> [--base <key>] [--template <name>] [--multimodal]
 |---|---|---|
 | `--base <key>` | `qwen2.5-1.5b` | Registry key or `hf:org/name`. Ignored when `--template` is used (the template's `recommended_base` wins). With `--multimodal`, defaults to `paligemma-3b-mix-224`. |
 | `--template <name>` | None | Bootstrap from a named gallery template. See `dlm templates list`. Mutually exclusive with `--multimodal`. |
+| `--skip-export-probes` | false | Skip the llama.cpp / GGUF compatibility probes so a brand-new architecture can still be used for training + HF inference. Forfeits `dlm export` to Ollama until the vendored exporter catches up. |
 | `--multimodal` | false | Scaffold a vision-language `.dlm` with an `::image::` section (schema v10). Flips `--base` to `paligemma-3b-mix-224` unless explicitly overridden; a non-VL `--base` is refused. See [multimodal-training cookbook](../cookbook/multimodal-training.md). |
+| `--audio` | false | Scaffold an audio-language `.dlm` with an `::audio::` section. Flips `--base` to `qwen2-audio-7b-instruct`, skips export probes, and refuses text / vision-language bases. See [audio-training cookbook](../cookbook/audio-training.md). |
 | `--i-accept-license` | false | Required for gated bases (Llama-3.2, PaliGemma). |
 | `--force` | false | Overwrite an existing `.dlm` at path. |
 
@@ -50,8 +54,13 @@ Train / retrain the adapter.
 
 ```
 dlm train <path> [--resume|--fresh] [--seed N] [--max-steps N]
+                 [--phase {sft,preference,all}]
                  [--i-accept-license]
                  [--strict-lock|--update-lock|--ignore-lock]
+                 [--base <key>] [--include GLOB]... [--exclude GLOB]...
+                 [--recursive|--no-recursive] [--name NAME]
+                 [--policy {strict,permissive}] [--rescaffold]
+                 [--skip-export-probes]
 ```
 
 | Option | Default | Notes |
@@ -60,6 +69,7 @@ dlm train <path> [--resume|--fresh] [--seed N] [--max-steps N]
 | `--fresh` | false | Discard prior optimizer state; train from scratch. Mutex with `--resume`. Default when neither flag is set. |
 | `--seed N` | frontmatter.training.seed | Override training seed. |
 | `--max-steps N` | unlimited | Cap step count. |
+| `--phase {sft,preference,all}` | `all` | Choose which training phases run: SFT only, preference only, or both in sequence. Preference-only requires a prior SFT adapter. |
 | `--i-accept-license` | false | Required for gated bases (usually captured once at `dlm init` and persisted). |
 | `--strict-lock` | false | Fail on any `dlm.lock` drift (even WARN). |
 | `--update-lock` | false | Bypass validation; always write a fresh `dlm.lock`. |
@@ -69,7 +79,15 @@ dlm train <path> [--resume|--fresh] [--seed N] [--max-steps N]
 | `--watch-max-steps N` | 100 | Per-cycle step cap for `--watch`. Keeps cycles responsive. |
 | `--watch-debounce-ms N` | 400 | Quiet interval before a burst of saves triggers a retrain. |
 | `--repl` | false | With `--watch`: also run `dlm repl` in the same process. **Scaffolded only** — threading integration is a followup; today the flag refuses with exit 2. |
+| `--base <key>` | required on first auto-scaffold | Base model for `dlm train <dir>` auto-scaffold. Ignored when `<path>` already points at a `.dlm`. |
+| `--include GLOB` | repeatable | Auto-scaffold include glob. Defaults to `**/*` with `--recursive`, `*` with `--no-recursive`. |
+| `--exclude GLOB` | repeatable | Auto-scaffold exclude glob. Directory-descent defaults still apply on top. |
+| `--recursive` / `--no-recursive` | recursive | Auto-scaffold whether default include globs descend into subdirectories. |
+| `--name NAME` | `corpus` | Auto-scaffold target file name under `<dir>/.dlm/<name>.dlm`. Lets one tree host multiple adapters. |
+| `--policy {strict,permissive}` | `strict` | Auto-scaffold `training.sources_policy`. `strict` confines training sources to the target directory; `permissive` allows absolute paths anywhere. |
+| `--rescaffold` | false | Rewrite an existing scaffolded `.dlm` in place with new auto-scaffold flags while preserving its `dlm_id`. |
 | `--no-cache` | false | Bypass the tokenized-section cache for this run. Default is cache-on when the `.dlm` declares `training.sources`. Use when debugging tokenization or cross-checking cached-vs-uncached determinism. Entries from prior runs stay on disk; the next run without the flag picks them back up. See [directive-cache](../cookbook/directive-cache.md). |
+| `--skip-export-probes` | false | Skip the llama.cpp / GGUF compatibility probes so a brand-new architecture can still be trained for HF inference. Mirrors `dlm init --skip-export-probes`. |
 
 The three lock flags are mutually exclusive. See [Determinism](../determinism.md)
 for the mismatch severity table.
@@ -85,7 +103,8 @@ Run inference against the current adapter.
 
 ```
 dlm prompt <path> [query] [--max-tokens N] [--temp F] [--top-p F]
-                  [--adapter NAME] [--gate {auto,off}] [--image PATH]...
+                  [--adapter NAME] [--gate {auto,off}]
+                  [--image PATH]... [--audio PATH]...
                   [--verbose]
 ```
 
@@ -97,6 +116,7 @@ dlm prompt <path> [query] [--max-tokens N] [--temp F] [--top-p F]
 | `--adapter NAME` | None | Select a named adapter from `training.adapters`. Required on multi-adapter documents; rejected on single-adapter ones. |
 | `--gate {auto,off}` | `auto` | Learned adapter gate (Sprint 34). `auto` uses the trained gate when one exists in the store; `off` forces uniform weights across declared adapters. Silently ignored when `--adapter` pins a single adapter. See `docs/cookbook/learned-adapter-gate.md`. |
 | `--image PATH` | none | Attach an image to the prompt. Repeat for multiple images; each expands to one `<image>` placeholder the processor slots pixels into. Required on vision-language bases; rejected on text bases. See [multimodal-training cookbook](../cookbook/multimodal-training.md). |
+| `--audio PATH` | none | Attach an audio clip to the prompt. Repeat for multiple clips. Required on audio-language bases; rejected on text and vision-language bases. See [audio-training cookbook](../cookbook/audio-training.md). |
 | `--backend {auto,pytorch,mlx}` | `auto` | Inference backend. `auto` picks MLX on Apple Silicon (when `uv sync --extra mlx` is installed), else PyTorch. Ignored on VL bases (the VL path always uses PyTorch + AutoModelForImageTextToText). |
 | `--verbose` | false | Print resolved `InferencePlan` on stderr. |
 
@@ -127,7 +147,7 @@ Query the per-store SQLite metrics DB (Sprint 26).
 
 ```
 dlm metrics <path> [--json|--csv] [--run-id N] [--phase PHASE] [--since WINDOW] [--limit N]
-dlm metrics watch <path> [--poll-seconds N]
+dlm metrics <path> watch [--poll-seconds N]
 ```
 
 | Option | Default | Notes |
@@ -139,7 +159,7 @@ dlm metrics watch <path> [--poll-seconds N]
 | `--since` | None | Time window (`24h`, `7d`, `30m`, `10s`). |
 | `--limit N` | 20 | Cap the number of runs returned. |
 
-`dlm metrics watch` polls the DB and tails new step/eval rows as
+`dlm metrics <path> watch` polls the DB and tails new step/eval rows as
 they arrive. See the [metrics cookbook](../cookbook/metrics.md) for
 the full flow + optional TensorBoard / W&B sinks (`uv sync --extra
 observability`).
@@ -225,6 +245,21 @@ dlm unpack <pack> [--force] [--out DIR]
 |---|---|---|
 | `--force` | false | Overwrite an existing store with the same `dlm_id`. |
 | `--out DIR` | pack parent | Where to place the restored `.dlm`. |
+
+### `dlm verify`
+
+Verify a `.dlm.pack` provenance chain before trusting or installing it.
+
+```
+dlm verify <pack> [--trust-on-first-use]
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--trust-on-first-use` | false | Record an unknown signer's public key into `~/.dlm/trusted-keys/` on first verify. Without it, unknown signers are refused with exit code 2. |
+
+Exit codes: `0` verified, `1` broken chain or missing provenance,
+`2` untrusted signer, `3` signature rejected.
 
 ### `dlm push`
 

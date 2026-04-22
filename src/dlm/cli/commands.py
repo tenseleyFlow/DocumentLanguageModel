@@ -1115,9 +1115,21 @@ def _strip_gpus_from_argv(argv: list[str]) -> list[str]:
 def prompt_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm file to query.")],
     query: Annotated[str | None, typer.Argument(help="One-shot prompt (omit for stdin).")] = None,
-    max_tokens: Annotated[int, typer.Option("--max-tokens")] = 256,
-    temp: Annotated[float, typer.Option("--temp")] = 0.7,
-    top_p: Annotated[float | None, typer.Option("--top-p")] = None,
+    max_tokens: Annotated[
+        int,
+        typer.Option("--max-tokens", help="Max new tokens to generate."),
+    ] = 256,
+    temp: Annotated[
+        float,
+        typer.Option("--temp", help="Sampling temperature. `0.0` = greedy decoding."),
+    ] = 0.7,
+    top_p: Annotated[
+        float | None,
+        typer.Option(
+            "--top-p",
+            help="Top-p sampling cutoff. Omit to disable nucleus sampling.",
+        ),
+    ] = None,
     verbose: Annotated[bool, typer.Option("--verbose", help="Log resolved InferencePlan.")] = False,
     adapter: Annotated[
         str | None,
@@ -1508,14 +1520,26 @@ def export_cmd(
         str | None,
         typer.Option("--quant", help="GGUF quant level (defaults to frontmatter)."),
     ] = None,
-    merged: Annotated[bool, typer.Option("--merged")] = False,
-    dequantize: Annotated[bool, typer.Option("--dequantize")] = False,
+    merged: Annotated[
+        bool,
+        typer.Option("--merged", help="Merge the adapter into the base before export."),
+    ] = False,
+    dequantize: Annotated[
+        bool,
+        typer.Option(
+            "--dequantize",
+            help="Dequantize a QLoRA base to fp16 before merging.",
+        ),
+    ] = False,
     name: Annotated[str | None, typer.Option("--name", help="Ollama model name.")] = None,
     no_template: Annotated[
         bool,
         typer.Option("--no-template", help="Skip writing TEMPLATE into the Modelfile."),
     ] = False,
-    no_smoke: Annotated[bool, typer.Option("--no-smoke")] = False,
+    no_smoke: Annotated[
+        bool,
+        typer.Option("--no-smoke", help="Register the export but skip the smoke prompt."),
+    ] = False,
     no_imatrix: Annotated[
         bool,
         typer.Option(
@@ -1879,10 +1903,25 @@ def export_cmd(
 
 def pack_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm file to pack.")],
-    out: Annotated[Path | None, typer.Option("--out")] = None,
-    include_exports: Annotated[bool, typer.Option("--include-exports")] = False,
-    include_base: Annotated[bool, typer.Option("--include-base")] = False,
-    include_logs: Annotated[bool, typer.Option("--include-logs")] = False,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="Output .dlm.pack path."),
+    ] = None,
+    include_exports: Annotated[
+        bool,
+        typer.Option("--include-exports", help="Bundle all GGUF exports into the pack."),
+    ] = False,
+    include_base: Annotated[
+        bool,
+        typer.Option(
+            "--include-base",
+            help="Bundle the base model snapshot (license rules still apply).",
+        ),
+    ] = False,
+    include_logs: Annotated[
+        bool,
+        typer.Option("--include-logs", help="Bundle per-run JSONL logs."),
+    ] = False,
     licensee: Annotated[
         str | None,
         typer.Option(
@@ -1925,7 +1964,10 @@ def pack_cmd(
 
 def unpack_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm.pack to install.")],
-    force: Annotated[bool, typer.Option("--force")] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite an existing store with the same dlm_id."),
+    ] = False,
     out: Annotated[
         Path | None,
         typer.Option(
