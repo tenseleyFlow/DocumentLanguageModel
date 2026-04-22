@@ -183,7 +183,7 @@ def run(
     caps the run below the num-epochs * dataset-size count; `None`
     lets the full schedule run.
 
-    `lock_mode` controls `dlm.lock` validation (Sprint 15):
+    `lock_mode` controls `dlm.lock` validation:
 
     - `"default"` — validate, abort on ERROR, warn on WARN, write on success
     - `"strict"` — upgrade WARN → ERROR (`--strict-lock`)
@@ -230,8 +230,8 @@ def run(
         loop_result = run_training_loop(ctx, log)
         result = commit_and_record(ctx, loop_result, log)
 
-    # Sprint 31.5: emit the tokenization event if the pre-tokenize pass
-    # fired. The recorder owns the strict-vs-best-effort policy.
+    # Emit the tokenization event if the pre-tokenize pass fired. The
+    # recorder owns the strict-vs-best-effort policy.
     _maybe_record_tokenization(recorder=ctx.recorder, run_id=ctx.run_id, trainer=loop_result.sft)
 
     ctx.recorder.record_run_end(RunEnd(run_id=ctx.run_id, status="ok"))
@@ -264,10 +264,10 @@ def run_preflight(
     if seed is None:
         seed = parsed.frontmatter.training.seed
 
-    # World-size resolution (Sprint 23 / audit-08 B1). Prefer the
-    # caller-passed value (unit tests use this); otherwise read from
-    # the DDP env vars `accelerate launch` / `torchrun` set. Default 1
-    # in single-process.
+    # World-size resolution. Prefer the caller-passed value (unit
+    # tests use this); otherwise read from the DDP env vars
+    # `accelerate launch` / `torchrun` set. Default 1 in
+    # single-process.
     if world_size is None:
         world_size = detect_world_size()
 
@@ -284,18 +284,18 @@ def run_preflight(
     versions = capture_runtime_versions()
 
     # 3b. Expand frontmatter `training.sources` directives into
-    #     synthesized PROSE sections (Sprint 29).
+    #     synthesized PROSE sections.
     parsed, directive_provenance, directive_discovered = _expand_directives(parsed)
 
-    # 4. Content-delta against the previous manifest (audit-04 M1/M2).
-    #    Loaded before lock validation so the lock record can mirror
-    #    the manifest's license_acceptance (audit-05 M1).
+    # 4. Content-delta against the previous manifest. Loaded before
+    #    lock validation so the lock record can mirror the manifest's
+    #    license_acceptance.
     prior_manifest = load_manifest(store.manifest)
     change_set = diff_against_manifest(list(parsed.sections), prior_manifest)
 
-    # 3a. Lock validation (Sprint 15). Skipped when `parsed.source_path`
-    #     is None — unit tests that synthesize a `ParsedDlm` directly
-    #     (no on-disk `.dlm`) can't compute `dlm_sha256`.
+    # 3a. Lock validation. Skipped when `parsed.source_path` is None —
+    #     unit tests that synthesize a `ParsedDlm` directly (no
+    #     on-disk `.dlm`) can't compute `dlm_sha256`.
     lock_decision = (
         _validate_or_abort_lock(
             store=store,
@@ -315,9 +315,9 @@ def run_preflight(
     )
     replay = ReplayStore.at(store.replay_corpus, store.replay_index)
 
-    # Sprint 26: open the metrics recorder early so RunStart lands
-    # even if the training loop fails partway. RunStart/RunEnd are
-    # hard-fail anchors; incremental writes obey the recorder policy.
+    # Open the metrics recorder early so RunStart lands even if the
+    # training loop fails partway. RunStart/RunEnd are hard-fail
+    # anchors; incremental writes obey the recorder policy.
     recorder = MetricsRecorder(store.root, strict=strict_metrics)
     recorder.record_run_start(
         RunStart(
@@ -431,13 +431,13 @@ def run_training_loop(ctx: PreflightContext, log: StepLogger) -> TrainLoopResult
     final_val_loss = eval_summary["final_val_loss"]
     final_val_perplexity = eval_summary["final_val_perplexity"]
 
-    # Per-mode val-loss split (audit-08 N9). Each call is guarded,
-    # failures degrade to None.
+    # Per-mode val-loss split. Each call is guarded; failures degrade
+    # to None.
     val_loss_cpt, val_loss_sft = compute_val_loss_by_mode(sft, getattr(sft, "eval_dataset", None))
 
-    # Early-stop detection (audit-05 M2). Prefer HF's real signal
-    # (the callback sets `control.should_training_stop`); fall back
-    # to the heuristic if the trainer object doesn't expose it.
+    # Early-stop detection. Prefer HF's real signal (the callback
+    # sets `control.should_training_stop`); fall back to the
+    # heuristic if the trainer object doesn't expose it.
     hf_flag = _hf_early_stop_flag(sft)
     early_stopped = (
         hf_flag
@@ -493,9 +493,8 @@ def commit_and_record(
     # 9. Append NEW section snapshots to the replay corpus.
     _append_change_set_to_replay(ctx.replay, ctx.change_set, run_id=ctx.run_id)
 
-    # 10. Write the human-readable TrainingSummary JSON (audit-05 M3:
-    #     written BEFORE the manifest append so the relative path can
-    #     be recorded).
+    # 10. Write the human-readable TrainingSummary JSON before the
+    #     manifest append so the relative path can be recorded.
     summary_path = _write_training_summary(
         store=ctx.store,
         log_path=ctx.log_path,
@@ -533,10 +532,10 @@ def commit_and_record(
         weight_distribution=loop.weight_distribution,
     )
 
-    # 12. Persist the lock (Sprint 15). `ignore_lock` mode suppresses
-    #     the write; every other mode updates `dlm.lock` after the
-    #     manifest append so a partial failure can't leave a lock
-    #     newer than its run summary.
+    # 12. Persist the lock. `ignore_lock` mode suppresses the write;
+    #     every other mode updates `dlm.lock` after the manifest
+    #     append so a partial failure can't leave a lock newer than
+    #     its run summary.
     if ctx.lock_decision is not None and ctx.lock_decision.should_write_lock:
         _persist_lock(
             store=ctx.store,
@@ -578,7 +577,7 @@ def commit_and_record(
 
 
 def _default_eval_steps(max_steps: int | None) -> int:
-    """Pick a reasonable `eval_steps` cadence (audit-05 M2).
+    """Pick a reasonable `eval_steps` cadence.
 
     Four eval rounds per run gives enough signal to watch a loss curve
     without dominating wall-clock with eval overhead. When `max_steps`
@@ -591,7 +590,7 @@ def _default_eval_steps(max_steps: int | None) -> int:
 
 
 def _default_early_stop_config() -> EarlyStopConfig:
-    """Patience + threshold defaults until TrainingConfig extends (Sprint 12b)."""
+    """Patience + threshold defaults until TrainingConfig grows explicit knobs."""
     return EarlyStopConfig(patience=3, threshold=0.0, metric="eval_loss")
 
 
@@ -716,12 +715,12 @@ def _build_real_trainer(  # pragma: no cover
 
     base_model = load_base_model(spec, plan)
 
-    # Media paths (Sprint 35 v1 / 35.2): also load the processor and
-    # route blob-bytes through the dataset builder. The tokenizer still
-    # bubbles up via the processor's `.tokenizer` attribute, which both
-    # our downstream helpers and TRL's VL collator understand. Audio
-    # bases carry a processor too but TRL has no auto-dispatch, so the
-    # audio branch hands the SFTTrainer a custom `AudioLmCollator`.
+    # Media paths also load the processor and route blob-bytes through
+    # the dataset builder. The tokenizer still bubbles up via the
+    # processor's `.tokenizer` attribute, which both our downstream
+    # helpers and TRL's VL collator understand. Audio bases carry a
+    # processor too but TRL has no auto-dispatch, so the audio branch
+    # hands the SFTTrainer a custom `AudioLmCollator`.
     from dlm.modality import modality_for
 
     modality_dispatch = modality_for(spec)
@@ -785,9 +784,9 @@ def _build_real_trainer(  # pragma: no cover
         parsed, adapter_name
     )
 
-    # DoRA (Sprint 36.5) wires through as `use_dora=True` on
-    # `peft.LoraConfig`. Multi-adapter docs carry the adapter type
-    # per-adapter; single-adapter docs carry it on `training`.
+    # DoRA wires through as `use_dora=True` on `peft.LoraConfig`.
+    # Multi-adapter docs carry the adapter type per-adapter;
+    # single-adapter docs carry it on `training`.
     eff_adapter = _resolve_adapter_type(parsed, adapter_name)
     peft_model = build_or_resume_adapter(
         base_model,
@@ -803,10 +802,11 @@ def _build_real_trainer(  # pragma: no cover
         gradient_checkpointing=plan.gradient_checkpointing,
     )
 
-    # Eval cadence (audit-05 M2): without eval_strategy="steps" + eval_steps,
+    # Eval cadence: without eval_strategy="steps" + eval_steps,
     # `trainer.state.log_history` never gains `eval_loss` entries and
-    # `summarize_eval_state` always returns None. Default cadence: four
-    # eval rounds per run (or every 50 steps if running to epoch end).
+    # `summarize_eval_state` always returns None. Default cadence:
+    # four eval rounds per run (or every 50 steps if running to epoch
+    # end).
     eval_steps = _default_eval_steps(max_steps)
     early_stop_cfg = _default_early_stop_config()
 
@@ -886,18 +886,18 @@ def _build_real_trainer(  # pragma: no cover
 
     sft_config = SFTConfig(**sft_config_kwargs)
 
-    # Sprint 31.5: pre-tokenize directive-sourced rows and hand TRL an
+    # Pre-tokenize directive-sourced rows and hand TRL an
     # ``input_ids``-bearing dataset. TRL's ``_prepare_dataset`` checks
     # ``"input_ids" in column_names`` and skips its own chat-template /
     # EOS / tokenize passes when true. Cache hits on subsequent runs
-    # skip the tokenizer call entirely — the whole point of Sprint 31.
+    # skip the tokenizer call entirely.
     #
-    # Sprint 35 v1 / 35.2: media bases skip this pass entirely. VL rows
-    # carry PIL.Image objects; audio rows carry file paths + transcripts.
-    # TRL 1.2's `DataCollatorForVisionLanguageModeling` auto-detects VL
-    # rows via the `images` key; our `AudioLmCollator` is passed
-    # explicitly below. Pre-tokenizing either would strip the media
-    # payload before the collator ever saw it.
+    # Media bases skip this pass entirely. VL rows carry PIL.Image
+    # objects; audio rows carry file paths + transcripts. TRL 1.2's
+    # `DataCollatorForVisionLanguageModeling` auto-detects VL rows via
+    # the `images` key; our `AudioLmCollator` is passed explicitly
+    # below. Pre-tokenizing either would strip the media payload
+    # before the collator ever saw it.
     if is_media:
         tokenization_stats = None
     else:
@@ -972,8 +972,8 @@ def _build_real_trainer(  # pragma: no cover
         trainer_kwargs["callbacks"] = callbacks
     trainer = SFTTrainer(**trainer_kwargs)
     # Attach stats so `run()` can emit `record_tokenization` once the
-    # training loop returns. Sprint 26's recorder already owns the
-    # event schema; this is the consumer side.
+    # training loop returns. The recorder already owns the event
+    # schema; this is the consumer side.
     trainer._dlm_tokenization_stats = tokenization_stats  # type: ignore[attr-defined]
     return trainer
 
@@ -1058,9 +1058,9 @@ def _maybe_pretokenize_datasets(  # pragma: no cover — real path is covered by
     if training.sources is None:
         return train_ds, val_ds, None
 
-    # Sprint 31.6: frontmatter `training.cache.enabled` is the primary
-    # switch. `dlm train --no-cache` sets the env var as a per-run
-    # override so CLI flag + frontmatter both participate.
+    # Frontmatter `training.cache.enabled` is the primary switch.
+    # `dlm train --no-cache` sets the env var as a per-run override so
+    # CLI flag + frontmatter both participate.
     if not training.cache.enabled:
         return train_ds, val_ds, None
 
@@ -1075,9 +1075,9 @@ def _maybe_pretokenize_datasets(  # pragma: no cover — real path is covered by
         from dlm.directives.cache import TokenizedCache
         from dlm.train.tokenization import pretokenize_rows
 
-        # Sprint 31.6: `training.cache.max_bytes` overrides the cache
-        # module's 10 GiB default. Pre-v9 docs inherit the default via
-        # the CacheConfig factory.
+        # `training.cache.max_bytes` overrides the cache module's
+        # 10 GiB default. Pre-v9 docs inherit the default via the
+        # CacheConfig factory.
         cache = TokenizedCache.open(store.tokenized_cache_dir, max_bytes=training.cache.max_bytes)
         seq_len = training.sequence_len
 
@@ -1211,7 +1211,7 @@ def _snapshot_training_state(
         global_step=int(getattr(sft.state, "global_step", 0)),
         epoch=float(getattr(sft.state, "epoch", 0.0)),
         best_val_loss=_maybe_float(getattr(sft.state, "best_metric", None)),
-        dlm_manifest_hash=None,  # Sprint 13 fills this in
+        dlm_manifest_hash=None,  # Filled in later once the manifest write completes.
         base_model_revision=spec.revision,
         pinned_versions=versions,
         use_qlora=use_qlora,
@@ -1263,10 +1263,9 @@ def _sample_replay_rows(
 ) -> list[dict[str, Any]]:
     """Draw recency-weighted replay rows for this training run.
 
-    `k = max(32, 2 × |new|)` matches the Sprint 08 design note: the
-    sample is an anti-forgetting counterweight to the fresh content's
-    gradient signal. Returns an empty list when the corpus is cold
-    (first `dlm train` on a store).
+    `k = max(32, 2 × |new|)` keeps replay as an anti-forgetting
+    counterweight to the fresh content's gradient signal. Returns an
+    empty list when the corpus is cold (first `dlm train` on a store).
     """
     import random as _random
     from datetime import UTC, datetime
@@ -1354,8 +1353,8 @@ def _append_change_set_to_replay(
     Idempotent-ish: a section appended twice produces two frames with
     the same `section_id` but different `last_seen_at`. The sampler
     uses `added_at` for recency weighting so double-appends are a
-    harmless no-op beyond mild corpus growth — eviction (Sprint 08)
-    reclaims the bytes.
+    harmless no-op beyond mild corpus growth — eviction reclaims the
+    bytes.
     """
     if not change_set.new:
         return
@@ -1408,24 +1407,24 @@ def _append_training_run(
     adapter_name: str | None = None,
     weight_distribution: dict[str, dict[str, int]] | None = None,
 ) -> None:
-    """Append a TrainingRunSummary + refresh `content_hashes` (audit-04 M2).
+    """Append a TrainingRunSummary + refresh `content_hashes`.
 
     `content_hashes` is overwritten with the full set of current-document
     section ids. `diff_against_manifest` keys on this dict, so updating
     it here is what makes the NEXT run classify things correctly as
     `new`/`unchanged`/`removed`.
 
-    `summary_path` is stored as a string relative to the store root
-    (audit-05 M3) so `dlm show` can load the summary without globbing
-    the logs directory.
+    `summary_path` is stored as a string relative to the store root so
+    `dlm show` can load the summary without globbing the logs
+    directory.
 
-    `adapter_name` (audit-07 M1): when set, the new summary is tagged
-    with the named adapter AND `Manifest.adapter_versions[name]` is
-    updated instead of the flat `adapter_version`. Flat-doc runs
-    continue to bump the top-level field only.
+    `adapter_name`, when set, tags the new summary with the named
+    adapter and updates `Manifest.adapter_versions[name]` instead of
+    the flat `adapter_version`. Flat-doc runs continue to bump the
+    top-level field only.
 
-    Manifest reads/writes go through the Sprint 04 atomic I/O path so
-    a concurrent reader never sees a torn file.
+    Manifest reads/writes go through the atomic I/O path so a
+    concurrent reader never sees a torn file.
     """
     from dlm.store.manifest import TrainingRunSummary, load_manifest, save_manifest
 
@@ -1467,8 +1466,8 @@ def _append_training_run(
         # Flat doc: bump the top-level field as before.
         update_fields["adapter_version"] = adapter_version
     else:
-        # Multi-adapter doc: the top-level field has no coherent meaning
-        # (audit-07 M1). Record the per-adapter version instead.
+        # Multi-adapter doc: the top-level field has no coherent
+        # meaning. Record the per-adapter version instead.
         update_fields["adapter_versions"] = {
             **manifest.adapter_versions,
             adapter_name: adapter_version,
@@ -1519,14 +1518,13 @@ def _build_candidate_lock(
     """Assemble the `DlmLock` describing this run.
 
     `license_acceptance` is the record (if any) mirrored from
-    `manifest.license_acceptance`. Audit-05 M1 wired this through so
-    the lock's reproducibility contract actually carries the gated-base
-    acceptance fingerprint.
+    `manifest.license_acceptance`, so the lock's reproducibility
+    contract carries the gated-base acceptance fingerprint.
 
-    `world_size` (Sprint 23 / audit-08 B1) records the DDP rank count
-    so a resume with a different world_size triggers the policy WARN
-    at `dlm.lock.policy._rule_world_size`. Default 1 for
-    single-process runs.
+    `world_size` records the DDP rank count so a resume with a
+    different world_size triggers the policy WARN at
+    `dlm.lock.policy._rule_world_size`. Default 1 for single-process
+    runs.
     """
     if parsed.source_path is None:
         raise ValueError("parsed.source_path is required to build a dlm.lock record")
@@ -1589,13 +1587,13 @@ def _validate_or_abort_lock(
     try:
         prior = load_lock(store.root)
     except LockSchemaError as exc:
-        # Audit-05 N5: a corrupt `dlm.lock` on disk would normally kill
-        # the run at load time. Under `--update-lock` the operator has
-        # explicitly opted to overwrite the file; treat the parse
-        # failure as "prior is unusable → treat as missing" so the
-        # update mode can actually rescue a broken lock. Any other mode
-        # re-raises (including --ignore-lock, which explicitly says
-        # "don't touch the file").
+        # A corrupt `dlm.lock` on disk would normally kill the run at
+        # load time. Under `--update-lock` the operator has explicitly
+        # opted to overwrite the file; treat the parse failure as
+        # "prior is unusable → treat as missing" so update mode can
+        # actually rescue a broken lock. Any other mode re-raises
+        # (including --ignore-lock, which explicitly says "don't touch
+        # the file").
         if lock_mode != "update":
             raise
         _LOG.warning(
