@@ -1,4 +1,4 @@
-"""Validate the current run against a prior `dlm.lock` (Sprint 15).
+"""Validate the current run against a prior `dlm.lock`.
 
 The three `dlm train` flags map to `LockMode`:
 

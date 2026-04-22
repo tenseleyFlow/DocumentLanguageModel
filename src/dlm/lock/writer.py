@@ -1,4 +1,4 @@
-"""Atomic `dlm.lock` I/O (Sprint 15)."""
+"""Atomic `dlm.lock` I/O."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def write_lock(store_root: Path, lock: DlmLock) -> Path:
     half-written lock on disk. Returns the path written.
     """
     if lock.lock_version != CURRENT_LOCK_VERSION:
-        # Audit-05 N13: programmer error on the write path → dedicated
+        # Programmer error on the write path → dedicated
         # LockWriteError rather than LockSchemaError (which is reserved
         # for read-side parse failures).
         raise LockWriteError(

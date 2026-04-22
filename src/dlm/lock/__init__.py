@@ -1,4 +1,4 @@
-"""Per-store `dlm.lock` — determinism contract for one `.dlm` (Sprint 15).
+"""Per-store `dlm.lock` — determinism contract for one `.dlm`.
 
 Separate from the repo-level `uv.lock` (tool-dep pins) and from the
 `manifest.json` (training run narrative). The store-level `dlm.lock`
@@ -8,7 +8,7 @@ determinism_flags, determinism_class)` and carries:
 
 - the hash of the `.dlm` source at the time the lock was written
 - the base-model revision + content hash
-- the license-acceptance record (Sprint 12b handoff)
+- the license-acceptance record
 - the last run id so drift-detection can date-window its output
 
 `dlm train` validates the lock on every run, writes / updates it on

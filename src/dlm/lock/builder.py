@@ -1,4 +1,4 @@
-"""Construct a `DlmLock` from run context (Sprint 15).
+"""Construct a `DlmLock` from run context.
 
 Factors the lock-assembly away from the trainer / export runner so
 both call-sites share one implementation. Keeps the trainer focused
@@ -80,7 +80,7 @@ def build_lock(
 ) -> DlmLock:
     """Assemble a `DlmLock` with defaults for omitted fields.
 
-    `world_size` (Sprint 23) records the number of data-parallel
+    `world_size` records the number of data-parallel
     ranks for this run. Default 1 for single-GPU / single-process.
     """
     return DlmLock(

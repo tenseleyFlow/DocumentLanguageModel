@@ -24,7 +24,7 @@ class LockSchemaError(LockError):
 
 
 class LockWriteError(LockError):
-    """Programmer error on the write path (audit-05 N13).
+    """Programmer error on the write path.
 
     Distinct from `LockSchemaError` (which means "on-disk file can't
     be parsed") so callers can tell a write-refusal apart from a

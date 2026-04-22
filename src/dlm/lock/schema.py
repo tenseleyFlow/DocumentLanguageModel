@@ -1,4 +1,4 @@
-"""`DlmLock` Pydantic schema (Sprint 15).
+"""`DlmLock` Pydantic schema.
 
 Immutable-by-default per-store record of the determinism contract in
 effect for one training-or-export cycle. Written atomically after
@@ -76,7 +76,7 @@ class DlmLock(BaseModel):
     determinism_class: DeterminismClass
     license_acceptance: LicenseAcceptance | None = None
     last_run_id: int = Field(..., ge=1)
-    # Sprint 23: number of data-parallel ranks this run used. 1 for
+    # Number of data-parallel ranks this run used. 1 for
     # single-GPU / single-process. Multi-GPU runs record the world
     # size so a resume with a different world_size can be flagged.
     world_size: int = Field(1, ge=1)

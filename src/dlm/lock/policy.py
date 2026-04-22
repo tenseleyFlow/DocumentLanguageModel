@@ -1,4 +1,4 @@
-"""Mismatch severity table for `dlm.lock` validation (Sprint 15).
+"""Mismatch severity table for `dlm.lock` validation.
 
 Decides for each field how loudly a drift between the recorded lock
 and the current runtime should surface:
@@ -111,7 +111,7 @@ def _rule_torch_version(prior: DlmLock, current: DlmLock) -> tuple[Severity, str
         return None
     # One-sided None = the runtime forgot to pin torch (or just gained it).
     # That's a strict signal something broke in capture_runtime_versions —
-    # surface as WARN instead of silently ignoring (audit-05 M3).
+    # surface as WARN instead of silently ignoring.
     if prior_v is None:
         return (Severity.WARN, f"torch newly pinned ({current_v})")
     if current_v is None:
@@ -137,7 +137,7 @@ def _rule_bitsandbytes_any(prior: DlmLock, current: DlmLock) -> tuple[Severity, 
     if prior_v == current_v:
         return None
     # Any bnb drift is a strong warning — QLoRA correctness is unusually
-    # sensitive to bnb kernels. Include add/remove in that (audit-05 M3).
+    # sensitive to bnb kernels. Include add/remove in that.
     if prior_v is None:
         return (Severity.WARN, f"bitsandbytes newly pinned ({current_v})")
     if current_v is None:
@@ -152,7 +152,7 @@ def _rule_minor_peers(prior: DlmLock, current: DlmLock) -> list[tuple[Severity, 
     """WARN on drift for transformers / peft / trl / accelerate / llama_cpp.
 
     One-sided None transitions are treated as "newly pinned" / "no longer
-    pinned" rather than silent passes (audit-05 M3).
+    pinned" rather than silent passes.
     """
     keys = ("transformers", "peft", "trl", "accelerate", "llama_cpp")
     mismatches: list[tuple[Severity, str]] = []
@@ -172,14 +172,14 @@ def _rule_minor_peers(prior: DlmLock, current: DlmLock) -> list[tuple[Severity, 
 
 
 def _rule_seed(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
-    """Seed change invalidates the determinism contract (audit-05 M3)."""
+    """Seed change invalidates the determinism contract."""
     if prior.seed == current.seed:
         return None
     return (Severity.WARN, f"seed changed ({prior.seed} → {current.seed})")
 
 
 def _rule_base_model_sha256(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
-    """Content hash drift under identical revision = upstream force-push (audit-05 M3).
+    """Content hash drift under identical revision = upstream force-push.
 
     ERROR when both hashes are present and disagree — it's a stronger
     signal than a mere revision bump. One-sided None is silent (the
@@ -215,7 +215,7 @@ def _rule_rocm_version(prior: DlmLock, current: DlmLock) -> tuple[Severity, str]
 
 
 def _rule_license_acceptance(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
-    """License acceptance transitions are WARN (audit-05 M3).
+    """License acceptance transitions are WARN.
 
     None → populated = the store just accepted a gated base; populated →
     None = the record vanished (edit-hostile). Different spdx / url =
@@ -250,7 +250,7 @@ def _rule_license_acceptance(prior: DlmLock, current: DlmLock) -> tuple[Severity
 
 
 def _rule_world_size(prior: DlmLock, current: DlmLock) -> tuple[Severity, str] | None:
-    """World-size drift (Sprint 23).
+    """World-size drift.
 
     Multi-GPU resumes aren't bit-exact vs single-GPU (NCCL/DDP have
     inherent nondeterminism). When the world_size changes between
