@@ -7,8 +7,8 @@ Deterministic generation requires ALL of:
 - `num_beams=1`
 - `temperature=0.0` (technically moot when do_sample=False, but
   some HF code paths still read it — belt and braces)
-- The model's cuDNN flags set to deterministic mode (Sprint 09
-  `determinism.seed_everything` handles this at `dlm train` time)
+- The model's cuDNN flags set to deterministic mode
+  (`determinism.seed_everything` handles this at `dlm train` time)
 
 When the caller passes `temperature > 0`, we flip `do_sample=True`
 automatically — otherwise a non-zero temperature is silently ignored
@@ -107,7 +107,7 @@ def generate(  # pragma: no cover
     """Render `prompt`, run generation, decode response-only tokens.
 
     Pragma'd from unit coverage because it calls `model.generate`.
-    Covered by Sprint 10's slow-marked integration test.
+    Covered by the slow-marked integration test.
     """
     import torch
 

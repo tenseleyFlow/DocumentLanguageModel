@@ -1,16 +1,15 @@
 """`InferenceBackend` Protocol shared by PyTorch + MLX paths.
 
-Phase 5 Sprint 21 introduces a second inference backend (MLX) for
-Apple Silicon throughput. The existing PyTorch path stays authoritative
-on every other platform and remains the training-time runtime. This
-Protocol is the shape both paths satisfy so the CLI + REPL can treat
-them interchangeably.
+MLX provides a second inference backend for Apple Silicon throughput.
+The existing PyTorch path stays authoritative on every other platform
+and remains the training-time runtime. This Protocol is the shape both
+paths satisfy so the CLI + REPL can treat them interchangeably.
 
 Backends are stateful: `load()` resolves the adapter, loads weights,
 and stashes the live model on `self`; `generate()` is called repeatedly
 against that loaded state; `unload()` releases memory. Pooling /
-reuse across CLI invocations is a later concern (Sprint 24 REPL) —
-the shape supports it without mandating it yet.
+reuse across CLI invocations is a later concern — the shape supports
+it without mandating it yet.
 """
 
 from __future__ import annotations

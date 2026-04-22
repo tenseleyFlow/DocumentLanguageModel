@@ -44,7 +44,7 @@ def load_for_audio_inference(  # pragma: no cover
 
     Pragma'd from unit coverage — exercises class-named model load +
     `AutoProcessor.from_pretrained` over real HF weights. Covered by
-    the Sprint 35.2 slow integration test (T12).
+    the slow audio integration test (T12).
     """
     if spec.modality != "audio-language":
         raise ValueError(

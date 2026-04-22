@@ -1,4 +1,4 @@
-"""`InferencePlan` — cross-hardware load plan for prompt-time (audit F05).
+"""`InferencePlan` — cross-hardware load plan for prompt-time.
 
 The problem
 -----------
@@ -14,9 +14,9 @@ be on.
 The solution
 ------------
 
-`InferencePlan` is the twin of Sprint 05's `TrainingPlan`: a
-hardware-doctor decision, but for the inference path. It reads the
-saved adapter's training metadata (`training_run.json`, with a legacy
+`InferencePlan` is the inference-side twin of `TrainingPlan`: a
+hardware-doctor decision for prompt-time loading. It reads the saved
+adapter's training metadata (`training_run.json`, with a legacy
 `pinned_versions.json` fallback) to learn
 whether QLoRA was in play, cross-references with the current `Capabilities`,
 and emits:
@@ -73,8 +73,8 @@ def resolve_inference(adapter_dir: Path, caps: Any) -> InferencePlan:
     Decision tree:
     - CUDA host + bnb installed + QLoRA-trained → 4-bit load, no dequant.
     - CUDA host, QLoRA-trained, but bnb missing → dequantize to fp16.
-    - Non-CUDA host + QLoRA-trained → dequantize to fp16 (the "audit
-      F05" scenario: laptop inference of a server-trained adapter).
+    - Non-CUDA host + QLoRA-trained → dequantize to fp16 (the
+      cross-hardware laptop/server scenario).
     - Non-QLoRA adapter → load at the host's best precision (bf16 on
       capable CUDA, else fp16).
     """
@@ -121,7 +121,7 @@ def resolve_inference(adapter_dir: Path, caps: Any) -> InferencePlan:
             attn_implementation="sdpa",
             reason=(
                 f"QLoRA adapter on {backend} host; dequantizing to fp16 "
-                "(bitsandbytes is CUDA-only). Audit F05 cross-hardware path."
+                "(bitsandbytes is CUDA-only)."
             ),
         )
     return InferencePlan(

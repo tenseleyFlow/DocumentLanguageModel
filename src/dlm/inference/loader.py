@@ -16,9 +16,9 @@ Given a `StorePath` and the current host's `Capabilities`, resolve an
   fp16 residual on top of a fp16 base.
 
 The tokenizer is loaded from the **adapter directory**, not the
-`store.cache/`, because Sprint 07's bringup persists the final
+`store.cache/`, because tokenizer bringup persists the final
 tokenizer state (including `<|pad|>` additions) into the adapter dir
-at training-end. This is the cross-sprint contract F02 depends on.
+at training-end. This is the contract export and inference depend on.
 
 Heavy imports are deferred; the orchestration logic that picks args,
 paths, and dtypes is unit-testable without HF.
@@ -140,7 +140,7 @@ def load_for_inference(  # pragma: no cover
 
     Pragma'd from unit coverage because it calls `AutoModelForCausalLM.from_pretrained`
     and `PeftModel.from_pretrained`, which each need ~5 seconds and a
-    real HF cache. Covered by Sprint 10's slow-marked integration test.
+    real HF cache. Covered by the slow-marked integration test.
 
     `adapter_name`, when provided, targets the named multi-adapter
     layout (`adapter/<name>/current.txt`). When `None`, uses the flat
@@ -164,7 +164,7 @@ def load_for_inference(  # pragma: no cover
     model.eval()
 
     # Tokenizer from the adapter dir — source of truth after any
-    # vocab growth (Sprint 07 bringup contract).
+    # vocab growth from training-time bringup.
     tokenizer = AutoTokenizer.from_pretrained(str(adapter_path))
 
     return LoadedInference(
