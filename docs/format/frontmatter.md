@@ -32,6 +32,18 @@ it; don't edit it by hand.
 | `llama-3.2-3b` | meta-llama/Llama-3.2-3B-Instruct (gated) |
 | `phi-3.5-mini` | microsoft/Phi-3.5-mini-instruct |
 
+The shipped registry is broader than this quick-start table. Current
+additions include:
+
+- 2026 text-family refresh rows: `qwen3-1.7b`, `qwen3-4b`, `qwen3-8b`,
+  `llama-3.3-8b-instruct`, `phi-4-mini-reasoning`, `gemma-2-2b-it`,
+  `gemma-2-9b-it`, `smollm3-3b`, `olmo-2-7b-instruct`, and
+  `mixtral-8x7b-instruct`.
+- Vision-language rows: `paligemma-3b-mix-224`,
+  `qwen2-vl-2b-instruct`, `internvl2-2b`, and
+  `mistral-small-3.1-24b-instruct`.
+- Audio-language row: `qwen2-audio-7b-instruct`.
+
 Off-registry bases use `hf:` prefix, e.g.
 `base_model: hf:mistralai/Mistral-7B-Instruct-v0.3`. `dlm init` runs
 a compatibility probe; failures abort with a clear diagnostic.
