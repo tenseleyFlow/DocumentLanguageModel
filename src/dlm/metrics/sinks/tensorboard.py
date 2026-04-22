@@ -1,4 +1,4 @@
-"""TensorBoard sink (Sprint 26).
+"""TensorBoard sink.
 
 Writes per-step scalars under `<store>/tensorboard/run_<id>/`. Users
 point TensorBoard at the `tensorboard/` dir to see loss curves etc.

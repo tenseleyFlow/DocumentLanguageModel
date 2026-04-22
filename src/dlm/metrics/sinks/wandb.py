@@ -1,4 +1,4 @@
-"""W&B (Weights & Biases) sink (Sprint 26).
+"""W&B (Weights & Biases) sink.
 
 Strictly opt-in: `dlm train --wandb <project>` is the only path that
 initializes W&B. We never import or initialize at module load, and

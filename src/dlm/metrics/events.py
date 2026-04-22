@@ -86,9 +86,9 @@ class EvalEvent:
 class TokenizationEvent:
     """Emitted from `trainer.run` at the end of directive expansion.
 
-    Tracks the tokenized-section cache (Sprint 31): how many lookups
-    hit the cache, how many missed and required tokenization, and
-    the cache's size on disk after the run.
+    Tracks the tokenized-section cache: how many lookups hit the
+    cache, how many missed and required tokenization, and the cache's
+    size on disk after the run.
     """
 
     run_id: int
@@ -106,7 +106,7 @@ class TokenizationEvent:
 
 @dataclass(frozen=True)
 class GateEvent:
-    """Emitted after the post-SFT gate training pass (Sprint 34).
+    """Emitted after the post-SFT gate training pass.
 
     Records per-adapter routing statistics so operators can see which
     adapter the gate learned to prefer on average. ``mean_weight`` is

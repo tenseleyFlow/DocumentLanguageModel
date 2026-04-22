@@ -54,7 +54,7 @@ class EvalRow:
 
 @dataclass(frozen=True)
 class TokenizationRow:
-    """One row from the `tokenization` table (Sprint 31)."""
+    """One row from the `tokenization` table."""
 
     run_id: int
     total_sections: int
@@ -136,7 +136,7 @@ def tokenization_for_run(store_root: Path, run_id: int) -> TokenizationRow | Non
     """The tokenization row for `run_id`, or None when absent.
 
     Returns None when the table is empty for this run (i.e. the run
-    predated Sprint 31 or didn't touch the directive cache).
+    predated tokenization metrics or didn't touch the directive cache).
     """
     try:
         with connect(store_root) as conn:
@@ -185,8 +185,8 @@ class GateEventRow:
 def gate_events_for_run(store_root: Path, run_id: int) -> list[GateEventRow]:
     """All gate_events rows for `run_id`, ordered by adapter name.
 
-    Empty list when the run didn't record a gate (pre-Sprint-34 or
-    `training.gate.enabled` was false).
+    Empty list when the run didn't record a gate or
+    `training.gate.enabled` was false.
     """
     try:
         with connect(store_root) as conn:

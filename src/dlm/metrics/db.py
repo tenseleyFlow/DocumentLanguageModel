@@ -1,4 +1,4 @@
-"""SQLite-backed metrics store (Sprint 26).
+"""SQLite-backed metrics store.
 
 One database per `StorePath` at `<store_root>/metrics.sqlite`. WAL mode
 is enabled on first connect so a Ctrl-C mid-write leaves a recoverable
