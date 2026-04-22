@@ -11,17 +11,17 @@ Five probes:
    `spec.architecture`. Catches model-surgery mismatches and wrong
    revisions.
 2. `probe_chat_template` — tokenizer has a non-empty `chat_template`
-   attribute. Essential for Sprint 12's Modelfile emission.
+   attribute. Essential for Modelfile emission.
 3. `probe_gguf_arch_supported` — scans the vendored
    `convert_hf_to_gguf.py` for a `@Model.register("<arch>")` matching
-   `spec.gguf_arch`. Sprint 11 owns the vendored submodule; until then
-   the probe skips with a clear message.
+   `spec.gguf_arch`. If the vendored submodule is absent, the probe
+   skips with a clear message.
 4. `probe_pretokenizer_label` — reads `vendor/llama_cpp_pretokenizer_hashes.json`
    (populated by `scripts/bump-llama-cpp.sh`) and checks the spec's
    `tokenizer_pre` is a known **label**. Silent drift here causes
    silent GGUF export failures per findings §9; the probe catches it
    early. This is the offline fast-check.
-5. `probe_pretokenizer_hash` — real fingerprint check (audit-04 B8 /
+5. `probe_pretokenizer_hash` — real fingerprint check (see
    CLAUDE.md pitfall #5). Tokenizes `_LLAMA_CPP_CHKTXT` and compares
    the sha256 of the stringified token sequence against a vendored
    per-label fingerprint table. Detects silent upstream tokenization
@@ -45,7 +45,7 @@ from dlm.base_models.schema import BaseModelSpec
 
 _LOG = logging.getLogger(__name__)
 
-# Vendored artifact locations (Sprint 11 populates `vendor/llama.cpp`).
+# Vendored artifact locations.
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 VENDOR_LLAMA_CPP_DEFAULT: Final[Path] = _REPO_ROOT / "vendor" / "llama.cpp"
 VENDOR_PRETOKENIZER_HASHES_DEFAULT: Final[Path] = (
@@ -60,7 +60,7 @@ VENDOR_PRETOKENIZER_FINGERPRINTS_DEFAULT: Final[Path] = (
 # stringify the resulting token-id list, sha256 it — that digest is
 # the fingerprint llama.cpp maps to one of its pre-tokenizer types.
 # Keep verbatim; any edit here desynchronizes us from llama.cpp's
-# identification logic (audit-04 B8 + CLAUDE.md pitfall #5).
+# identification logic (see CLAUDE.md pitfall #5).
 _LLAMA_CPP_CHKTXT: Final[str] = (
     "\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n"
     "🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ "
@@ -167,14 +167,14 @@ def probe_gguf_arch_supported(
     """Scan vendored ``convert_hf_to_gguf.py`` for
     ``@Model.register("<gguf_arch>")`` or ``@ModelBase.register(...)``.
 
-    Until Sprint 11 lands the submodule, this probe skips.
+    If the vendored converter submodule is absent, this probe skips.
     """
     script = (vendor_path or VENDOR_LLAMA_CPP_DEFAULT) / "convert_hf_to_gguf.py"
     if not script.exists():
         return ProbeResult(
             name="gguf_arch",
             passed=True,
-            detail=f"skipped: {script} not present (Sprint 11 vendors llama.cpp)",
+            detail=f"skipped: {script} not present (vendor/llama.cpp missing)",
             skipped=True,
         )
 
@@ -231,10 +231,9 @@ def probe_pretokenizer_label(
     The vendored table is a JSON array of label strings that llama.cpp
     recognizes in `get_vocab_base_pre()`. Missing table → skip.
 
-    NOTE (audit-04 M7): this is a *label* probe, not a hash probe.
-    Sprint 11 will add real `probe_pretokenizer_hash` that canonically
-    digests `tokenizer.json` and compares against llama.cpp's fingerprint
-    table. For now we check coarse compatibility via the label.
+    NOTE: this is a *label* probe, not a hash probe.
+    `probe_pretokenizer_hash` is the canonical fingerprint check; this
+    probe only checks coarse compatibility via the label.
     """
     path = hashes_path or VENDOR_PRETOKENIZER_HASHES_DEFAULT
     if not path.exists():
@@ -283,11 +282,11 @@ def probe_pretokenizer_hash(
 ) -> ProbeResult:
     """Compute the real llama.cpp pre-tokenizer fingerprint and compare.
 
-    Audit-04 B8 / CLAUDE.md pitfall #5. The label probe (above) only
-    checks membership in a string table; llama.cpp itself identifies
-    the pre-tokenizer by sha256-hashing the token-id sequence produced
-    by tokenizing a stable test string (`_LLAMA_CPP_CHKTXT`). We do
-    the same here — if the upstream tokenizer changes behavior (new
+    See CLAUDE.md pitfall #5. The label probe (above) only checks
+    membership in a string table; llama.cpp itself identifies the
+    pre-tokenizer by sha256-hashing the token-id sequence produced by
+    tokenizing a stable test string (`_LLAMA_CPP_CHKTXT`). We do the
+    same here — if the upstream tokenizer changes behavior (new
     revision, silently different merges), the fingerprint drifts and
     this probe fails loudly *before* a broken GGUF reaches Ollama.
 
@@ -560,7 +559,7 @@ def run_all(spec: BaseModelSpec, *, skip_export_probes: bool = False) -> ProbeRe
     vendored llama.cpp can absorb (e.g. brand-new Qwen3 on a llama.cpp
     pin from last month). They forfeit `dlm export` to Ollama until
     the vendored copy catches up. VL bases auto-opt-out of export
-    probes — GGUF conversion for VL archs is tracked in Sprint 35.4.
+    probes because current GGUF export does not support them.
     """
     from dlm.modality import modality_for
 
@@ -573,10 +572,9 @@ def run_all(spec: BaseModelSpec, *, skip_export_probes: bool = False) -> ProbeRe
     else:
         core = (*core, probe_chat_template(spec))
 
-    # Media bases (VL + audio) bypass the llama.cpp-converter probes:
-    # converter support for VL archs is Sprint 35.4's scope, and audio
-    # archs are not on any llama.cpp roadmap yet. The export path
-    # refuses GGUF cleanly for both and emits an HF snapshot instead.
+    # Media bases (VL + audio) bypass the llama.cpp-converter probes.
+    # The export path refuses GGUF cleanly for both and emits an HF
+    # snapshot instead.
     is_media = dispatch.requires_processor
     if skip_export_probes or is_media:
         return ProbeReport(hf_id=spec.hf_id, results=core)

@@ -65,9 +65,8 @@ class ProbeFailedError(BaseModelError):
 class GatedModelError(BaseModelError):
     """Model requires HuggingFace license acceptance and the user hasn't accepted.
 
-    Lives here (not in Sprint 12b) because registry probes catch it
-    first; Sprint 12b's `dlm init --i-accept-license` flow writes the
-    acceptance record, but the error shape is owned here.
+    Lives here because registry probes catch it first; the acceptance
+    record is written elsewhere, but the error shape is owned here.
     """
 
     def __init__(self, hf_id: str, license_url: str | None) -> None:

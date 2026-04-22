@@ -1,8 +1,8 @@
 {#
 ChatML reference template — used by Qwen 2.5, SmolLM2, and compatible
-models. Source-of-truth for Sprint 12's Go `text/template` round-trip
-tests: rendering these messages through this Jinja and Sprint 12's Go
-template must produce token-identical sequences after tokenization.
+models. Source-of-truth for Go `text/template` round-trip tests:
+rendering these messages through this Jinja and the Go template must
+produce token-identical sequences after tokenization.
 
 Render `{"messages": [...]}` where each message has `role` in
 {"system", "user", "assistant"} and a `content` string. Call with

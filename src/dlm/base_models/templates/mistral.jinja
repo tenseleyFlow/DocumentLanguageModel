@@ -4,7 +4,7 @@ wraps the conversation in `<s>...</s>` BOS/EOS. System messages are
 prepended to the first user message by convention.
 
 Vendored for future Mistral-family entries in the registry; not used by
-the 10 launch bases but Sprint 12's Go registry mirrors this shape.
+the 10 launch bases but the Go registry mirrors this shape.
 #}
 {%- if messages[0]['role'] == 'system' -%}
     {%- set system_prompt = messages[0]['content'] -%}

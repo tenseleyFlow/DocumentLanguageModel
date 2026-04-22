@@ -10,9 +10,8 @@ Spec grammar:
 
 Gated models (`requires_acceptance=True`) raise `GatedModelError` unless
 the caller has already accepted the license (signalled via
-`accept_license=True`). Sprint 12b ships the `dlm init --i-accept-license`
-flow that flips this on persistently; Sprint 06 tests pass
-`accept_license=True` directly to exercise the downstream path.
+`accept_license=True`). The CLI uses this to persist acceptance; tests
+pass `accept_license=True` directly to exercise the downstream path.
 """
 
 from __future__ import annotations

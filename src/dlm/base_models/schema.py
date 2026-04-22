@@ -9,14 +9,13 @@ point:
   same spec pin at exactly the same weights.
 - `target_modules`: per-architecture LoRA target list (see findings §8;
   `"all-linear"` is avoided because it bloats small models).
-- `template`: the chat-template dialect used by Sprint 12's Go-template
+- `template`: the chat-template dialect used by the Go-template
   registry for Modelfile generation.
 - `gguf_arch` / `tokenizer_pre`: identifiers the llama.cpp converter
-  matches against; Sprint 11's export preflight uses them.
-- License / gating (audit-02 F04 + F21): separate fields for SPDX,
-  acceptance gating, and re-distribution — each consumed by a different
-  gate (Sprint 12b license UX; Sprint 14 pack `--include-base`;
-  Sprint 28 share-protocol push refusal).
+  matches against; export preflight uses them.
+- License / gating: separate fields for SPDX, acceptance gating, and
+  re-distribution — each consumed by a different policy gate (license
+  acceptance, pack `--include-base`, share-protocol refusal).
 """
 
 from __future__ import annotations
@@ -38,10 +37,10 @@ class VlPreprocessorPlan(BaseModel):
     preflight checks + cache keying.
 
     `target_size` is `(height, width)` in pixels. `resize_policy`
-    defaults to `"fixed"` because that's what Sprint 35 v1 ships —
-    Qwen2-VL's dynamic resolution lands in 35.3. `image_token` is the
-    textual placeholder inserted into prompts before the processor
-    expands it into `num_image_tokens` copies.
+    defaults to `"fixed"` because that's what the current launch
+    registry ships. `image_token` is the textual placeholder inserted
+    into prompts before the processor expands it into
+    `num_image_tokens` copies.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -61,10 +60,10 @@ class VlPreprocessorPlan(BaseModel):
 
 
 class AudioPreprocessorPlan(BaseModel):
-    """Per-base audio-preprocessing parameters (Sprint 35.2).
+    """Per-base audio-preprocessing parameters.
 
     Mirrors `VlPreprocessorPlan` — pinned at registry-build time so
-    the audio cache key stays stable. Sprint 35.2 v1 refuses audio at
+    the audio cache key stays stable. Current releases refuse audio at
     non-target `sample_rate`; resampling lands as a follow-up.
 
     `sample_rate` is the model's training rate in Hz (Qwen2-Audio:
@@ -101,7 +100,7 @@ class BaseModelSpec(BaseModel):
     gguf_arch: str = Field(..., min_length=1, description="Name llama.cpp's converter uses.")
     tokenizer_pre: str = Field(..., min_length=1, description="Pre-tokenizer label.")
 
-    # License + acceptance (audit-02 F04 / F21).
+    # License + acceptance.
     license_spdx: str = Field(..., min_length=1)
     license_url: str | None = None
     requires_acceptance: bool = False

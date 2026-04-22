@@ -9,19 +9,19 @@ Notes on individual entries:
   with <100M MAU). We record it as `license_spdx="Other"` and surface
   the URL via `license_url`; it remains `redistributable=True` because
   the license permits bundling + redistribution with attribution.
-  **Caveat (audit-04 m11):** the boolean `redistributable` field does
-  not express the MAU threshold or attribution requirement. A
+  **Caveat:** the boolean `redistributable` field does not express the
+  MAU threshold or attribution requirement. A
   `redistributable_conditions: str | None` field on `BaseModelSpec`
   plus a pack-time attestation checkbox would encode this properly —
-  deferred to Sprint 12b's license-UX extension. Until then, users
-  at the scale threshold must consult the license text themselves.
+  deferred follow-up work. Until then, users at the scale threshold
+  must consult the license text themselves.
 - Llama-3.2 models are gated on HuggingFace (`requires_acceptance=True`)
   and their license does NOT permit bundling into a `.dlm.pack`
-  (`redistributable=False`) — enforced by Sprint 14's pack gate and
-  Sprint 28's share-protocol refusal.
+  (`redistributable=False`) — enforced by the pack gate and
+  share-protocol refusal.
 - SmolLM2 and Phi-3.5-mini are permissive (Apache-2.0 / MIT).
 - `size_gb_fp16` is approximate; the hardware doctor uses it to seed
-  VRAM estimates, which then get refined by sprint 09's runtime guard.
+  VRAM estimates, which then get refined by runtime checks.
 """
 
 from __future__ import annotations
@@ -211,20 +211,19 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         context_length=131_072,
         recommended_seq_len=2048,
     ),
-    # --- Vision-language bases (Sprint 35 v1) -------------------------------
+    # --- Vision-language bases ----------------------------------------------
     # PaliGemma-3B-mix-224 — Google's instruction-tuned VL base built on
     # Gemma-2B + SigLIP-So400m. Gated under the Gemma license; cannot
     # redistribute inside a `.dlm.pack` (same pattern as Llama-3.2).
     # Training targets Gemma's transformer blocks; the vision tower is
     # trained jointly when modules_to_save expands to ["embed_tokens",
-    # "lm_head"], but Sprint 35 v1 keeps modules_to_save empty so only
-    # the LLM-side LoRA adapters move — the vision tower is frozen.
+    # "lm_head"], but the current entry keeps modules_to_save empty so
+    # only the LLM-side LoRA adapters move — the vision tower is frozen.
     #
     # `gguf_arch` / `tokenizer_pre` are set to tags the current vendored
     # llama.cpp doesn't recognize; the export probes surface
-    # UNSUPPORTED + refuse GGUF conversion until Sprint 35.4 lands the
-    # arch-support gate. HF-snapshot export (`dlm export --hf-snapshot`)
-    # still works.
+    # UNSUPPORTED + refuse GGUF conversion until GGUF support lands.
+    # HF-snapshot export (`dlm export --hf-snapshot`) still works.
     BaseModelSpec(
         key="paligemma-3b-mix-224",
         hf_id="google/paligemma-3b-mix-224",
@@ -233,7 +232,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         # it as drift; a maintainer pastes in the observed SHA from
         # the script's output. Offline probe tests skip cleanly
         # until then (see tests/unit/base_models/test_vl_registry.py).
-        # Landed as part of Sprint 35 v1; to verify, run:
+        # To verify, run:
         #     uv run python scripts/refresh-registry.py --check
         revision="8d2f7bc9c15d71a00c14f9eb7e4c7b99c79e0a11",
         architecture="PaliGemmaForConditionalGeneration",
@@ -258,11 +257,10 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         ),
     ),
     # Qwen2-VL-2B-Instruct — Alibaba's Apache-2.0 VL base with dynamic-
-    # resolution support in native HF. Sprint 35.3 pins a conservative
-    # fixed 672×672 preprocessing plan (implementation-note (a) in the
-    # sprint spec) to avoid growing the VlPreprocessorPlan abstraction
-    # for dynamic ranges in v1 — later sprints can extend the plan with
-    # {min_pixels, max_pixels} when a user reaches that limit.
+    # resolution support in native HF. The current entry pins a
+    # conservative fixed 672×672 preprocessing plan to avoid growing
+    # the VlPreprocessorPlan abstraction for dynamic ranges yet; a
+    # future extension can add {min_pixels, max_pixels} when needed.
     #
     # 672×672 with Qwen2-VL's 28-pixel patch-merger grid yields 24×24 =
     # 576 vision tokens per image. `<|image_pad|>` is the runtime
@@ -339,7 +337,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
             num_image_tokens=256,
         ),
     ),
-    # --- Audio-language bases (Sprint 35.2) ---------------------------------
+    # --- Audio-language bases -----------------------------------------------
     # Qwen2-Audio-7B-Instruct — Alibaba's open audio-text model. Uses
     # the Qwen2 LLM backbone + a dedicated audio encoder. Apache-2.0
     # but the 7B checkpoint is gated on HF via license acceptance, so
@@ -348,10 +346,10 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     # Apache-2.0, but not-bundled-by-default because the pack size
     # (~14 GB fp16) dominates the tarball.
     #
-    # The 16 kHz pin + 30 s max-length match the training-time defaults
-    # documented in the Qwen2-Audio card. Resampling support lands as a
-    # 35.2 follow-up; v1 refuses mismatched sample rates with an
-    # actionable error at preprocess time.
+    # The 16 kHz pin + 30 s max-length match the training-time
+    # defaults documented in the Qwen2-Audio card. Resampling support
+    # lands as follow-up work; current releases refuse mismatched
+    # sample rates with an actionable error at preprocess time.
     #
     # Placeholder SHA flagged the same way as paligemma — the weekly
     # `scripts/refresh-registry.py --check` run surfaces drift and a
