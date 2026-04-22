@@ -743,7 +743,9 @@ def train_cmd(
     # deferred refactor; the env var is sufficient for the user-facing
     # contract and survives `accelerate launch` re-invocations.
     if no_cache:
-        os.environ["DLM_DISABLE_TOKENIZED_CACHE"] = "1"
+        from dlm.train.cache import set_disable_flag
+
+        set_disable_flag("--no-cache")
 
     if policy not in ("permissive", "strict"):
         console.print(

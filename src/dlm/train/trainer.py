@@ -1042,9 +1042,9 @@ def _maybe_pretokenize_datasets(  # pragma: no cover — real path is covered by
     if not training.cache.enabled:
         return train_ds, val_ds, None
 
-    import os
+    from dlm.train.cache import is_cache_disabled
 
-    if os.environ.get("DLM_DISABLE_TOKENIZED_CACHE", "0") == "1":
+    if is_cache_disabled():
         return train_ds, val_ds, None
 
     try:
