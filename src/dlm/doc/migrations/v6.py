@@ -12,9 +12,6 @@ pure identity migrator.
 
 from __future__ import annotations
 
-from dlm.doc.migrations import register
 
-
-@register(from_version=6)
 def migrate(raw: dict[str, object]) -> dict[str, object]:
     return dict(raw)

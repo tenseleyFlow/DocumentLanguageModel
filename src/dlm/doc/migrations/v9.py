@@ -9,9 +9,6 @@ migrator, same shape as the v7→v8 and v8→v9 additive bumps.
 
 from __future__ import annotations
 
-from dlm.doc.migrations import register
 
-
-@register(from_version=9)
 def migrate(raw: dict[str, object]) -> dict[str, object]:
     return dict(raw)

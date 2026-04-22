@@ -1,4 +1,4 @@
-"""Frontmatter migration registry (Sprint 12b, audit F01/F03).
+"""Frontmatter migration registry.
 
 Each `dlm_version` bump registers one module under this package,
 exporting a `migrate(raw: dict) -> dict` function that rewrites the
@@ -15,15 +15,12 @@ that test, so the rule is statically enforced.
 Minimum viable registration:
 
     # src/dlm/doc/migrations/vN.py
-    from dlm.doc.migrations import register
-
-    @register(from_version=N)
     def migrate(raw: dict) -> dict:
         # rewrite `raw` from version N to version N+1
         return {**raw, "new_field": "default"}
 
-Import the new module from this package's `__init__.py` so the
-`@register` side-effect runs at import time.
+    # src/dlm/doc/migrations/__init__.py
+    MIGRATORS[N] = vN.migrate
 """
 
 from __future__ import annotations
@@ -31,9 +28,37 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Final
 
-# Map of `from_version` → migrator function. Populated by `@register`
-# side-effects when per-version modules are imported below.
-MIGRATORS: Final[dict[int, Callable[[dict[str, object]], dict[str, object]]]] = {}
+# Keep the per-version modules imported here so the shipped registry is
+# declared in one explicit place rather than assembled via import-time
+# side effects.
+from dlm.doc.migrations import (
+    v1,
+    v2,
+    v3,
+    v4,
+    v5,
+    v6,
+    v7,
+    v8,
+    v9,
+    v10,
+    v11,
+)
+
+# Map of `from_version` → migrator function for the shipped schema path.
+MIGRATORS: Final[dict[int, Callable[[dict[str, object]], dict[str, object]]]] = {
+    1: v1.migrate,
+    2: v2.migrate,
+    3: v3.migrate,
+    4: v4.migrate,
+    5: v5.migrate,
+    6: v6.migrate,
+    7: v7.migrate,
+    8: v8.migrate,
+    9: v9.migrate,
+    10: v10.migrate,
+    11: v11.migrate,
+}
 
 
 def register(
@@ -42,10 +67,11 @@ def register(
     [Callable[[dict[str, object]], dict[str, object]]],
     Callable[[dict[str, object]], dict[str, object]],
 ]:
-    """Decorator: bind a migrator to its `from_version` key.
+    """Test helper: bind a temporary migrator to a `from_version` key.
 
-    Double-registration is a programming bug (two modules claim the
-    same migration step) and raises `AssertionError` at import time.
+    Runtime migrators are declared explicitly in `MIGRATORS` above.
+    Tests still use this helper to swap in synthetic upgrade chains
+    without editing the shipped modules.
     """
 
     def decorator(
@@ -59,20 +85,3 @@ def register(
         return fn
 
     return decorator
-
-
-# Side-effect imports below run `@register` for each version module.
-# Keep imports at the bottom so `register` is defined before they load.
-from dlm.doc.migrations import (  # noqa: E402  (imports below `register` defn)
-    v1,  # noqa: F401  (side-effect import)
-    v2,  # noqa: F401  (side-effect import)
-    v3,  # noqa: F401  (side-effect import)
-    v4,  # noqa: F401  (side-effect import)
-    v5,  # noqa: F401  (side-effect import)
-    v6,  # noqa: F401  (side-effect import)
-    v7,  # noqa: F401  (side-effect import)
-    v8,  # noqa: F401  (side-effect import)
-    v9,  # noqa: F401  (side-effect import)
-    v10,  # noqa: F401  (side-effect import)
-    v11,  # noqa: F401  (side-effect import)
-)

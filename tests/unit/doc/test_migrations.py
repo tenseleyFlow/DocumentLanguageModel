@@ -58,7 +58,7 @@ class TestApplyPending:
         from dlm.doc.errors import DlmVersionError
 
         raw = {"dlm_version": 5}
-        with pytest.raises(DlmVersionError, match="newer than this CLI supports"):
+        with pytest.raises(DlmVersionError, match="newer than this parser"):
             apply_pending(raw, target_version=3)
 
     def test_chain_runs_in_order(self, scratch_registry: None) -> None:
@@ -96,6 +96,10 @@ class TestApplyPending:
     def test_non_int_version_raises(self, scratch_registry: None) -> None:
         with pytest.raises(UnsupportedMigrationError, match="must be int"):
             apply_pending({"dlm_version": "1"}, target_version=2)
+
+    def test_bool_version_raises(self, scratch_registry: None) -> None:
+        with pytest.raises(UnsupportedMigrationError, match="must be int"):
+            apply_pending({"dlm_version": True}, target_version=2)
 
     def test_input_not_mutated(self, scratch_registry: None) -> None:
         @register(from_version=1)

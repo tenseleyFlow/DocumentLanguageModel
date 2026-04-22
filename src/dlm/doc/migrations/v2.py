@@ -16,9 +16,6 @@ have a registered step, even when that step is a no-op.
 
 from __future__ import annotations
 
-from dlm.doc.migrations import register
 
-
-@register(from_version=2)
 def migrate(raw: dict[str, object]) -> dict[str, object]:
     return dict(raw)

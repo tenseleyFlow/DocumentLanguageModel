@@ -12,9 +12,6 @@ is a pure identity migrator, same shape as the v7→v8 gate migrator.
 
 from __future__ import annotations
 
-from dlm.doc.migrations import register
 
-
-@register(from_version=8)
 def migrate(raw: dict[str, object]) -> dict[str, object]:
     return dict(raw)

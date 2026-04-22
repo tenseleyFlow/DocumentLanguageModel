@@ -24,7 +24,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from dlm.doc.errors import DlmVersionError, SchemaValidationError
+from dlm.doc.errors import DlmVersionError, SchemaValidationError, UnsupportedMigrationError
 from dlm.doc.migrations.dispatch import apply_pending
 from dlm.doc.schema import CURRENT_SCHEMA_VERSION, DlmFrontmatter
 
@@ -47,15 +47,12 @@ def validate_versioned(raw: dict[str, object], *, path: Path | None = None) -> D
             path=path,
             line=2,
         )
-    if version > CURRENT_SCHEMA_VERSION:
-        raise DlmVersionError(
-            f"dlm_version {version} is newer than this parser "
-            f"({CURRENT_SCHEMA_VERSION}); upgrade dlm or check the source's schema",
-            path=path,
-            line=2,
-        )
-
-    migrated, applied = apply_pending(raw, target_version=CURRENT_SCHEMA_VERSION)
+    try:
+        migrated, applied = apply_pending(raw, target_version=CURRENT_SCHEMA_VERSION)
+    except UnsupportedMigrationError:
+        raise
+    except DlmVersionError as exc:
+        raise DlmVersionError(exc.message, path=path, line=2) from exc
     if applied:
         # The parser's own error path logs migrations as an info line; the
         # migration framework's data-rewrite happens here without

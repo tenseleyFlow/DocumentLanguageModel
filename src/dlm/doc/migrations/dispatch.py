@@ -37,7 +37,7 @@ def apply_pending(
 
     while True:
         version = current.get("dlm_version", 1)
-        if not isinstance(version, int):
+        if not isinstance(version, int) or isinstance(version, bool):
             raise UnsupportedMigrationError(
                 f"dlm_version must be int, got {type(version).__name__}",
             )
@@ -51,9 +51,9 @@ def apply_pending(
             from dlm.doc.errors import DlmVersionError
 
             raise DlmVersionError(
-                f"dlm_version {version} is newer than this CLI supports "
-                f"(CURRENT_SCHEMA_VERSION={target_version}). Upgrade dlm "
-                "to a version that knows this schema."
+                f"dlm_version {version} is newer than this parser "
+                f"(CURRENT_SCHEMA_VERSION={target_version}); upgrade dlm "
+                "or check the source's schema."
             )
         migrator = MIGRATORS.get(version)
         if migrator is None:

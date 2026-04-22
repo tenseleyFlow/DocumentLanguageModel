@@ -15,9 +15,6 @@ the migration-framework coverage contract.
 
 from __future__ import annotations
 
-from dlm.doc.migrations import register
 
-
-@register(from_version=3)
 def migrate(raw: dict[str, object]) -> dict[str, object]:
     return dict(raw)

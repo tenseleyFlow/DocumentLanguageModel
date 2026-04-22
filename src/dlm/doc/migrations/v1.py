@@ -35,10 +35,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from dlm.doc.migrations import register
 
-
-@register(from_version=1)
 def migrate(raw: dict[str, object]) -> dict[str, object]:
     out = dict(raw)
     training = out.get("training")
