@@ -1,11 +1,11 @@
-"""Post-training val-loss split by row mode (audit-08 N9).
+"""Post-training val-loss split by row mode.
 
-Sprint 19 added `TrainingSummary.val_loss_cpt` / `val_loss_sft` +
-`split_loss_by_mode` but left the plumbing to populate them
-unwired. This module closes the loop: given a trained `SFTTrainer`
-and its `val_ds`, split the dataset by row mode (CPT prose vs SFT
-instruction) and run `trainer.evaluate()` on each non-empty subset
-to extract per-mode `eval_loss`.
+`TrainingSummary.val_loss_cpt` / `val_loss_sft` and
+`split_loss_by_mode` capture the mixed-mode breakdown. This module
+closes the loop: given a trained `SFTTrainer` and its `val_ds`, split
+the dataset by row mode (CPT prose vs SFT instruction) and run
+`trainer.evaluate()` on each non-empty subset to extract per-mode
+`eval_loss`.
 
 Kept small and pure-wrapper. Heavy eval lives in TRL; we just
 group rows and read `eval_loss` out of the returned dict. Unit

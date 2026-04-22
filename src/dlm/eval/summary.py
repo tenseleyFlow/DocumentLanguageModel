@@ -3,8 +3,7 @@
 One summary per training run. Captures "how did it go?" in a compact
 form that's cheap to read from the CLI (no torch / HF imports needed)
 and human-inspectable. The manifest's `training_runs` list links out
-to the summary file by path so `dlm show` (Sprint 13) can load details
-on demand.
+to the summary file by path so `dlm show` can load details on demand.
 """
 
 from __future__ import annotations
@@ -78,7 +77,7 @@ class TrainingSummary(BaseModel):
     steps: int = Field(0, ge=0)
     duration_seconds: float = Field(0.0, ge=0.0)
     determinism_class: str = "best_effort"
-    # Sprint 29: per-directive ingestion provenance. Empty when no
+    # Per-directive ingestion provenance. Empty when no
     # `training.sources` declared. Order matches the frontmatter so
     # CLI formatters can line up rows with source entries.
     source_directives: list[SourceProvenanceRecord] = Field(default_factory=list)
@@ -120,8 +119,8 @@ def split_loss_by_mode(rows: Iterable[tuple[float, str]]) -> LossByMode:
 def save_summary(path: Path, summary: TrainingSummary) -> None:
     """Atomically serialize `summary` as pretty JSON.
 
-    Uses the Sprint 04 atomic-write helper so a concurrent CLI reader
-    never sees a torn file.
+    Uses the atomic-write helper so a concurrent CLI reader never sees
+    a torn file.
     """
     payload = summary.model_dump(mode="json")
     blob = json.dumps(payload, sort_keys=True, indent=2) + "\n"

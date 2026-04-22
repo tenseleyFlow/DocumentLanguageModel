@@ -6,8 +6,8 @@ token has loss 0 and perplexity 1. On small documents the numbers are
 noisy — the val set is rarely large enough for a stable PPL — but the
 *trend* across eval steps is the signal.
 
-Pulled out as its own module so `dlm metrics` (Sprint 20) can import
-it without pulling in torch / transformers.
+Pulled out as its own module so `dlm metrics` can import it without
+pulling in torch / transformers.
 """
 
 from __future__ import annotations

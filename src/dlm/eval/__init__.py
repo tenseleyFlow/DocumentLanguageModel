@@ -1,7 +1,6 @@
 """Eval harness — val loss, perplexity, probes, retention, early stopping.
 
-See Sprint 10 for the design. Heavy imports are deferred to the
-boundaries that need them.
+Heavy imports are deferred to the boundaries that need them.
 """
 
 from __future__ import annotations

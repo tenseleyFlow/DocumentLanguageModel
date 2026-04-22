@@ -9,16 +9,15 @@ forgetting" failure mode the replay corpus was designed to prevent.
 This module picks a **stable 5% slice** of the replay corpus at run
 start, reserves it as eval-only (the trainer never sees it), and
 reports loss on that slice alongside val loss. A retention_delta >>
-val_delta between runs is the forgetting signal the Sprint 20 UI
-surfaces.
+val_delta between runs is the forgetting signal the UI surfaces.
 
 Design:
 - `build_retention_slice(replay_store, *, frac, seed)` returns a list
   of `IndexEntry` the caller can rehydrate into rows. Seed-stable:
   same corpus + seed → same slice → same "held-out" across runs.
-- The slice is disjoint from the training sample (Sprint 08's sampler
-  draws from the remainder of the corpus; trainer threads the
-  retention entries' ids to `exclude`).
+- The slice is disjoint from the training sample (the sampler draws
+  from the remainder of the corpus; trainer threads the retention
+  entries' ids to `exclude`).
 """
 
 from __future__ import annotations

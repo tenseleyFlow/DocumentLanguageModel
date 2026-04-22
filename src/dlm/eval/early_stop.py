@@ -31,7 +31,7 @@ class EarlyStopConfig:
     `patience`: eval rounds without improvement before stopping.
     `threshold`: minimum `metric_for_best_model` delta that counts as
       improvement. 0.0 means any improvement resets the patience counter.
-    `metric`: HF metric name (`"eval_loss"` by default; the Sprint 10
+    `metric`: HF metric name (`"eval_loss"` by default; the
       `compute_metrics` hook also emits `"eval_perplexity"`).
     """
 
