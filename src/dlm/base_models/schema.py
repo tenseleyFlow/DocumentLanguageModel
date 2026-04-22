@@ -29,6 +29,8 @@ from typing import Final, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _SHA_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
+DEFAULT_PROMPT_TEMPERATURE: Final[float] = 0.7
+DEFAULT_REASONING_PROMPT_TEMPERATURE: Final[float] = 0.6
 
 
 class VlPreprocessorPlan(BaseModel):
@@ -187,6 +189,19 @@ class BaseModelSpec(BaseModel):
                 f"cannot exceed context_length={self.context_length}"
             )
         return self
+
+    @property
+    def suggested_prompt_temperature(self) -> float:
+        """Default sampling temperature for `dlm prompt`.
+
+        Most instruct bases keep the long-standing 0.7 default.
+        Reasoning-tuned bases run slightly cooler by default so the
+        chain-of-thought control tokens they were tuned around stay
+        stable when the user omits `--temp`.
+        """
+        if self.reasoning_tuned:
+            return DEFAULT_REASONING_PROMPT_TEMPERATURE
+        return DEFAULT_PROMPT_TEMPERATURE
 
     @field_validator("revision")
     @classmethod

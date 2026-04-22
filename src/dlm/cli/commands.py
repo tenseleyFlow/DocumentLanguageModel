@@ -1124,6 +1124,7 @@ def _strip_gpus_from_argv(argv: list[str]) -> list[str]:
 
 
 def prompt_cmd(
+    ctx: typer.Context,
     path: Annotated[Path, typer.Argument(help=".dlm file to query.")],
     query: Annotated[str | None, typer.Argument(help="One-shot prompt (omit for stdin).")] = None,
     max_tokens: Annotated[
@@ -1279,6 +1280,10 @@ def prompt_cmd(
     from dlm.modality import modality_for
 
     dispatch = modality_for(spec)
+    from click.core import ParameterSource
+
+    if ctx.get_parameter_source("temp") == ParameterSource.DEFAULT:
+        temp = spec.suggested_prompt_temperature
     if image_paths and not dispatch.accepts_images:
         console.print(
             f"[red]prompt:[/red] --image is only valid with vision-language bases; "
