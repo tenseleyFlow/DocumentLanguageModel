@@ -70,6 +70,7 @@ class TestLicenseFields:
             "qwen3-4b",
             "qwen3-8b",
             "smollm3-3b",
+            "olmo-2-7b-instruct",
             "smollm2-135m",
             "smollm2-360m",
             "smollm2-1.7b",
@@ -108,6 +109,12 @@ class TestArchitectureShapes:
         assert "qkv_proj" in entry.target_modules
         assert entry.gguf_arch == "phi3"
         assert entry.template == "phi3"
+
+    def test_olmo2_uses_olmo2_converter_path(self) -> None:
+        entry = BASE_MODELS["olmo-2-7b-instruct"]
+        assert entry.gguf_arch == "olmo2"
+        assert entry.architecture == "Olmo2ForCausalLM"
+        assert entry.template == "olmo2"
 
     def test_size_gb_fp16_monotonic_within_family(self) -> None:
         qwen_sizes = [

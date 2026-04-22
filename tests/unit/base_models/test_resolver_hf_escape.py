@@ -57,6 +57,7 @@ class TestInferGgufArch:
         [
             ("LlamaForCausalLM", "llama"),
             ("SmolLM3ForCausalLM", "llama"),
+            ("Olmo2ForCausalLM", "olmo2"),
             ("Qwen2ForCausalLM", "qwen2"),
             ("Qwen3ForCausalLM", "qwen3"),
             ("MistralForCausalLM", "llama"),
@@ -78,6 +79,7 @@ class TestInferTemplate:
         ("hf_id", "architecture", "expected"),
         [
             ("HuggingFaceTB/SmolLM3-3B", "SmolLM3ForCausalLM", "smollm3"),
+            ("allenai/OLMo-2-1124-7B-Instruct", "Olmo2ForCausalLM", "olmo2"),
             ("meta-llama/Llama-3.2-1B-Instruct", "LlamaForCausalLM", "llama3"),
             ("meta-llama/llama3-base", "LlamaForCausalLM", "llama3"),
             ("microsoft/Phi-3.5-mini-instruct", "Phi3ForCausalLM", "phi3"),
@@ -99,7 +101,7 @@ class TestDefaultTargetModules:
         ]
 
     def test_other_archs_use_split_qkv(self) -> None:
-        for arch in ("llama", "qwen2", "qwen3", "gemma2"):
+        for arch in ("llama", "olmo2", "qwen2", "qwen3", "gemma2"):
             assert _default_target_modules(arch) == ["q_proj", "k_proj", "v_proj", "o_proj"]
 
 

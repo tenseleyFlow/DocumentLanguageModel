@@ -242,6 +242,27 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         reasoning_tuned=True,
     ),
     BaseModelSpec(
+        key="olmo-2-7b-instruct",
+        hf_id="allenai/OLMo-2-1124-7B-Instruct",
+        # Placeholder SHA: format-valid, not a real HF commit. The
+        # weekly `scripts/refresh-registry.py --check` run surfaces
+        # drift and prints the live value for manual review.
+        revision="6f7890abcdeffedcba0987654321abc2d3e4f5a6",
+        architecture="Olmo2ForCausalLM",
+        params=7_000_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="olmo2",
+        gguf_arch="olmo2",
+        tokenizer_pre="superbpe",
+        license_spdx="Apache-2.0",
+        license_url="https://huggingface.co/allenai/OLMo-2-1124-7B-Instruct",
+        requires_acceptance=False,
+        redistributable=True,
+        size_gb_fp16=14.6,
+        context_length=4096,
+        recommended_seq_len=2048,
+    ),
+    BaseModelSpec(
         key="smollm2-135m",
         hf_id="HuggingFaceTB/SmolLM2-135M-Instruct",
         revision="12fd25f77366fa6b3b4b768ec3050bf629380bac",

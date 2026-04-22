@@ -1,0 +1,28 @@
+{#
+OLMo-2 reference template from the live HF tokenizer_config:
+
+{{ bos_token }}{% for message in messages %}
+{% if message['role'] == 'system' %}<|system|>\n...{% elif ... %}
+
+The important shape is:
+- prepend BOS (`<|endoftext|>`)
+- system/user turns are raw role markers plus trailing newline
+- assistant turns close with `<|endoftext|>`
+- the generation prompt is `<|assistant|>\n`
+#}
+{{- '<|endoftext|>' -}}
+{%- for message in messages -%}
+{%- if message['role'] == 'system' -%}
+<|system|>
+{{ message['content'] }}
+{%- elif message['role'] == 'user' -%}
+<|user|>
+{{ message['content'] }}
+{%- elif message['role'] == 'assistant' -%}
+<|assistant|>
+{{ message['content'] }}<|endoftext|>
+{%- endif -%}
+{% endfor -%}
+{%- if add_generation_prompt -%}
+<|assistant|>
+{%- endif -%}

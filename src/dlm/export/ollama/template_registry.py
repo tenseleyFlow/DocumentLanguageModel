@@ -23,7 +23,7 @@ from typing import Final, Literal
 
 from dlm.export.ollama.errors import TemplateRegistryError
 
-Dialect = Literal["chatml", "smollm3", "llama3", "phi3", "mistral"]
+Dialect = Literal["chatml", "smollm3", "olmo2", "llama3", "phi3", "mistral"]
 
 _TEMPLATES_DIR: Final[Path] = Path(__file__).resolve().parent / "templates"
 
@@ -71,6 +71,13 @@ _REGISTRY: Final[dict[Dialect, DialectTemplate]] = {
         default_stops=("<|im_end|>", "<|end_of_text|>", "<|im_start|>"),
         default_temperature=0.6,
         default_top_p=0.95,
+    ),
+    "olmo2": DialectTemplate(
+        dialect="olmo2",
+        template_path=_TEMPLATES_DIR / "olmo2.gotmpl",
+        # OLMo2 uses `<|user|>` / `<|assistant|>` role markers and
+        # closes assistant turns with `<|endoftext|>`.
+        default_stops=("<|endoftext|>", "<|user|>", "<|assistant|>", "<|system|>"),
     ),
     "llama3": DialectTemplate(
         dialect="llama3",

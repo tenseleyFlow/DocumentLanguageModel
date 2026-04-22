@@ -84,3 +84,30 @@ class TestSmolLM3RegistryEntry:
         assert spec.redistributable is True
         assert spec.context_length == 65_536
         assert spec.recommended_seq_len == 4096
+
+
+class TestOlmo2RegistryEntry:
+    def test_entry_present(self) -> None:
+        assert "olmo-2-7b-instruct" in BASE_MODELS
+
+    def test_live_hf_id_and_architecture_match_current_release(self) -> None:
+        spec = BASE_MODELS["olmo-2-7b-instruct"]
+        assert spec.hf_id == "allenai/OLMo-2-1124-7B-Instruct"
+        assert spec.architecture == "Olmo2ForCausalLM"
+        assert spec.template == "olmo2"
+        assert spec.gguf_arch == "olmo2"
+        assert spec.tokenizer_pre == "superbpe"
+
+    def test_entry_is_open_without_reasoning_override(self) -> None:
+        spec = BASE_MODELS["olmo-2-7b-instruct"]
+        assert spec.license_spdx == "Apache-2.0"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+        assert spec.reasoning_tuned is False
+
+    def test_entry_uses_model_card_context_and_size_hints(self) -> None:
+        spec = BASE_MODELS["olmo-2-7b-instruct"]
+        assert spec.params == 7_000_000_000
+        assert spec.size_gb_fp16 == pytest.approx(14.6)
+        assert spec.context_length == 4096
+        assert spec.recommended_seq_len == 2048

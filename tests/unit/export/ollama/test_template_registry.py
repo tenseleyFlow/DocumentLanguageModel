@@ -13,17 +13,24 @@ from dlm.export.ollama.template_registry import (
 
 
 class TestRegistryCoverage:
-    def test_all_five_dialects_registered(self) -> None:
-        assert set(registered_dialects()) == {"chatml", "smollm3", "llama3", "phi3", "mistral"}
+    def test_all_six_dialects_registered(self) -> None:
+        assert set(registered_dialects()) == {
+            "chatml",
+            "smollm3",
+            "olmo2",
+            "llama3",
+            "phi3",
+            "mistral",
+        }
 
-    @pytest.mark.parametrize("dialect", ["chatml", "smollm3", "llama3", "phi3", "mistral"])
+    @pytest.mark.parametrize("dialect", ["chatml", "smollm3", "olmo2", "llama3", "phi3", "mistral"])
     def test_each_template_file_exists(self, dialect: str) -> None:
         row = get_template(dialect)
         assert row.template_path.is_file()
         body = row.read_template()
         assert body  # non-empty
 
-    @pytest.mark.parametrize("dialect", ["chatml", "smollm3", "llama3", "phi3", "mistral"])
+    @pytest.mark.parametrize("dialect", ["chatml", "smollm3", "olmo2", "llama3", "phi3", "mistral"])
     def test_each_has_default_stops(self, dialect: str) -> None:
         row = get_template(dialect)
         assert row.default_stops  # at least one
@@ -33,6 +40,7 @@ class TestRegistryCoverage:
         [
             ("chatml", {"<|im_end|>", "<|im_start|>"}),
             ("smollm3", {"<|im_end|>", "<|im_start|>"}),
+            ("olmo2", {"<|endoftext|>", "<|user|>", "<|assistant|>"}),
             ("llama3", {"<|eot_id|>", "<|start_header_id|>"}),
             ("phi3", {"<|end|>", "<|user|>", "<|assistant|>"}),
             ("mistral", {"</s>", "[/INST]", "[INST]"}),
@@ -70,6 +78,12 @@ class TestDialectShapes:
         assert "<|im_start|>system" in text
         assert "Thought" in text
         assert "Solution" in text
+
+    def test_olmo2_has_endoftext_turn_closer(self) -> None:
+        text = load_template_text("olmo2")
+        assert "<|{{ .Role }}|>" in text
+        assert "<|assistant|>" in text
+        assert "<|endoftext|>" in text
 
     def test_llama3_has_header_markers(self) -> None:
         text = load_template_text("llama3")

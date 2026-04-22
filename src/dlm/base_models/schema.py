@@ -102,6 +102,7 @@ class BaseModelSpec(BaseModel):
     template: Literal[
         "chatml",
         "smollm3",
+        "olmo2",
         "llama3",
         "phi3",
         "mistral",
