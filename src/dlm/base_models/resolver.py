@@ -28,7 +28,16 @@ from dlm.base_models.errors import (
 from dlm.base_models.registry import BASE_MODELS, known_keys
 from dlm.base_models.schema import BaseModelSpec
 
-TemplateDialect = Literal["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "mistral"]
+TemplateDialect = Literal[
+    "chatml",
+    "gemma2",
+    "smollm3",
+    "olmo2",
+    "llama3",
+    "phi3",
+    "phi4mini",
+    "mistral",
+]
 
 _LOG = logging.getLogger(__name__)
 
@@ -247,6 +256,8 @@ def _infer_template(hf_id: str, architecture: str) -> TemplateDialect:
         return "olmo2"
     if "llama-3" in lower or "llama3" in lower:
         return "llama3"
+    if "phi-4-mini-reasoning" in lower:
+        return "phi4mini"
     if architecture.startswith("Phi"):
         return "phi3"
     if architecture.startswith("Mistral"):

@@ -106,6 +106,7 @@ class BaseModelSpec(BaseModel):
         "olmo2",
         "llama3",
         "phi3",
+        "phi4mini",
         "mistral",
         "paligemma",
         "qwen2-audio",

@@ -87,7 +87,8 @@ class TestLicenseFields:
             assert entry.redistributable is True
 
     def test_phi_is_mit(self) -> None:
-        assert BASE_MODELS["phi-3.5-mini"].license_spdx == "MIT"
+        for key in ("phi-3.5-mini", "phi-4-mini-reasoning"):
+            assert BASE_MODELS[key].license_spdx == "MIT"
 
 
 class TestArchitectureShapes:
@@ -111,10 +112,11 @@ class TestArchitectureShapes:
             assert entry.template == "llama3"
 
     def test_phi_uses_fused_qkv_target_modules(self) -> None:
-        entry = BASE_MODELS["phi-3.5-mini"]
-        assert "qkv_proj" in entry.target_modules
-        assert entry.gguf_arch == "phi3"
-        assert entry.template == "phi3"
+        for key, template in (("phi-3.5-mini", "phi3"), ("phi-4-mini-reasoning", "phi4mini")):
+            entry = BASE_MODELS[key]
+            assert "qkv_proj" in entry.target_modules
+            assert entry.gguf_arch == "phi3"
+            assert entry.template == template
 
     def test_olmo2_uses_olmo2_converter_path(self) -> None:
         entry = BASE_MODELS["olmo-2-7b-instruct"]

@@ -379,6 +379,28 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         context_length=131_072,
         recommended_seq_len=2048,
     ),
+    BaseModelSpec(
+        key="phi-4-mini-reasoning",
+        hf_id="microsoft/Phi-4-mini-reasoning",
+        # Placeholder SHA: format-valid, not a real HF commit. The
+        # weekly `scripts/refresh-registry.py --check` run surfaces
+        # drift and prints the live value for manual review.
+        revision="9a0bcdeffedcba0987654321abc2d3e4f5a6b7c8",
+        architecture="Phi3ForCausalLM",
+        params=3_800_000_000,
+        target_modules=["qkv_proj", "o_proj", "gate_up_proj", "down_proj"],
+        template="phi4mini",
+        gguf_arch="phi3",
+        tokenizer_pre="phi-2",
+        license_spdx="MIT",
+        license_url="https://huggingface.co/microsoft/Phi-4-mini-reasoning/blob/main/LICENSE",
+        requires_acceptance=False,
+        redistributable=True,
+        size_gb_fp16=7.6,
+        context_length=131_072,
+        recommended_seq_len=2048,
+        reasoning_tuned=True,
+    ),
     # --- Vision-language bases ----------------------------------------------
     # PaliGemma-3B-mix-224 — Google's instruction-tuned VL base built on
     # Gemma-2B + SigLIP-So400m. Gated under the Gemma license; cannot

@@ -1,0 +1,7 @@
+{#
+Phi-4-mini-reasoning reference template. Upstream injects a default
+system preamble before any user turns, then renders the conversation in
+the Phi role-token format.
+#}
+{%- set default_system = 'Your name is Phi, an AI math expert developed by Microsoft.' -%}
+<|system|>{{ default_system }}{%- for message in messages if message['role'] == 'system' %} {{ message['content'] }}{% endfor %}<|end|>{%- for message in messages if message['role'] != 'system' %}<|{{ message['role'] }}|>{{ message['content'] }}<|end|>{% endfor -%}{%- if add_generation_prompt -%}<|assistant|>{%- else -%}<|endoftext|>{%- endif -%}

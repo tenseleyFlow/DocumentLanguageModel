@@ -23,7 +23,7 @@ from typing import Final, Literal
 
 from dlm.export.ollama.errors import TemplateRegistryError
 
-Dialect = Literal["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "mistral"]
+Dialect = Literal["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "phi4mini", "mistral"]
 
 _TEMPLATES_DIR: Final[Path] = Path(__file__).resolve().parent / "templates"
 
@@ -106,6 +106,20 @@ _REGISTRY: Final[dict[Dialect, DialectTemplate]] = {
         template_path=_TEMPLATES_DIR / "phi3.gotmpl",
         # Phi-3.5-mini's chat template uses `<|user|>`, `<|assistant|>`,
         # `<|system|>` role delimiters — the audit called these out.
+        default_stops=(
+            "<|end|>",
+            "<|endoftext|>",
+            "<|user|>",
+            "<|assistant|>",
+            "<|system|>",
+        ),
+    ),
+    "phi4mini": DialectTemplate(
+        dialect="phi4mini",
+        template_path=_TEMPLATES_DIR / "phi4mini.gotmpl",
+        # Phi-4-mini-reasoning keeps Phi-style `<|role|>` markers and
+        # `<|end|>` closers, but the upstream template always injects a
+        # default system preamble before user turns.
         default_stops=(
             "<|end|>",
             "<|endoftext|>",

@@ -83,6 +83,7 @@ class TestInferTemplate:
             ("allenai/OLMo-2-1124-7B-Instruct", "Olmo2ForCausalLM", "olmo2"),
             ("meta-llama/Llama-3.2-1B-Instruct", "LlamaForCausalLM", "llama3"),
             ("meta-llama/llama3-base", "LlamaForCausalLM", "llama3"),
+            ("microsoft/Phi-4-mini-reasoning", "Phi3ForCausalLM", "phi4mini"),
             ("microsoft/Phi-3.5-mini-instruct", "Phi3ForCausalLM", "phi3"),
             ("mistralai/Mistral-7B-Instruct", "MistralForCausalLM", "mistral"),
             ("Qwen/Qwen2.5-1.5B-Instruct", "Qwen2ForCausalLM", "chatml"),

@@ -155,3 +155,31 @@ class TestGemma2RegistryEntry:
         spec = BASE_MODELS[key]
         assert spec.context_length == 8192
         assert spec.recommended_seq_len == 2048
+
+
+class TestPhi4MiniReasoningRegistryEntry:
+    def test_entry_present(self) -> None:
+        assert "phi-4-mini-reasoning" in BASE_MODELS
+
+    def test_live_hf_id_and_architecture_match_current_release(self) -> None:
+        spec = BASE_MODELS["phi-4-mini-reasoning"]
+        assert spec.hf_id == "microsoft/Phi-4-mini-reasoning"
+        assert spec.architecture == "Phi3ForCausalLM"
+        assert spec.template == "phi4mini"
+        assert spec.gguf_arch == "phi3"
+        assert spec.tokenizer_pre == "phi-2"
+
+    def test_entry_is_reasoning_tuned_and_open(self) -> None:
+        spec = BASE_MODELS["phi-4-mini-reasoning"]
+        assert spec.license_spdx == "MIT"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+        assert spec.reasoning_tuned is True
+        assert spec.suggested_prompt_temperature == pytest.approx(0.6)
+
+    def test_entry_uses_model_card_context_and_size_hints(self) -> None:
+        spec = BASE_MODELS["phi-4-mini-reasoning"]
+        assert spec.params == 3_800_000_000
+        assert spec.size_gb_fp16 == pytest.approx(7.6)
+        assert spec.context_length == 131_072
+        assert spec.recommended_seq_len == 2048

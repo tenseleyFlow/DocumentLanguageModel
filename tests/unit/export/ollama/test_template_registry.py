@@ -13,7 +13,7 @@ from dlm.export.ollama.template_registry import (
 
 
 class TestRegistryCoverage:
-    def test_all_seven_dialects_registered(self) -> None:
+    def test_all_eight_dialects_registered(self) -> None:
         assert set(registered_dialects()) == {
             "chatml",
             "gemma2",
@@ -21,11 +21,13 @@ class TestRegistryCoverage:
             "olmo2",
             "llama3",
             "phi3",
+            "phi4mini",
             "mistral",
         }
 
     @pytest.mark.parametrize(
-        "dialect", ["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "mistral"]
+        "dialect",
+        ["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "phi4mini", "mistral"],
     )
     def test_each_template_file_exists(self, dialect: str) -> None:
         row = get_template(dialect)
@@ -34,7 +36,8 @@ class TestRegistryCoverage:
         assert body  # non-empty
 
     @pytest.mark.parametrize(
-        "dialect", ["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "mistral"]
+        "dialect",
+        ["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "phi4mini", "mistral"],
     )
     def test_each_has_default_stops(self, dialect: str) -> None:
         row = get_template(dialect)
@@ -49,6 +52,7 @@ class TestRegistryCoverage:
             ("olmo2", {"<|endoftext|>", "<|user|>", "<|assistant|>"}),
             ("llama3", {"<|eot_id|>", "<|start_header_id|>"}),
             ("phi3", {"<|end|>", "<|user|>", "<|assistant|>"}),
+            ("phi4mini", {"<|end|>", "<|user|>", "<|assistant|>", "<|system|>"}),
             ("mistral", {"</s>", "[/INST]", "[INST]"}),
         ],
     )
@@ -105,6 +109,11 @@ class TestDialectShapes:
     def test_phi3_has_end_marker(self) -> None:
         text = load_template_text("phi3")
         assert "<|end|>" in text
+
+    def test_phi4mini_has_default_math_system_prompt(self) -> None:
+        text = load_template_text("phi4mini")
+        assert "<|system|>Your name is Phi" in text
+        assert "<|assistant|>" in text
 
     def test_mistral_has_inst_markers(self) -> None:
         text = load_template_text("mistral")
