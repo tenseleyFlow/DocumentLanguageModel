@@ -51,7 +51,7 @@ test(export): cover Q8_0 path in integration suite
 cover the Q8_0 export path in integration tests (export)
 
 ### Q
-docs: add migration guide for Sprint 12b
+docs: add migration guide for legacy stores
 
 ### A
-document the 12b migration path for existing stores (docs)
+document the migration path for legacy stores (docs)

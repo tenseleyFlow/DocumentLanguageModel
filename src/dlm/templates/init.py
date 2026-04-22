@@ -6,8 +6,8 @@ Backing for `dlm init --template <name>`. The flow:
 2. Parse the bundled body as a `.dlm` to validate it and grab its schema.
 3. When the template's `recommended_base` is gated, require the caller
    to pass `accept_license=True` — apply_template refuses otherwise
-   (audit-09 m2: makes the license contract first-class rather than
-   something the surrounding `init_cmd` happens to handle).
+   so the license contract is first-class rather than something the
+   surrounding `init_cmd` happens to handle.
 4. Mint a fresh `dlm_id` — two users running `dlm init --template coding-tutor`
    must get distinct stores, never collide on the bundled ULID.
 5. Serialize the updated frontmatter + body to the target path.
