@@ -32,6 +32,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+from dlm.eval import (
+    EarlyStopConfig,
+    summarize_eval_state,
+    was_early_stopped,
+)
+from dlm.eval.mode_split import compute_val_loss_by_mode
 from dlm.lock import (
     DlmLock,
     LockDecision,
@@ -47,10 +53,14 @@ from dlm.lock import (
 from dlm.lock import (
     lock_path as _lock_file_path,
 )
+from dlm.metrics import MetricsRecorder, RunEnd, RunStart
 from dlm.replay import ChangeSet, ReplayStore, SectionSnapshot, diff_against_manifest
+from dlm.store.manifest import Manifest, load_manifest
 from dlm.train.checkpoint_commit import commit_version
 from dlm.train.determinism import DeterminismSummary, seed_everything
 from dlm.train.disk_preflight import preflight_disk
+from dlm.train.distributed.rank_env import detect_world_size
+from dlm.train.integrity import assert_eval_finite
 from dlm.train.logger import Banner, StepLogger, log_path_for
 from dlm.train.state_sidecar import (
     STATE_FILENAME,
@@ -90,6 +100,64 @@ class TrainingRunResult:
     final_val_perplexity: float | None
     early_stopped: bool
     determinism: DeterminismSummary
+
+
+@dataclass(frozen=True)
+class PreflightContext:
+    """Everything `run_preflight` resolves + hands to later phases.
+
+    Carries both the caller-facing inputs (store, spec, plan, mode,
+    etc.) and the derived state (run_id, directive-expanded parsed,
+    change_set, replay, recorder, lock_decision). Consumed by
+    `run_training_loop` + `commit_and_record`.
+    """
+
+    # Inputs
+    store: StorePath
+    spec: BaseModelSpec
+    plan: TrainingPlan
+    mode: Mode
+    max_steps: int | None
+    lock_mode: LockMode
+    capabilities: Capabilities | None
+    trainer_factory: Callable[..., Any] | None
+    adapter_name: str | None
+
+    # Resolved state
+    parsed: ParsedDlm  # post-directive-expansion
+    seed: int
+    world_size: int
+    run_id: int
+    log_path: Path
+    versions: PinnedVersions
+    determinism: DeterminismSummary
+    directive_provenance: tuple[Any, ...]
+    directive_discovered: tuple[Any, ...]
+    prior_manifest: Manifest
+    change_set: ChangeSet
+    replay: ReplayStore
+    recorder: MetricsRecorder
+    lock_decision: LockDecision | None
+
+
+@dataclass(frozen=True)
+class TrainLoopResult:
+    """Everything `run_training_loop` produces for `commit_and_record`.
+
+    `sft` is the live trainer — `commit_and_record` reads model weights
+    off it to write the checkpoint, then the trainer is discarded.
+    """
+
+    sft: Any
+    elapsed: float
+    steps: int
+    final_train_loss: float | None
+    final_val_loss: float | None
+    final_val_perplexity: float | None
+    val_loss_cpt: float | None
+    val_loss_sft: float | None
+    early_stopped: bool
+    weight_distribution: dict[str, dict[str, int]] | None
 
 
 def run(
@@ -135,6 +203,56 @@ def run(
     `None`, uses the flat single-adapter layout (backward-compatible
     with `.dlm` files that don't declare `training.adapters`).
     """
+    ctx = run_preflight(
+        store=store,
+        parsed=parsed,
+        spec=spec,
+        plan=plan,
+        mode=mode,
+        seed=seed,
+        max_steps=max_steps,
+        lock_mode=lock_mode,
+        capabilities=capabilities,
+        trainer_factory=trainer_factory,
+        adapter_name=adapter_name,
+        world_size=world_size,
+    )
+
+    with StepLogger(ctx.log_path) as log:
+        _write_run_banner(log, ctx)
+        loop_result = run_training_loop(ctx, log)
+        result = commit_and_record(ctx, loop_result, log)
+
+    # Sprint 31.5: emit the tokenization event if the pre-tokenize pass
+    # fired. Best-effort through the recorder; swallowed on failure.
+    _maybe_record_tokenization(recorder=ctx.recorder, run_id=ctx.run_id, trainer=loop_result.sft)
+
+    ctx.recorder.record_run_end(RunEnd(run_id=ctx.run_id, status="ok"))
+    return result
+
+
+def run_preflight(
+    *,
+    store: StorePath,
+    parsed: ParsedDlm,
+    spec: BaseModelSpec,
+    plan: TrainingPlan,
+    mode: Mode,
+    seed: int | None,
+    max_steps: int | None,
+    lock_mode: LockMode,
+    capabilities: Capabilities | None,
+    trainer_factory: Callable[..., Any] | None,
+    adapter_name: str | None,
+    world_size: int | None,
+) -> PreflightContext:
+    """Resolve everything the training loop + commit phase will need.
+
+    Single-responsibility: no training, no checkpoint writes, no
+    log_path mutation beyond `mkdir`. Opening the StepLogger is the
+    caller's responsibility so the log context spans both remaining
+    phases.
+    """
     if seed is None:
         seed = parsed.frontmatter.training.seed
 
@@ -143,49 +261,33 @@ def run(
     # the DDP env vars `accelerate launch` / `torchrun` set. Default 1
     # in single-process.
     if world_size is None:
-        from dlm.train.distributed.rank_env import detect_world_size
-
         world_size = detect_world_size()
 
-    # 1. Preflight — refuse to start if disk isn't there.
+    # 1. Refuse to start if disk isn't there.
     preflight_disk(store.root, spec, plan)
 
     # 2. Determinism contract.
     determinism = seed_everything(seed)
 
-    # 3. Open the log + banner.
+    # 3. Log path + pinned versions.
     store.logs.mkdir(parents=True, exist_ok=True)
     run_id = _next_run_id(store)
     log_path = log_path_for(store.logs, run_id)
     versions = capture_runtime_versions()
 
     # 3b. Expand frontmatter `training.sources` directives into
-    #     synthesized PROSE sections (Sprint 29). The resulting list
-    #     merges with `parsed.sections` so every downstream consumer —
-    #     diff, dataset builder, retention — treats directive-sourced
-    #     and in-body sections identically. Provenance is captured
-    #     for the training summary.
+    #     synthesized PROSE sections (Sprint 29).
     parsed, directive_provenance, directive_discovered = _expand_directives(parsed)
 
-    # 4. Content-delta against the previous manifest (audit-04 M1/M2):
-    #    feeds replay sampling before training; `change_set.new` is
-    #    appended to the corpus + `content_hashes` after training.
-    #    Loaded before 3a so the lock record can mirror the
-    #    manifest's license_acceptance (audit-05 M1).
-    from dlm.store.manifest import load_manifest
-
+    # 4. Content-delta against the previous manifest (audit-04 M1/M2).
+    #    Loaded before lock validation so the lock record can mirror
+    #    the manifest's license_acceptance (audit-05 M1).
     prior_manifest = load_manifest(store.manifest)
     change_set = diff_against_manifest(list(parsed.sections), prior_manifest)
 
-    # 3a. Lock validation (Sprint 15). Build the *candidate* lock for
-    #     this run and compare against the prior recorded one. Aborts
-    #     via LockValidationError for severity=ERROR mismatches unless
-    #     the caller opted into --update-lock / --ignore-lock.
-    #
-    #     Skipped when `parsed.source_path` is None — unit tests that
-    #     synthesize a `ParsedDlm` directly (no on-disk `.dlm`) can't
-    #     compute `dlm_sha256`. The CLI path always has a source file,
-    #     so production runs always honor the lock.
+    # 3a. Lock validation (Sprint 15). Skipped when `parsed.source_path`
+    #     is None — unit tests that synthesize a `ParsedDlm` directly
+    #     (no on-disk `.dlm`) can't compute `dlm_sha256`.
     lock_decision = (
         _validate_or_abort_lock(
             store=store,
@@ -208,8 +310,6 @@ def run(
     # Sprint 26: open the metrics recorder early so RunStart lands
     # even if the training loop fails partway. Best-effort — failures
     # here are logged and swallowed to keep training the priority.
-    from dlm.metrics import MetricsRecorder, RunEnd, RunStart
-
     recorder = MetricsRecorder(store.root)
     recorder.record_run_start(
         RunStart(
@@ -220,228 +320,256 @@ def run(
         )
     )
 
-    with StepLogger(log_path) as log:
-        log.write_banner(
-            Banner(
-                run_id=run_id,
-                seed=seed,
-                determinism_class=determinism.class_,
-                determinism_notes=tuple(determinism.notes),
-                pinned_versions=tuple(
-                    (k, v) for k, v in sorted(versions.items()) if isinstance(v, str)
-                ),
-                plan=plan.to_dict(),
-            )
-        )
-        log.log_event(
-            "delta",
-            new=[s.section_id for s in change_set.new],
-            unchanged=[s.section_id for s in change_set.unchanged],
-            removed=list(change_set.removed),
-        )
-
-        # Record per-tag row counts for the training summary — useful
-        # when auditing how the `weights:` block in `.dlm/training.yaml`
-        # actually partitioned the corpus. Counted pre-expansion so the
-        # numbers reflect the source corpus, not the N-copied rows.
-        weight_distribution = _compute_weight_distribution(
-            parsed=parsed, directive_discovered=directive_discovered
-        )
-
-        # 5. Build or resume the SFT trainer.
-        sft = _build_trainer(
-            store=store,
-            parsed=parsed,
-            spec=spec,
-            plan=plan,
-            mode=mode,
-            seed=seed,
-            max_steps=max_steps,
-            factory=trainer_factory,
-            change_set=change_set,
-            replay=replay,
-            adapter_version_for_rng=prior_manifest.adapter_version,
-            adapter_name=adapter_name,
-            directive_discovered=directive_discovered,
-        )
-
-        # Register the metrics + JSONL callback on the live trainer so
-        # step / eval records stream into SQLite and the JSONL step log
-        # as each log entry is produced. Guarded for the factory
-        # test-seam path: a mock trainer may not expose `add_callback`,
-        # and its log_history is always empty anyway.
-        _attach_dlm_trainer_callback(sft, recorder=recorder, run_id=run_id, step_logger=log)
-
-        # 6. Run the training loop.
-        start = time.perf_counter()
-        train_result = sft.train()
-        elapsed = time.perf_counter() - start
-        _LOG.info("training finished in %.1fs", elapsed)
-
-        steps = int(getattr(sft.state, "global_step", 0))
-        final_train_loss = _maybe_float(getattr(train_result, "training_loss", None))
-
-        # 7. Extract final eval metrics from trainer.state.log_history.
-        #    The callback above streams step + eval records as the
-        #    training loop runs; log_history here is read only for the
-        #    post-run NaN guard, the summary aggregator, and the
-        #    mixed-mode loss split.
-        from dlm.eval import summarize_eval_state
-
-        log_history = list(getattr(sft.state, "log_history", []))
-
-        # NaN-eval guard (redundant with the weight gate, intentional).
-        # Raises `NaNEvalError` so the run fails before we touch disk.
-        from dlm.train.integrity import assert_eval_finite
-
-        assert_eval_finite(log_history)
-
-        eval_summary = summarize_eval_state(log_history)
-        final_val_loss = eval_summary["final_val_loss"]
-        final_val_perplexity = eval_summary["final_val_perplexity"]
-
-        # Per-mode val-loss split (audit-08 N9). Sprint 19 reserved
-        # TrainingSummary.val_loss_cpt/val_loss_sft but left them
-        # unwired. Run one post-train eval per non-empty mode subset
-        # and populate the fields with the resulting eval_loss. Safe:
-        # each call is guarded, failures degrade to None.
-        from dlm.eval.mode_split import compute_val_loss_by_mode
-
-        val_loss_cpt, val_loss_sft = compute_val_loss_by_mode(
-            sft, getattr(sft, "eval_dataset", None)
-        )
-
-        # Early-stop detection (audit-05 M2). Prefer HF's real signal
-        # (the callback sets `control.should_training_stop`); fall back
-        # to the heuristic if the trainer object doesn't expose it
-        # (e.g., unit-test mock).
-        from dlm.eval import was_early_stopped
-
-        hf_flag = _hf_early_stop_flag(sft)
-        early_stopped = (
-            hf_flag
-            if hf_flag is not None
-            else was_early_stopped(
-                max_steps_ran=steps,
-                configured_max_steps=max_steps,
-                num_epochs_done=float(getattr(sft.state, "epoch", 0.0)),
-            )
-        )
-
-        # 8. Two-phase commit: save adapter + state into a pending
-        #    version dir, then flip the current pointer atomically. If
-        #    the writer raises `NaNWeightsError`, `commit_version`
-        #    renames the pending dir to `{name}-rejected` so the bad
-        #    weights are preserved for postmortem but never promoted
-        #    to `current.txt`.
-        adapter_path = commit_version(
-            store,
-            lambda pending: _write_checkpoint(
-                pending_dir=pending,
-                sft=sft,
-                spec=spec,
-                versions=versions,
-                use_qlora=plan.use_qlora,
-            ),
-            adapter_name=adapter_name,
-        )
-        adapter_version = int(adapter_path.name.lstrip("v"))
-
-        # 9. Append NEW section snapshots to the replay corpus so the
-        #    next `dlm train` draws from today's training signal.
-        #    `changed` is reserved empty under the current content-
-        #    addressed design; only `new` needs persisting here.
-        _append_change_set_to_replay(replay, change_set, run_id=run_id)
-
-        # 10. Write the human-readable TrainingSummary JSON alongside
-        #     the JSONL log (audit-05 M3: written BEFORE the manifest
-        #     append so the relative path can be recorded).
-        summary_path = _write_training_summary(
-            store=store,
-            log_path=log_path,
-            run_id=run_id,
-            adapter_version=adapter_version,
-            seed=seed,
-            steps=steps,
-            final_train_loss=final_train_loss,
-            final_val_loss=final_val_loss,
-            final_val_perplexity=final_val_perplexity,
-            val_loss_cpt=val_loss_cpt,
-            val_loss_sft=val_loss_sft,
-            early_stopped=early_stopped,
-            duration_seconds=elapsed,
-            determinism=determinism,
-            source_directives=directive_provenance,
-        )
-
-        # 11. Append the training-run summary + refresh `content_hashes`
-        #     on the manifest. The delta for the NEXT run is computed
-        #     against the hashes written here. `summary_path` is
-        #     stored relative to store root so migrations that move the
-        #     store root don't orphan the link.
-        _append_training_run(
-            store=store,
-            run_id=run_id,
-            adapter_version=adapter_version,
-            seed=seed,
-            steps=steps,
-            final_train_loss=final_train_loss,
-            final_val_loss=final_val_loss,
-            base_model_revision=spec.revision,
-            versions=versions,
-            current_sections=list(parsed.sections),
-            summary_path=summary_path,
-            adapter_name=adapter_name,
-            weight_distribution=weight_distribution,
-        )
-
-        # 12. Persist the lock (Sprint 15). `ignore_lock` mode suppresses
-        #     the write; every other mode updates `dlm.lock` after the
-        #     manifest append so a partial failure can't leave a lock
-        #     newer than its run summary.
-        if lock_decision is not None and lock_decision.should_write_lock:
-            _persist_lock(
-                store=store,
-                parsed=parsed,
-                spec=spec,
-                seed=seed,
-                run_id=run_id,
-                versions=versions,
-                determinism_class=determinism.class_,
-                capabilities=capabilities,
-                license_acceptance=prior_manifest.license_acceptance,
-                world_size=world_size,
-            )
-
-        log.log_event(
-            "run_complete",
-            run_id=run_id,
-            adapter_version=adapter_version,
-            steps=steps,
-            elapsed_seconds=elapsed,
-            early_stopped=early_stopped,
-            summary_path=str(summary_path),
-        )
-
-    # Sprint 31.5: emit the tokenization event if the pre-tokenize pass
-    # fired. Best-effort through the recorder; swallowed on failure.
-    _maybe_record_tokenization(recorder=recorder, run_id=run_id, trainer=sft)
-
-    recorder.record_run_end(RunEnd(run_id=run_id, status="ok"))
-
-    return TrainingRunResult(
-        run_id=run_id,
-        adapter_version=adapter_version,
-        adapter_path=adapter_path,
-        log_path=log_path,
-        summary_path=summary_path,
+    return PreflightContext(
+        store=store,
+        spec=spec,
+        plan=plan,
+        mode=mode,
+        max_steps=max_steps,
+        lock_mode=lock_mode,
+        capabilities=capabilities,
+        trainer_factory=trainer_factory,
+        adapter_name=adapter_name,
+        parsed=parsed,
         seed=seed,
+        world_size=world_size,
+        run_id=run_id,
+        log_path=log_path,
+        versions=versions,
+        determinism=determinism,
+        directive_provenance=directive_provenance,
+        directive_discovered=directive_discovered,
+        prior_manifest=prior_manifest,
+        change_set=change_set,
+        replay=replay,
+        recorder=recorder,
+        lock_decision=lock_decision,
+    )
+
+
+def _write_run_banner(log: StepLogger, ctx: PreflightContext) -> None:
+    """Emit the banner + delta event at the top of the JSONL log."""
+    log.write_banner(
+        Banner(
+            run_id=ctx.run_id,
+            seed=ctx.seed,
+            determinism_class=ctx.determinism.class_,
+            determinism_notes=tuple(ctx.determinism.notes),
+            pinned_versions=tuple(
+                (k, v) for k, v in sorted(ctx.versions.items()) if isinstance(v, str)
+            ),
+            plan=ctx.plan.to_dict(),
+        )
+    )
+    log.log_event(
+        "delta",
+        new=[s.section_id for s in ctx.change_set.new],
+        unchanged=[s.section_id for s in ctx.change_set.unchanged],
+        removed=list(ctx.change_set.removed),
+    )
+
+
+def run_training_loop(ctx: PreflightContext, log: StepLogger) -> TrainLoopResult:
+    """Build the trainer, run `train()`, extract the post-run metrics.
+
+    The DlmTrainerCallback streams step + eval records into SQLite /
+    JSONL as the loop runs; this function's only post-hoc consumption
+    of `state.log_history` is the NaN guard, the summary aggregator,
+    and the mixed-mode loss split.
+    """
+    # Record per-tag row counts for the training summary — useful
+    # when auditing how the `weights:` block in `.dlm/training.yaml`
+    # actually partitioned the corpus. Counted pre-expansion so the
+    # numbers reflect the source corpus, not the N-copied rows.
+    weight_distribution = _compute_weight_distribution(
+        parsed=ctx.parsed, directive_discovered=ctx.directive_discovered
+    )
+
+    sft = _build_trainer(
+        store=ctx.store,
+        parsed=ctx.parsed,
+        spec=ctx.spec,
+        plan=ctx.plan,
+        mode=ctx.mode,
+        seed=ctx.seed,
+        max_steps=ctx.max_steps,
+        factory=ctx.trainer_factory,
+        change_set=ctx.change_set,
+        replay=ctx.replay,
+        adapter_version_for_rng=ctx.prior_manifest.adapter_version,
+        adapter_name=ctx.adapter_name,
+        directive_discovered=ctx.directive_discovered,
+    )
+
+    # Register the metrics + JSONL callback on the live trainer.
+    # Guarded for the factory test-seam path.
+    _attach_dlm_trainer_callback(
+        sft, recorder=ctx.recorder, run_id=ctx.run_id, step_logger=log
+    )
+
+    start = time.perf_counter()
+    train_result = sft.train()
+    elapsed = time.perf_counter() - start
+    _LOG.info("training finished in %.1fs", elapsed)
+
+    steps = int(getattr(sft.state, "global_step", 0))
+    final_train_loss = _maybe_float(getattr(train_result, "training_loss", None))
+
+    log_history = list(getattr(sft.state, "log_history", []))
+
+    # NaN-eval guard (redundant with the weight gate, intentional).
+    # Raises `NaNEvalError` so the run fails before we touch disk.
+    assert_eval_finite(log_history)
+
+    eval_summary = summarize_eval_state(log_history)
+    final_val_loss = eval_summary["final_val_loss"]
+    final_val_perplexity = eval_summary["final_val_perplexity"]
+
+    # Per-mode val-loss split (audit-08 N9). Each call is guarded,
+    # failures degrade to None.
+    val_loss_cpt, val_loss_sft = compute_val_loss_by_mode(
+        sft, getattr(sft, "eval_dataset", None)
+    )
+
+    # Early-stop detection (audit-05 M2). Prefer HF's real signal
+    # (the callback sets `control.should_training_stop`); fall back
+    # to the heuristic if the trainer object doesn't expose it.
+    hf_flag = _hf_early_stop_flag(sft)
+    early_stopped = (
+        hf_flag
+        if hf_flag is not None
+        else was_early_stopped(
+            max_steps_ran=steps,
+            configured_max_steps=ctx.max_steps,
+            num_epochs_done=float(getattr(sft.state, "epoch", 0.0)),
+        )
+    )
+
+    return TrainLoopResult(
+        sft=sft,
+        elapsed=elapsed,
         steps=steps,
         final_train_loss=final_train_loss,
         final_val_loss=final_val_loss,
         final_val_perplexity=final_val_perplexity,
+        val_loss_cpt=val_loss_cpt,
+        val_loss_sft=val_loss_sft,
         early_stopped=early_stopped,
-        determinism=determinism,
+        weight_distribution=weight_distribution,
+    )
+
+
+def commit_and_record(
+    ctx: PreflightContext, loop: TrainLoopResult, log: StepLogger
+) -> TrainingRunResult:
+    """Two-phase commit + summary + manifest append + lock persist.
+
+    Order matters: checkpoint → replay append → summary JSON →
+    manifest run-record → lock. A partial failure must never leave a
+    lock newer than its run summary.
+    """
+    # 8. Two-phase commit: save adapter + state into a pending version
+    #    dir, then flip the current pointer atomically. If the writer
+    #    raises `NaNWeightsError`, `commit_version` renames the pending
+    #    dir to `{name}-rejected` so bad weights are preserved for
+    #    postmortem but never promoted to `current.txt`.
+    adapter_path = commit_version(
+        ctx.store,
+        lambda pending: _write_checkpoint(
+            pending_dir=pending,
+            sft=loop.sft,
+            spec=ctx.spec,
+            versions=ctx.versions,
+            use_qlora=ctx.plan.use_qlora,
+        ),
+        adapter_name=ctx.adapter_name,
+    )
+    adapter_version = int(adapter_path.name.lstrip("v"))
+
+    # 9. Append NEW section snapshots to the replay corpus.
+    _append_change_set_to_replay(ctx.replay, ctx.change_set, run_id=ctx.run_id)
+
+    # 10. Write the human-readable TrainingSummary JSON (audit-05 M3:
+    #     written BEFORE the manifest append so the relative path can
+    #     be recorded).
+    summary_path = _write_training_summary(
+        store=ctx.store,
+        log_path=ctx.log_path,
+        run_id=ctx.run_id,
+        adapter_version=adapter_version,
+        seed=ctx.seed,
+        steps=loop.steps,
+        final_train_loss=loop.final_train_loss,
+        final_val_loss=loop.final_val_loss,
+        final_val_perplexity=loop.final_val_perplexity,
+        val_loss_cpt=loop.val_loss_cpt,
+        val_loss_sft=loop.val_loss_sft,
+        early_stopped=loop.early_stopped,
+        duration_seconds=loop.elapsed,
+        determinism=ctx.determinism,
+        source_directives=ctx.directive_provenance,
+    )
+
+    # 11. Append the training-run summary + refresh `content_hashes`
+    #     on the manifest. `summary_path` is stored relative to store
+    #     root so migrations that move the root don't orphan the link.
+    _append_training_run(
+        store=ctx.store,
+        run_id=ctx.run_id,
+        adapter_version=adapter_version,
+        seed=ctx.seed,
+        steps=loop.steps,
+        final_train_loss=loop.final_train_loss,
+        final_val_loss=loop.final_val_loss,
+        base_model_revision=ctx.spec.revision,
+        versions=ctx.versions,
+        current_sections=list(ctx.parsed.sections),
+        summary_path=summary_path,
+        adapter_name=ctx.adapter_name,
+        weight_distribution=loop.weight_distribution,
+    )
+
+    # 12. Persist the lock (Sprint 15). `ignore_lock` mode suppresses
+    #     the write; every other mode updates `dlm.lock` after the
+    #     manifest append so a partial failure can't leave a lock
+    #     newer than its run summary.
+    if ctx.lock_decision is not None and ctx.lock_decision.should_write_lock:
+        _persist_lock(
+            store=ctx.store,
+            parsed=ctx.parsed,
+            spec=ctx.spec,
+            seed=ctx.seed,
+            run_id=ctx.run_id,
+            versions=ctx.versions,
+            determinism_class=ctx.determinism.class_,
+            capabilities=ctx.capabilities,
+            license_acceptance=ctx.prior_manifest.license_acceptance,
+            world_size=ctx.world_size,
+        )
+
+    log.log_event(
+        "run_complete",
+        run_id=ctx.run_id,
+        adapter_version=adapter_version,
+        steps=loop.steps,
+        elapsed_seconds=loop.elapsed,
+        early_stopped=loop.early_stopped,
+        summary_path=str(summary_path),
+    )
+
+    return TrainingRunResult(
+        run_id=ctx.run_id,
+        adapter_version=adapter_version,
+        adapter_path=adapter_path,
+        log_path=ctx.log_path,
+        summary_path=summary_path,
+        seed=ctx.seed,
+        steps=loop.steps,
+        final_train_loss=loop.final_train_loss,
+        final_val_loss=loop.final_val_loss,
+        final_val_perplexity=loop.final_val_perplexity,
+        early_stopped=loop.early_stopped,
+        determinism=ctx.determinism,
     )
 
 
@@ -458,10 +586,8 @@ def _default_eval_steps(max_steps: int | None) -> int:
     return 50
 
 
-def _default_early_stop_config() -> Any:
+def _default_early_stop_config() -> EarlyStopConfig:
     """Patience + threshold defaults until TrainingConfig extends (Sprint 12b)."""
-    from dlm.eval import EarlyStopConfig
-
     return EarlyStopConfig(patience=3, threshold=0.0, metric="eval_loss")
 
 
