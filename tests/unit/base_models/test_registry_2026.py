@@ -54,3 +54,7 @@ class TestLlama33RegistryEntry:
         assert spec.context_length == 131_072
         assert spec.context_length_effective == 8_192
         assert spec.effective_context_length == 8_192
+
+    def test_license_url_uses_current_meta_landing_page(self) -> None:
+        spec = BASE_MODELS["llama-3.3-8b-instruct"]
+        assert spec.license_url == "https://llama.meta.com/llama3/license"
