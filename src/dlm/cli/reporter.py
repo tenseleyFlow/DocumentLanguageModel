@@ -1,4 +1,4 @@
-"""Consistent CLI error reporter (Sprint 13).
+"""Consistent CLI error reporter.
 
 Three tiers of error presentation so users see the right level of
 detail without wading through Python tracebacks:

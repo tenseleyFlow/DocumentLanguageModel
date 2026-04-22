@@ -1,8 +1,7 @@
 """Top-level Typer application.
 
-Telemetry-off defaults are applied before any downstream imports (audit F13).
-Subcommand stubs live in `dlm.cli.commands` and raise `NotImplementedError`
-citing the sprint that will implement them.
+Telemetry-off defaults are applied before any downstream imports.
+Subcommand stubs live in `dlm.cli.commands`.
 """
 
 from __future__ import annotations
@@ -13,8 +12,8 @@ import os
 def _disable_third_party_telemetry() -> None:
     """Force opt-out env vars before third-party imports.
 
-    This is load-bearing for the "no telemetry, ever" promise (audit F13).
-    Must run before `transformers`, `huggingface_hub`, `wandb`, or similar
+    This is load-bearing for the "no telemetry, ever" promise. Must
+    run before `transformers`, `huggingface_hub`, `wandb`, or similar
     are imported anywhere in the process.
     """
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
@@ -75,7 +74,7 @@ def _root(
     _ = version  # consumed by is_eager callback before we arrive
 
     if home is not None:
-        # Make the override visible to every sprint-04 `StorePath.for_dlm`
+        # Make the override visible to every `StorePath.for_dlm`
         # downstream of this callback.
         os.environ["DLM_HOME"] = home
 
@@ -116,8 +115,8 @@ app.command("show")(commands.show_cmd)
 app.command("migrate")(commands.migrate_cmd)
 app.command("harvest")(commands.harvest_cmd)
 
-# Sprint 26: `dlm metrics <path>` + `dlm metrics watch <path>` as a
-# subcommand group. Typer nests naturally via an Annotated sub-app.
+# `dlm metrics <path>` + `dlm metrics watch <path>` as a subcommand
+# group. Typer nests naturally via an Annotated sub-app.
 _metrics_app = typer.Typer(
     help="Query the per-store metrics database.",
     no_args_is_help=True,
@@ -127,7 +126,7 @@ _metrics_app.callback(invoke_without_command=True)(commands.metrics_cmd)
 _metrics_app.command("watch")(commands.metrics_watch_cmd)
 app.add_typer(_metrics_app, name="metrics")
 
-# Sprint 27: `dlm templates list` (and, once upstream ships, `refresh`).
+# `dlm templates list` lives under its own subcommand group.
 _templates_app = typer.Typer(
     help="Browse the starter template gallery.",
     no_args_is_help=True,
@@ -135,8 +134,8 @@ _templates_app = typer.Typer(
 _templates_app.command("list")(commands.templates_list_cmd)
 app.add_typer(_templates_app, name="templates")
 
-# Sprint 31: `dlm cache show|prune|clear` — per-store tokenized-section
-# cache maintenance.
+# `dlm cache show|prune|clear` — per-store tokenized-section cache
+# maintenance.
 _cache_app = typer.Typer(
     help="Inspect and manage the per-store tokenized-section cache.",
     no_args_is_help=True,
