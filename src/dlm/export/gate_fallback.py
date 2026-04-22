@@ -23,11 +23,14 @@ hand-picked `--adapter-mix`.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import torch
 
+    from dlm.doc.parser import ParsedDlm
+    from dlm.store.paths import StorePath
     from dlm.train.gate.module import Gate, GateMetadata
 
 
@@ -134,3 +137,40 @@ def resolve_gate_mix(
     # Preserve declared adapter order — the Modelfile consumer reads
     # positionally-meaningful `--adapter-mix` tuples.
     return [(name, by_name.get(name, 0.0)) for name in adapter_names]
+
+
+@dataclass(frozen=True)
+class GateMixResolution:
+    """Result of :func:`resolve_and_announce`.
+
+    `entries` is the `--adapter-mix`-shaped list of `(name, weight)`
+    pairs, or ``None`` when no substitution applies (doc has no gate,
+    gate not trained, or fewer than two adapters). `banner_lines`
+    carries the pre-formatted Rich markup the CLI should print when a
+    substitution IS made — empty on the no-substitution path.
+    """
+
+    entries: list[tuple[str, float]] | None
+    banner_lines: list[str] = field(default_factory=list)
+
+
+def resolve_and_announce(store: StorePath, parsed: ParsedDlm) -> GateMixResolution:
+    """Pair :func:`resolve_gate_mix` with the CLI substitution banner.
+
+    Consolidates the two-step dance the CLI used to do inline: call
+    ``resolve_gate_mix`` then ``console.print`` a substitution notice
+    on a non-``None`` result. The CLI now iterates
+    ``resolution.banner_lines`` (empty or one line) and uses
+    ``resolution.entries`` as-is — no separate print call, no
+    duplicated substitution-condition check.
+    """
+    entries = resolve_gate_mix(store, parsed)
+    if entries is None:
+        return GateMixResolution(entries=None)
+    return GateMixResolution(
+        entries=entries,
+        banner_lines=[
+            "[dim]export: substituting learned gate weights for "
+            "--adapter-mix (gate_mode=static).[/dim]"
+        ],
+    )

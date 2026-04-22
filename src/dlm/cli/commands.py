@@ -1679,15 +1679,13 @@ def export_cmd(
     # prior here. A CLI --adapter-mix wins — users who know what they
     # want get full control.
     if mix_entries is None and adapter is None:
-        from dlm.export.gate_fallback import resolve_gate_mix
+        from dlm.export.gate_fallback import resolve_and_announce
 
-        gate_mix = resolve_gate_mix(store, parsed)
-        if gate_mix is not None:
-            mix_entries = gate_mix
-            console.print(
-                "[dim]export: substituting learned gate weights for "
-                "--adapter-mix (gate_mode=static).[/dim]"
-            )
+        resolution = resolve_and_announce(store, parsed)
+        if resolution.entries is not None:
+            mix_entries = resolution.entries
+            for line in resolution.banner_lines:
+                console.print(line)
 
     already_accepted = _previously_accepted(store.manifest)
     try:
