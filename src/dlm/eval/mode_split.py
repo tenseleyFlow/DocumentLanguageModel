@@ -14,7 +14,10 @@ tests drive the grouping logic with a mock trainer.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+_LOG = logging.getLogger(__name__)
 
 
 def compute_val_loss_by_mode(trainer: Any, val_ds: Any) -> tuple[float | None, float | None]:
@@ -53,22 +56,34 @@ def compute_val_loss_by_mode(trainer: Any, val_ds: Any) -> tuple[float | None, f
         elif mode == "sft":
             sft_idx.append(i)
 
-    cpt_loss = _safe_eval_loss(trainer, val_ds, cpt_idx)
-    sft_loss = _safe_eval_loss(trainer, val_ds, sft_idx)
+    cpt_loss = _safe_eval_loss(trainer, val_ds, cpt_idx, mode="cpt")
+    sft_loss = _safe_eval_loss(trainer, val_ds, sft_idx, mode="sft")
     return (cpt_loss, sft_loss)
 
 
-def _safe_eval_loss(trainer: Any, val_ds: Any, indices: list[int]) -> float | None:
+def _safe_eval_loss(trainer: Any, val_ds: Any, indices: list[int], *, mode: str) -> float | None:
     """Run `trainer.evaluate(eval_dataset=subset)`; return eval_loss or None."""
     if not indices:
         return None
     try:
         subset = val_ds.select(indices)
-    except Exception:
+    except (AttributeError, IndexError, TypeError, ValueError) as exc:
+        _LOG.warning(
+            "val-loss split skipped %s subset selection (%d rows): %s",
+            mode,
+            len(indices),
+            exc,
+        )
         return None
     try:
         metrics = trainer.evaluate(eval_dataset=subset)
-    except Exception:
+    except (RuntimeError, TypeError, ValueError) as exc:
+        _LOG.warning(
+            "val-loss split skipped %s evaluation (%d rows): %s",
+            mode,
+            len(indices),
+            exc,
+        )
         return None
     loss = metrics.get("eval_loss") if isinstance(metrics, dict) else None
     if loss is None:

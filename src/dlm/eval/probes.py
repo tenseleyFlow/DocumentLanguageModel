@@ -21,13 +21,16 @@ the output diff between runs is meaningful.
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 
-from dlm.data.instruction_parser import parse_instruction_body
+from dlm.data.errors import InstructionParseError
+from dlm.data.instruction_parser import QAPair, parse_instruction_body
 from dlm.doc.sections import Section, SectionType
 
 _PROBE_MARKER = "!probe"
 _PROBE_HEADER = f"### Q {_PROBE_MARKER}"
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,20 +50,31 @@ def extract_probes(sections: list[Section], *, k: int = 3, seed: int = 0) -> lis
     is filled from INSTRUCTION section Q/A pairs via a deterministic
     sample.
     """
-    explicit = list(_extract_explicit_probes(sections))
+    parsed_pairs = _parse_instruction_sections(sections)
+    explicit = list(_extract_explicit_probes(sections, parsed_pairs=parsed_pairs))
     if len(explicit) >= k:
         return explicit[:k]
 
     needed = k - len(explicit)
     seen_prompts = {p.prompt for p in explicit}
-    auto = _auto_sample_probes(sections, k=needed, seed=seed, exclude=seen_prompts)
+    auto = _auto_sample_probes(
+        sections,
+        k=needed,
+        seed=seed,
+        exclude=seen_prompts,
+        parsed_pairs=parsed_pairs,
+    )
     return [*explicit, *auto]
 
 
 # --- internals ---------------------------------------------------------------
 
 
-def _extract_explicit_probes(sections: list[Section]) -> list[Probe]:
+def _extract_explicit_probes(
+    sections: list[Section],
+    *,
+    parsed_pairs: dict[str, list[QAPair]],
+) -> list[Probe]:
     """Find INSTRUCTION Q/A pairs whose question starts with `!probe`.
 
     The `!probe` marker appears on the Q header line; the Q body is the
@@ -72,16 +86,7 @@ def _extract_explicit_probes(sections: list[Section]) -> list[Probe]:
     for section in sections:
         if section.type is not SectionType.INSTRUCTION:
             continue
-        try:
-            pairs = parse_instruction_body(
-                _normalize_probe_markers(section.content),
-                section_id=section.section_id,
-            )
-        except Exception:
-            # Malformed instruction bodies are the instruction-parser's
-            # problem; probe extraction is best-effort and must not hide
-            # grammar errors by raising here.
-            continue
+        pairs = parsed_pairs.get(section.section_id, [])
         for pair in pairs:
             # After normalization every probe pair sits in a private
             # namespace; we flag them via a sentinel prefix in the body.
@@ -127,7 +132,12 @@ def _normalize_probe_markers(body: str) -> str:
 
 
 def _auto_sample_probes(
-    sections: list[Section], *, k: int, seed: int, exclude: set[str]
+    sections: list[Section],
+    *,
+    k: int,
+    seed: int,
+    exclude: set[str],
+    parsed_pairs: dict[str, list[QAPair]],
 ) -> list[Probe]:
     """Deterministically pick `k` questions from INSTRUCTION sections.
 
@@ -148,13 +158,7 @@ def _auto_sample_probes(
     for section in sections:
         if section.type is not SectionType.INSTRUCTION:
             continue
-        try:
-            pairs = parse_instruction_body(
-                _normalize_probe_markers(section.content),
-                section_id=section.section_id,
-            )
-        except Exception:
-            continue
+        pairs = parsed_pairs.get(section.section_id, [])
         for pair in pairs:
             # Skip explicit probes (their question body was prefixed
             # with `!probe:` by the normalizer) — the caller handles
@@ -182,3 +186,25 @@ def _auto_sample_probes(
 def _probe_sort_key(prompt: str, seed: int) -> str:
     h = hashlib.sha256(f"{seed}\x00{prompt}".encode())
     return h.hexdigest()
+
+
+def _parse_instruction_sections(sections: list[Section]) -> dict[str, list[QAPair]]:
+    """Parse instruction sections once so malformed blocks warn once."""
+    parsed: dict[str, list[QAPair]] = {}
+    for section in sections:
+        if section.type is not SectionType.INSTRUCTION:
+            continue
+        try:
+            parsed[section.section_id] = parse_instruction_body(
+                _normalize_probe_markers(section.content),
+                section_id=section.section_id,
+            )
+        except InstructionParseError as exc:
+            _LOG.warning(
+                "probe extraction skipped malformed instruction section %s at line %d: %s",
+                exc.section_id,
+                exc.section_line,
+                exc,
+            )
+            parsed[section.section_id] = []
+    return parsed

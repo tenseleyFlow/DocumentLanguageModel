@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -180,3 +181,29 @@ class TestUpdateModeOverrides:
         updated = load_lock(store.root)
         assert updated is not None
         assert updated.base_model_revision == spec.revision
+
+    def test_update_mode_warns_and_recovers_from_broken_lock(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        store = _bootstrap_store(tmp_path)
+        parsed = _parsed(tmp_path)
+        spec = BASE_MODELS["smollm2-135m"]
+        store_lock = store.root / "dlm.lock"
+        store_lock.write_text("{not json", encoding="utf-8")
+
+        caplog.set_level(logging.WARNING, logger="dlm.train.trainer")
+        run(
+            store,
+            parsed,
+            spec,
+            _plan(),
+            trainer_factory=_mock_trainer_factory,
+            lock_mode="update",
+        )
+
+        updated = load_lock(store.root)
+        assert updated is not None
+        assert updated.base_model_revision == spec.revision
+        assert "update-lock: ignoring unreadable prior dlm.lock" in caplog.text

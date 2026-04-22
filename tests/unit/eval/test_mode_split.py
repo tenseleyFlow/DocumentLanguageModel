@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+import logging
 from typing import Any
 from unittest.mock import MagicMock
+
+import pytest
 
 from dlm.eval.mode_split import compute_val_loss_by_mode
 
@@ -123,15 +125,21 @@ class TestModeClassification:
 
 
 class TestEvalFailures:
-    def test_evaluate_exception_yields_none(self) -> None:
+    def test_evaluate_exception_yields_none(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         """A stack-version skew that makes evaluate() raise shouldn't
         crash training — the affected mode just stays None."""
+        caplog.set_level(logging.WARNING, logger="dlm.eval.mode_split")
         trainer = MagicMock()
         trainer.evaluate.side_effect = RuntimeError("TRL drift")
         val = _FakeDataset([{"text": "a"}, {"messages": []}])
         cpt, sft = compute_val_loss_by_mode(trainer, val)
         assert cpt is None
         assert sft is None
+        assert "val-loss split skipped cpt evaluation" in caplog.text
+        assert "val-loss split skipped sft evaluation" in caplog.text
 
     def test_missing_eval_loss_key_yields_none(self) -> None:
         trainer = MagicMock()
@@ -141,15 +149,28 @@ class TestEvalFailures:
         assert cpt is None
         assert sft is None
 
-    def test_select_failure_yields_none(self) -> None:
+    def test_select_failure_yields_none(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level(logging.WARNING, logger="dlm.eval.mode_split")
         trainer = MagicMock()
         trainer.evaluate.return_value = {"eval_loss": 0.0}
-        # A dataset without a .select method — the helper should swallow.
-        bad_val = SimpleNamespace(
-            __len__=lambda: 1,
-            __iter__=lambda: iter([{"text": "a"}]),
-        )
+        # Dataset iteration works, but subset selection does not.
+        bad_val = _NoSelectDataset([{"text": "a"}])
         cpt, sft = compute_val_loss_by_mode(trainer, bad_val)
         # Both None — the helper couldn't build subsets.
         assert cpt is None
         assert sft is None
+        assert "val-loss split skipped cpt subset selection" in caplog.text
+
+
+class _NoSelectDataset:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+
+    def __len__(self) -> int:
+        return len(self._rows)
+
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        return iter(self._rows)

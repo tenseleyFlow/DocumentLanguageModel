@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from dlm.export import adapter_gguf, base_gguf, merge, preflight
+from dlm.export.errors import ExportManifestError
 from dlm.export.manifest import (
     EXPORT_MANIFEST_FILENAME,
     ExportManifest,
@@ -483,14 +484,15 @@ def _cached_base_matches(export_dir: Path, base_gguf_path: Path, quant: str) -> 
         from dlm.export.manifest import compute_sha256, load_export_manifest
 
         prior = load_export_manifest(export_dir)
-    except Exception:
+        if prior.quant != quant:
+            return False
+        recorded = next((a for a in prior.artifacts if a.path == base_gguf_path.name), None)
+        if recorded is None:
+            return False
+        return compute_sha256(base_gguf_path) == recorded.sha256
+    except (ExportManifestError, OSError) as exc:
+        _LOG.warning("export cache ignored stale manifest under %s: %s", export_dir, exc)
         return False
-    if prior.quant != quant:
-        return False
-    recorded = next((a for a in prior.artifacts if a.path == base_gguf_path.name), None)
-    if recorded is None:
-        return False
-    return compute_sha256(base_gguf_path) == recorded.sha256
 
 
 def _perform_merge_path(  # pragma: no cover

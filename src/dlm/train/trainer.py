@@ -42,6 +42,7 @@ from dlm.lock import (
     DlmLock,
     LockDecision,
     LockMode,
+    LockSchemaError,
     LockValidationError,
     build_lock,
     hardware_tier_from_backend,
@@ -1565,7 +1566,7 @@ def _validate_or_abort_lock(
     )
     try:
         prior = load_lock(store.root)
-    except Exception:
+    except LockSchemaError as exc:
         # Audit-05 N5: a corrupt `dlm.lock` on disk would normally kill
         # the run at load time. Under `--update-lock` the operator has
         # explicitly opted to overwrite the file; treat the parse
@@ -1575,6 +1576,11 @@ def _validate_or_abort_lock(
         # "don't touch the file").
         if lock_mode != "update":
             raise
+        _LOG.warning(
+            "update-lock: ignoring unreadable prior dlm.lock at %s: %s",
+            store.root,
+            exc,
+        )
         prior = None
     decision = validate_lock(prior, candidate, mode=lock_mode)
 

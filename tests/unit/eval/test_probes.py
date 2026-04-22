@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 
 import pytest
 
@@ -72,6 +73,17 @@ class TestAutoSample:
         body = "### Q !probe\nx\n### A\ny"
         s = Section(type=SectionType.INSTRUCTION, content=body)
         assert extract_probes([s], k=0) == []
+
+    def test_malformed_instruction_logs_warning_once(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        body = "### Q\nunterminated question"
+        s = Section(type=SectionType.INSTRUCTION, content=body)
+        caplog.set_level(logging.WARNING, logger="dlm.eval.probes")
+        assert extract_probes([s], k=3) == []
+        assert "probe extraction skipped malformed instruction section" in caplog.text
+        assert len(caplog.records) == 1
 
 
 class TestProbeDataclass:

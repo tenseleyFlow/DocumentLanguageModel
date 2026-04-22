@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -183,6 +184,30 @@ class TestCaching:
         # Only the adapter conversion runs on the cached path.
         assert len(recorder2.commands) == 1
         assert any("convert_lora_to_gguf.py" in str(a) for a in recorder2.commands[0])
+
+    def test_bad_cached_manifest_logs_warning_and_rebuilds(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from dlm.export.errors import ExportManifestError
+        from dlm.export.runner import _cached_base_matches
+
+        export_dir = tmp_path / "exports" / "Q4_K_M"
+        export_dir.mkdir(parents=True)
+        base_gguf = export_dir / "base.Q4_K_M.gguf"
+        base_gguf.write_bytes(b"cached bytes")
+        (export_dir / "export_manifest.json").write_text("{}", encoding="utf-8")
+
+        def _raise(_export_dir: Path) -> object:
+            raise ExportManifestError("bad manifest")
+
+        monkeypatch.setattr("dlm.export.manifest.load_export_manifest", _raise)
+        caplog.set_level(logging.WARNING, logger="dlm.export.runner")
+
+        assert _cached_base_matches(export_dir, base_gguf, "Q4_K_M") is False
+        assert "export cache ignored stale manifest" in caplog.text
 
 
 class TestMergeGate:
