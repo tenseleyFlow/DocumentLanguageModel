@@ -57,7 +57,10 @@ def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:  # pragma: 
     if plan.use_qlora:
         kwargs["quantization_config"] = _build_bnb_config(plan)
 
-    if spec.modality == "vision-language":
+    from dlm.modality import modality_for
+
+    dispatch = modality_for(spec)
+    if dispatch.accepts_images:
         # Bases with `trust_remote_code=True` often aren't registered
         # with AutoModelForImageTextToText (that's the whole reason —
         # their class lives in the repo, not transformers). Fall back
@@ -69,7 +72,7 @@ def load_base_model(spec: BaseModelSpec, plan: TrainingPlan) -> Any:  # pragma: 
             return AutoModel.from_pretrained(spec.hf_id, **kwargs)
         return AutoModelForImageTextToText.from_pretrained(spec.hf_id, **kwargs)
 
-    if spec.modality == "audio-language":
+    if dispatch.accepts_audio:
         # No AutoModelForAudioTextToText in transformers 5.x; resolve
         # the class name from `spec.architecture` so adding a new audio
         # base is a registry edit, not a loader patch.

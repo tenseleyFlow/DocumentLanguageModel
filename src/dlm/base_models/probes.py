@@ -562,10 +562,13 @@ def run_all(spec: BaseModelSpec, *, skip_export_probes: bool = False) -> ProbeRe
     the vendored copy catches up. VL bases auto-opt-out of export
     probes — GGUF conversion for VL archs is tracked in Sprint 35.4.
     """
+    from dlm.modality import modality_for
+
+    dispatch = modality_for(spec)
     core: tuple[ProbeResult, ...] = (probe_architecture(spec),)
-    if spec.modality == "vision-language":
+    if dispatch.accepts_images:
         core = (*core, probe_vl_image_token(spec))
-    elif spec.modality == "audio-language":
+    elif dispatch.accepts_audio:
         core = (*core, probe_audio_token(spec))
     else:
         core = (*core, probe_chat_template(spec))
@@ -574,7 +577,7 @@ def run_all(spec: BaseModelSpec, *, skip_export_probes: bool = False) -> ProbeRe
     # converter support for VL archs is Sprint 35.4's scope, and audio
     # archs are not on any llama.cpp roadmap yet. The export path
     # refuses GGUF cleanly for both and emits an HF snapshot instead.
-    is_media = spec.modality in ("vision-language", "audio-language")
+    is_media = dispatch.requires_processor
     if skip_export_probes or is_media:
         return ProbeReport(hf_id=spec.hf_id, results=core)
     results = (

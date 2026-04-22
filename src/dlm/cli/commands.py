@@ -1253,20 +1253,22 @@ def prompt_cmd(
     # The VL branch has its own model / processor / adapter loader and
     # its own generate function. `--image` and vision-language bases
     # must appear together; each alone is a usage error.
-    is_vl_spec = spec.modality == "vision-language"
-    if image_paths and not is_vl_spec:
+    from dlm.modality import modality_for
+
+    dispatch = modality_for(spec)
+    if image_paths and not dispatch.accepts_images:
         console.print(
             f"[red]prompt:[/red] --image is only valid with vision-language bases; "
             f"base {spec.key!r} is modality='{spec.modality}'."
         )
         raise typer.Exit(code=2)
-    if is_vl_spec and not image_paths:
+    if dispatch.accepts_images and not image_paths:
         console.print(
             f"[red]prompt:[/red] base {spec.key!r} is vision-language; "
             "pass at least one --image PATH to prompt it."
         )
         raise typer.Exit(code=2)
-    if is_vl_spec:
+    if dispatch.accepts_images:
         _dispatch_vl_prompt(
             console=console,
             spec=spec,
@@ -1283,20 +1285,19 @@ def prompt_cmd(
         return
 
     # --- Audio path (Sprint 35.2) -------------------------------------
-    is_audio_spec = spec.modality == "audio-language"
-    if audio_paths and not is_audio_spec:
+    if audio_paths and not dispatch.accepts_audio:
         console.print(
             f"[red]prompt:[/red] --audio is only valid with audio-language bases; "
             f"base {spec.key!r} is modality='{spec.modality}'."
         )
         raise typer.Exit(code=2)
-    if is_audio_spec and not audio_paths:
+    if dispatch.accepts_audio and not audio_paths:
         console.print(
             f"[red]prompt:[/red] base {spec.key!r} is audio-language; "
             "pass at least one --audio PATH to prompt it."
         )
         raise typer.Exit(code=2)
-    if is_audio_spec:
+    if dispatch.accepts_audio:
         _dispatch_audio_prompt(
             console=console,
             spec=spec,
@@ -1702,11 +1703,12 @@ def export_cmd(
     # Audio bases take HF-snapshot unconditionally — llama.cpp has no
     # audio-arch roadmap at our pinned tag — so branch early without
     # resolving a GGUF plan.
-    if spec.modality == "audio-language":
-        from dlm.export.dispatch import dispatch_audio_export
+    from dlm.modality import modality_for
 
+    export_dispatch = modality_for(spec)
+    if export_dispatch.accepts_audio:
         try:
-            dispatch_result = dispatch_audio_export(
+            dispatch_result = export_dispatch.dispatch_export(
                 store=store,
                 spec=spec,
                 adapter_name=adapter,
@@ -1717,6 +1719,7 @@ def export_cmd(
         except ExportError as exc:
             console.print(f"[red]export:[/red] {exc}")
             raise typer.Exit(code=1) from exc
+        assert dispatch_result is not None  # audio modality always returns a result
         for line in dispatch_result.banner_lines:
             console.print(line)
         return
@@ -1742,9 +1745,7 @@ def export_cmd(
     # still need the resolved plan + cached base dir for the GGUF
     # path, so resolve those first, then let the dispatcher decide
     # whether to use them.
-    if spec.modality == "vision-language":
-        from dlm.export.dispatch import dispatch_vl_export
-
+    if export_dispatch.accepts_images:
         try:
             cached_vl = download_spec(spec, local_files_only=True)
         except RuntimeError as exc:
@@ -1754,7 +1755,7 @@ def export_cmd(
             )
             raise typer.Exit(code=1) from exc
         try:
-            dispatch_result = dispatch_vl_export(
+            dispatch_result = export_dispatch.dispatch_export(
                 store=store,
                 spec=spec,
                 adapter_name=adapter,
@@ -1772,6 +1773,7 @@ def export_cmd(
         except ExportError as exc:
             console.print(f"[red]export:[/red] {exc}")
             raise typer.Exit(code=1) from exc
+        assert dispatch_result is not None  # VL modality always returns a result
         for line in dispatch_result.banner_lines:
             console.print(line)
         return

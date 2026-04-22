@@ -152,6 +152,12 @@ ignore = [
 # positionally even when the implementation only reads some of them —
 # HF dispatches them by position. ARG002 for these wrappers is noise.
 "src/dlm/train/cpt/embed_warmup.py" = ["ARG002"]
+# Modality dispatch uses a polymorphic interface — each subclass uses
+# a different subset of the keyword args (text.dispatch_export reads
+# none, VL reads gguf_emission_context, audio ignores it). ARG002
+# flags the unused ones in each branch; the shared signature is the
+# point of the abstraction.
+"src/dlm/modality/*.py" = ["ARG002"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -701,9 +701,12 @@ def _build_real_trainer(  # pragma: no cover
     # our downstream helpers and TRL's VL collator understand. Audio
     # bases carry a processor too but TRL has no auto-dispatch, so the
     # audio branch hands the SFTTrainer a custom `AudioLmCollator`.
-    is_vl = spec.modality == "vision-language"
-    is_audio = spec.modality == "audio-language"
-    is_media = is_vl or is_audio
+    from dlm.modality import modality_for
+
+    modality_dispatch = modality_for(spec)
+    is_vl = modality_dispatch.accepts_images
+    is_audio = modality_dispatch.accepts_audio
+    is_media = modality_dispatch.requires_processor
     media_processor: Any | None = None
     blob_store: BlobStore | None = None
     image_token = "<image>"

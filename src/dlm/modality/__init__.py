@@ -1,0 +1,43 @@
+"""Modality dispatch package — replaces scattered ``spec.modality ==`` branches.
+
+Public surface:
+
+- :class:`ModalityDispatch` — base class with predicate flags +
+  dispatch hooks (``dispatch_export``, ``load_processor``).
+- :data:`MODALITIES` — string → instance registry.
+- :func:`modality_for` — resolve a spec to its dispatcher.
+- :class:`UnknownModalityError` — raised when a spec's modality
+  string has no registered dispatcher.
+
+Callers that previously wrote ``if spec.modality == "vision-language"``
+now read ``modality_for(spec).accepts_images`` (or one of the other
+predicate flags) or call a dispatch method directly. A pregate
+grep-gate refuses new scatter — see ``scripts/pregate.sh``.
+"""
+
+from __future__ import annotations
+
+from dlm.modality.audio import AudioLanguageModality
+from dlm.modality.errors import ModalityError, UnknownModalityError
+from dlm.modality.registry import ModalityDispatch, TextModality, modality_for
+from dlm.modality.vl import VisionLanguageModality
+
+MODALITIES: dict[str, ModalityDispatch] = {
+    "text": TextModality(),
+    "vision-language": VisionLanguageModality(),
+    "audio-language": AudioLanguageModality(),
+}
+"""Registry: modality string → dispatcher instance. Ordered by
+registration history — future modalities append here and land a
+corresponding class under ``dlm.modality``."""
+
+__all__ = [
+    "MODALITIES",
+    "AudioLanguageModality",
+    "ModalityDispatch",
+    "ModalityError",
+    "TextModality",
+    "UnknownModalityError",
+    "VisionLanguageModality",
+    "modality_for",
+]
