@@ -1,17 +1,15 @@
 """End-to-end: parsed `.dlm` sections → (train_ds, val_ds).
 
-This is the single entry point Sprint 09's trainer calls. It:
+This is the single entry point the trainer calls. It:
 
 1. Flattens `sections` to dict rows via `sections_to_rows`.
-2. Optionally concatenates a replay-corpus row iterable (Sprint 08
-   supplies this; we just accept an iterable here to keep the
-   dependency one-directional).
+2. Optionally concatenates a replay-corpus row iterable (we just
+   accept an iterable here to keep the dependency one-directional).
 3. Splits into train / val via the deterministic splitter.
 
 The split is keyed on each row's `_dlm_section_id` + sub-index, so
-replay rows must also carry a stable `_dlm_section_id` — Sprint 08's
-corpus reader stamps one derived from the originating document's
-version.
+replay rows must also carry a stable `_dlm_section_id` — the corpus
+reader stamps one derived from the originating document's version.
 """
 
 from __future__ import annotations
@@ -46,7 +44,7 @@ def build_dataset(
     """Build a (train, val) `Dataset` pair from parsed `.dlm` sections.
 
     `seed` is required (not defaulted) so the split is always traceable
-    to a manifest entry; `val_frac=0.1` matches Sprint 07's spec.
+    to a manifest entry; `val_frac=0.1` matches the current default.
 
     `weights`, when non-empty, expands rows by `(tag_key, tag_value)`
     multipliers before the train/val split — integer factors duplicate

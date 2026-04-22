@@ -7,7 +7,7 @@ Three invariants enforced here (see CLAUDE.md pitfall #4):
    token, or labels get corrupted by mid-sequence EOS masking.
    Fallback order: `unk_token` → else add `<|pad|>` as a new special
    token (which grows the vocab and sets `tokenizer_grew=True` for
-   the caller to propagate into Sprint 09's LoRA config).
+   the caller to propagate into the LoRA config).
 2. **chat_template must be present.** Without it, SFTTrainer can't
    render `messages`-shaped rows. We surface a typed
    `TokenizerBringupError` rather than letting SFT fail deep inside
@@ -38,10 +38,10 @@ class TokenizerBringup:
     """Result of `prepare_tokenizer`.
 
     `tokenizer_grew=True` means a new `<|pad|>` token was added to the
-    vocab. Sprint 09 MUST set `modules_to_save=["embed_tokens","lm_head"]`
-    on the LoRA config in that case (audit F02) — otherwise the new
-    embedding row will not be trained and its output distribution is
-    undefined.
+    vocab. The LoRA config MUST set
+    `modules_to_save=["embed_tokens","lm_head"]` in that case —
+    otherwise the new embedding row will not be trained and its
+    output distribution is undefined.
     """
 
     tokenizer: PreTrainedTokenizerBase
@@ -89,7 +89,7 @@ def _ensure_pad_token(tok: Any) -> bool:
         return False
 
     # Last resort: add a new pad token. This grows the vocab, which
-    # forces Sprint 09 to train embed_tokens + lm_head.
+    # forces training to update embed_tokens + lm_head.
     tok.add_special_tokens({"pad_token": _PAD_TOKEN_LITERAL})
     return True
 

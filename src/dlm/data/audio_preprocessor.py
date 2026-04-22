@@ -40,9 +40,10 @@ from dlm.data.errors import DataError
 class AudioSampleRateMismatch(DataError):  # noqa: N818 — `*Mismatch` mirrors other DataError subclasses
     """Audio file sample rate doesn't match the base's pinned value.
 
-    Sprint 35.2 v1 refuses rather than resampling silently. The error
-    message echoes both rates so the user can re-encode with `ffmpeg
-    -ar <target>` or pick a base pinned to the clip's native rate.
+    Current releases refuse rather than resampling silently. The error
+    message echoes both rates so the user can re-encode with
+    `ffmpeg -ar <target>` or pick a base pinned to the clip's native
+    rate.
     """
 
 

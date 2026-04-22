@@ -1,9 +1,9 @@
-"""VL preprocessor tensor cache (Sprint 35 v1).
+"""VL preprocessor tensor cache.
 
 Keyed on `(blob_sha, processor_sha, target_size)` — a blob-bytes
 change, a processor upgrade, or a resize-policy bump each invalidate
-the entry. Orthogonal to the tokenized-section cache (Sprint 31):
-different inputs, different consumers, different keys.
+the entry. Orthogonal to the tokenized-section cache: different
+inputs, different consumers, different keys.
 
 Layout: `<vl-cache>/<blob_sha[:2]>/<blob_sha>.<proc_sha[:12]>.<h>x<w>.npz`.
 Contents: single numpy array stored under the key `pixel_values`.

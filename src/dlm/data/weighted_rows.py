@@ -19,17 +19,17 @@ weight 1.0 (= 2.0 × 0.5).
 
 Determinism: the keep/extra-copy decision is a hash of
 `(seed, section_id, fractional_index)`. Same seed + same corpus →
-same expanded row list, bit-exact. This preserves the Sprint 31.5
-determinism guarantee: a cached run and an uncached run on the same
-weights config produce byte-identical adapter weights.
+same expanded row list, bit-exact. This preserves the determinism
+guarantee: a cached run and an uncached run on the same weights
+config produce byte-identical adapter weights.
 
-**Why row repetition, not per-row loss scaling?** Sprint 31.5's
-hard-won bit-identity against TRL's `_tokenize` would be lost the
-moment we subclassed `SFTTrainer.compute_loss` to multiply by a
-sample-weights tensor — any TRL internal refactor of the loss path
-becomes a silent correctness bug. Expansion is a dataset-level
-transform; every downstream layer (pretokenize cache, TRL
-collator, AdamW) sees a plain list of rows and stays dumb.
+**Why row repetition, not per-row loss scaling?** Bit-identity against
+TRL's `_tokenize` would be lost the moment we subclassed
+`SFTTrainer.compute_loss` to multiply by a sample-weights tensor —
+any TRL internal refactor of the loss path becomes a silent
+correctness bug. Expansion is a dataset-level transform; every
+downstream layer (pretokenize cache, TRL collator, AdamW) sees a
+plain list of rows and stays dumb.
 """
 
 from __future__ import annotations
@@ -110,8 +110,8 @@ def expand_rows_by_weight(
     An empty `weights` map is a no-op (returns a shallow copy of
     `rows`). Section-ID preservation means the replay corpus still
     tracks per-row identity — the N copies of a repeated row share
-    a section_id, which matches the Sprint 08 semantics of "retraining
-    on the same content N times".
+    a section_id, which matches the replay semantics of retraining on
+    the same content N times.
     """
     if not weights:
         return list(rows)

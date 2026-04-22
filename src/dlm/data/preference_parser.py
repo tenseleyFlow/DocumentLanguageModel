@@ -17,8 +17,6 @@ The three headers must appear in order (Prompt → Chosen → Rejected) for
 each triple. Missing, duplicated, or reordered headers raise
 `PreferenceParseError`. Empty field bodies are errors — DPO on empty
 text is never intentional.
-
-Sprint 07 only parses + validates. The DPO consumer is Sprint 17.
 """
 
 from __future__ import annotations

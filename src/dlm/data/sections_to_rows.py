@@ -1,7 +1,6 @@
 """Turn `doc.sections.Section` objects into ready-to-train dict rows.
 
-Per Sprint 07's shape table (extended by Sprint 35 v1 for images and
-Sprint 35.2 for audio):
+Current shape table:
 
 | Section type | Row shape |
 |---|---|
@@ -16,9 +15,9 @@ IMAGE / AUDIO emission requires a `BlobStore` (to resolve
 Callers that leave `blob_store=None` with media sections in the
 input raise `ValueError` — the row shape isn't viable without the
 actual bytes. Audio rows hold only the path + sha, not the decoded
-waveform; the audio cache (Sprint 35.2) is the right place to hold
-preprocessed features across epochs, and loading lazily at collate
-time keeps dataset rows small.
+waveform; the audio cache is the right place to hold preprocessed
+features across epochs, and loading lazily at collate time keeps
+dataset rows small.
 
 Every row carries `_dlm_section_id` so `splitter.split()` can key
 deterministically on (seed, section_id) rather than row index. This is

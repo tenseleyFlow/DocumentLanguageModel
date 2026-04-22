@@ -10,8 +10,8 @@ Branches per row shape:
 - neither → `DataFormatError`.
 
 PREFERENCE rows (`prompt`/`chosen`/`rejected`) are NOT formatted here —
-they're routed to DPOTrainer by Sprint 17, which has its own formatter.
-This function refuses them explicitly so an accidentally-mixed dataset
+they're routed to DPOTrainer, which has its own formatter. This
+function refuses them explicitly so an accidentally-mixed dataset
 fails loudly at format time rather than producing silently-wrong data.
 """
 
