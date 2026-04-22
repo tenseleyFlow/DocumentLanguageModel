@@ -34,7 +34,7 @@ def ollama_run(
     Raises `OllamaSmokeError` on:
     - Non-zero exit code.
     - Empty stdout (the model "succeeded" but produced nothing — a
-      runaway-stop scenario Sprint 12 is specifically guarding against).
+      runaway-stop scenario this smoke test is specifically guarding against).
     - Subprocess timeout.
     """
     exe = binary or locate_ollama()

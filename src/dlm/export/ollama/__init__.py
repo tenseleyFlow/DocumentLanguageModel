@@ -1,6 +1,6 @@
 """Ollama integration — Modelfile emission + `ollama create`/`run`.
 
-See Sprint 12 for the design. The `binary.py`, `register.py`, and
+The `binary.py`, `register.py`, and
 `smoke.py` modules call `subprocess`; `modelfile.py` and
 `template_registry.py` are pure-python and fully unit-testable.
 """

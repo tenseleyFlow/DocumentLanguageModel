@@ -1,6 +1,6 @@
-"""Go↔Jinja token-identity closed-loop verification (Sprint 12.6).
+"""Go↔Jinja token-identity closed-loop verification.
 
-Sprint 12 shipped our Go template registry + a snapshot-diff against
+The Go template registry shipped with a snapshot-diff against
 hand-written goldens. That catches typos but doesn't prove Ollama's
 rendering agrees with the base model's Jinja reference — only a
 real round trip does. This module closes the loop:
@@ -14,8 +14,7 @@ real round trip does. This module closes the loop:
 Subprocess for `ollama run` is injectable; `parse_prompt_eval_count`
 is a pure string parser unit-testable without Ollama installed. The
 real closed-loop lives in the slow-marked integration test + the
-weekly CI workflow (Sprint 14.5 lands the runner; this sprint lands
-the harness).
+weekly CI workflow that exercises the harness.
 """
 
 from __future__ import annotations

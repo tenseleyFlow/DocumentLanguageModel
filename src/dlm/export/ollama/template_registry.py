@@ -39,7 +39,7 @@ class DialectTemplate:
     default_top_p: float = 0.9
     # Added-by-training special tokens go here ONLY if they're
     # dialect-inherent (e.g., chatml's `<|im_end|>`). Per-adapter added
-    # tokens (Sprint 07 pad-token fallback) come from the adapter
+    # tokens from pad fallback come from the adapter
     # tokenizer at render time.
     extra_stop_hints: tuple[str, ...] = field(default_factory=tuple)
 
@@ -56,7 +56,7 @@ _REGISTRY: Final[dict[Dialect, DialectTemplate]] = {
     "chatml": DialectTemplate(
         dialect="chatml",
         template_path=_TEMPLATES_DIR / "chatml.gotmpl",
-        # Audit-04 Q4: Qwen 2.5 variants emit role-delimiter tokens like
+        # Qwen 2.5 variants emit role-delimiter tokens like
         # `<|im_start|>` at the top of each turn. Listing them as stops
         # prevents runaway prompt-continuation when the model tries to
         # synthesize a new turn instead of yielding.

@@ -72,7 +72,7 @@ class ModelfileError(OllamaError):
     """Modelfile generation or validation failed.
 
     Typically means the adapter dir is missing tokenizer metadata the
-    Modelfile needs (stops, chat template). Sprint 07's bringup should
+    Modelfile needs (stops, chat template). Training should
     have written these; surfacing this at export is the fail-fast gate.
     """
 
@@ -88,7 +88,7 @@ class TemplateRegistryError(OllamaError):
 
 
 class VerificationError(OllamaError):
-    """Sprint 12.6: Go↔Jinja closed-loop verification detected drift.
+    """Go↔Jinja closed-loop verification detected drift.
 
     Raised when Ollama's `prompt_eval_count` (Go template output)
     disagrees with HuggingFace's `apply_chat_template` token count for

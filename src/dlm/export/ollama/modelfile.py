@@ -61,12 +61,12 @@ class ModelfileContext:
     # emit `PARAMETER num_ctx <min(seq_len, spec.context_length)>` so
     # Ollama respects the window the adapter was trained for —
     # otherwise it defaults to 2048 and a document trained at 8192
-    # effectively loses 75% of its context. Audit-04 Q1.
+    # effectively loses 75% of its context.
     training_sequence_len: int | None = None
     # Per-document sampling overrides from frontmatter's `export:`
     # block. When set, they replace the dialect's defaults in the
     # emitted `PARAMETER temperature` / `PARAMETER top_p` lines
-    # (audit-04 Q5).
+    # when building the Modelfile.
     override_temperature: float | None = None
     override_top_p: float | None = None
     # Speculative-decoding draft. When set, emit
