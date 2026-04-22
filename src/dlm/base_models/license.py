@@ -11,7 +11,7 @@ an `accept_license` flag against the spec.
 - `manifest.json.license_acceptance`: the per-store durable record;
   read on every subsequent `dlm train` to verify the acceptance
   fingerprint is still present.
-- Repo-level `dlm.lock.license_acceptance`: the determinism-contract
+- Per-store `dlm.lock.license_acceptance`: the determinism-contract
   mirror; divergence between the two triggers a lock re-check.
 
 The interactive prompt in `dlm init` lives in the CLI layer; this

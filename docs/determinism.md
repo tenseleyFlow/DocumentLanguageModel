@@ -19,7 +19,8 @@ training produces a byte-identical `adapter_model.safetensors`.
 
 Proved by `tests/integration/lock/test_determinism_golden.py`, which
 runs two fresh training cycles on the tiny model and asserts the
-adapter SHAs match.
+adapter SHAs match. Approved tuple goldens are tracked at the repo
+level in `.determinism/lock.json`.
 
 ## What's in `dlm.lock`
 
@@ -120,10 +121,14 @@ The script:
 2. Runs the tiny-model training twice; confirms the two SHAs match.
 3. Writes `tests/golden/determinism/tuple-<hash>.json` keyed by a
    SHA-256 of the sorted version tuple + platform.
+4. Upserts `.determinism/lock.json` with the tuple path, adapter SHA,
+   platform, and pinned versions.
 
 Each tuple gets its own golden; the tuple file is keyed by content so
-running on a new platform simply writes a new golden file. The
-reviewer checks in the new golden alongside the dep bump.
+running on a new platform simply writes a new golden file. The repo-level
+index keeps the checked-in set explicit and avoids overloading the
+per-store `dlm.lock` name with a second meaning. The reviewer checks in
+the tuple file and the index update alongside the dep bump.
 
 ## Non-goals
 

@@ -17,8 +17,9 @@ Flow:
    - `regenerated_at` — UTC timestamp
    - `dlm_sha256` — hash of the synthetic training doc (reproducible
      across runs when the factory's ULID seed is pinned)
-5. Compare against the prior golden (if one existed) and print a diff.
-6. Exit non-zero unless `--approve` is passed. The default is
+5. Upsert `.determinism/lock.json` with the checked-in tuple metadata.
+6. Compare against the prior golden (if one existed) and print a diff.
+7. Exit non-zero unless `--approve` is passed. The default is
    dry-run-and-report so a stray script invocation doesn't silently
    overwrite a baseline.
 
@@ -26,10 +27,9 @@ Usage:
     uv run python scripts/regen-determinism-golden.py           # dry run
     uv run python scripts/regen-determinism-golden.py --approve # write
 
-The matching root-level `dlm.lock` (distinct from the per-store
-`dlm.lock`) records which tuples have a checked-in golden. CI computes
-the current golden and fails iff that lock asserts a tuple has a
-golden but the on-disk file differs (catches silent drift on dep bump).
+The matching repo-level `.determinism/lock.json` records which tuples
+have a checked-in golden. It is distinct from the per-store
+`dlm.lock`, which captures one training run's determinism contract.
 """
 
 from __future__ import annotations
@@ -140,9 +140,12 @@ def main() -> int:
 
     import tempfile
 
+    from dlm.lock.golden_index import GOLDEN_INDEX_RELATIVE_PATH, upsert_golden_index
+
     versions = _current_versions()
     filename = _tuple_filename(versions)
     target = _GOLDEN_DIR / filename
+    golden_relpath = target.relative_to(_REPO_ROOT).as_posix()
     prior = None
     if target.is_file():
         try:
@@ -192,7 +195,15 @@ def main() -> int:
 
     _GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    upsert_golden_index(
+        _REPO_ROOT,
+        golden_relpath=golden_relpath,
+        adapter_sha256=sha_a,
+        platform=payload["platform"],
+        pinned_versions=versions,
+    )
     print(f"[wrote] {target.relative_to(_REPO_ROOT)}")
+    print(f"[wrote] {GOLDEN_INDEX_RELATIVE_PATH}")
     return 0
 
 

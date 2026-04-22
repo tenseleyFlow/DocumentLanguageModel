@@ -51,3 +51,21 @@ class LockValidationError(LockError):
         self.reasons = list(reasons)
         joined = "; ".join(reasons)
         super().__init__(f"{path}: lock validation failed ({joined})")
+
+
+class GoldenIndexSchemaError(LockError):
+    """Repo-level determinism-golden index is unreadable or schema-invalid."""
+
+    def __init__(self, path: Path, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"{path}: {reason}")
+
+
+class GoldenIndexWriteError(LockError):
+    """Programmer error on the repo-level determinism-golden index write path."""
+
+    def __init__(self, *, path: Path, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"{path}: write refused: {reason}")
