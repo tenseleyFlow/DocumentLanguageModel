@@ -13,9 +13,9 @@ from typing import Literal, get_args
 
 from dlm.export.errors import UnsafeMergeError
 
-# llama.cpp supports many more quant types; we ship the five that
-# appear in the Sprint 11 spec. Extending this Literal requires a
-# bump to vendored llama.cpp + a registry-probe pass.
+# llama.cpp supports many more quant types; we ship the five that are
+# currently part of the supported export surface. Extending this
+# Literal requires a bump to vendored llama.cpp + a registry-probe pass.
 QuantLevel = Literal["Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0", "F16"]
 
 # imatrix only improves k-quant output; `Q8_0` and `F16` ignore it
@@ -55,8 +55,8 @@ class ExportPlan:
     QLoRA adapter (pitfall #3). Without it, `--merged` on a QLoRA
     checkpoint raises `UnsafeMergeError`.
 
-    `ollama_name` is the tag Sprint 12 registers with; Sprint 11 just
-    stamps it into the export manifest for later lookup.
+    `ollama_name` is the tag later used for registration; export
+    stamps it into the manifest for later lookup.
     """
 
     quant: QuantLevel = DEFAULT_QUANT
@@ -64,7 +64,7 @@ class ExportPlan:
     dequantize_confirmed: bool = False
     include_template: bool = True
     ollama_name: str | None = None
-    # Sprint 11.6: imatrix-calibrated quantization. "auto" builds from
+    # Importance-matrix calibrated quantization. "auto" builds from
     # the replay corpus when a cache miss is detected; "cached" reuses
     # any existing imatrix.gguf verbatim (no key check — debug hatch);
     # "off" skips imatrix entirely even for k-quants.

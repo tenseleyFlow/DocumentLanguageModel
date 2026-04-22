@@ -1,4 +1,4 @@
-"""Importance-matrix (imatrix) calibrated quantization (Sprint 11.6).
+"""Importance-matrix (imatrix) calibrated quantization.
 
 Static k-quants lose 1–3 perplexity points on domain-specific vocabulary
 vs. fp16; an importance matrix built from text the model will actually

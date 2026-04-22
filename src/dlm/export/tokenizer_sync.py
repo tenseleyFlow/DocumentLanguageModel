@@ -1,9 +1,9 @@
-"""Tokenizer ↔ GGUF vocab cross-check (Sprint 12b, audit F02/F06).
+"""Tokenizer ↔ GGUF vocab cross-check.
 
-Sprint 09 persists the *trained* tokenizer (post-bringup, possibly with
+Training persists the *trained* tokenizer (post-bringup, possibly with
 an added `<|pad|>`) via `tokenizer.save_pretrained(adapter_dir)` at
 training end. That adapter-dir tokenizer is the **source of truth** for
-export: Sprint 11's base conversion writes a GGUF whose embedded vocab
+export: base conversion writes a GGUF whose embedded vocab
 MUST match the tokenizer the adapter was trained against, or the
 embedding rows for added tokens are either missing or point at the
 wrong ids.
@@ -48,7 +48,7 @@ _TOKENS_KEY: Final[str] = "tokenizer.ggml.tokens"
 
 
 def tokenizer_from_adapter(adapter_dir: Path) -> PreTrainedTokenizerBase:
-    """Load the tokenizer saved at training end (Sprint 09).
+    """Load the tokenizer saved at training end.
 
     `local_files_only=True` forbids network access — the adapter dir is
     the authoritative source. Raises `PreflightError` if the directory
@@ -134,7 +134,7 @@ def assert_gguf_vocab_matches(gguf_path: Path, tokenizer: PreTrainedTokenizerBas
     """Raise `PreflightError` if the GGUF vocab size disagrees with the tokenizer.
 
     Authoritative tokenizer is `len(tokenizer.get_vocab())` — that includes
-    base tokens plus any added tokens from the Sprint 07 pad fallback
+    base tokens plus any added tokens from the pad fallback
     path. GGUF vocab comes from the embedded `tokenizer.ggml.tokens` array.
     Equality is the contract; a mismatch means the base converter saw a
     different tokenizer than the one the adapter was trained against.
@@ -155,4 +155,4 @@ def assert_gguf_vocab_matches(gguf_path: Path, tokenizer: PreTrainedTokenizerBas
 # --- internals ------------------------------------------------------------
 # Byte-level primitives (`_read_u32`, `_read_u64`, `_read_string`,
 # `_skip_value`) live in `dlm.export._gguf_io` and are imported at the
-# top of this module. `gguf_tensors` (Sprint 11.5) uses the same set.
+# top of this module. `gguf_tensors` uses the same set.

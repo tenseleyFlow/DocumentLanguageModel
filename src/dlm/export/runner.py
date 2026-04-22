@@ -51,7 +51,7 @@ SubprocessRunner = Callable[[Sequence[str]], Any]
 # Tests monkeypatch this down to exercise the timeout path.
 _APPEND_LOCK_TIMEOUT: float = 60.0
 
-# Number of calibration chunks for Sprint 11.6 imatrix builds. 256 ×
+# Number of calibration chunks for imatrix builds. 256 ×
 # 512 tokens ≈ 128k tokens — enough to stabilize per-tensor statistics
 # without burning minutes on CPU. Surfaced at module scope so tests
 # can monkeypatch it.
@@ -86,12 +86,12 @@ def default_ollama_name(dlm_id: str, adapter_version: int) -> str:
 def _default_check_base_vocab(adapter_path: Path, base_gguf_path: Path) -> None:
     """Cross-check adapter-tokenizer vocab count against the emitted base GGUF.
 
-    Sprint 12b's `assert_gguf_vocab_matches` is tokenizer-backed; we use
+    `assert_gguf_vocab_matches` is tokenizer-backed; we use
     the file-based path here so `run_export` doesn't take a `transformers`
     import hit on every call. A mismatch means the base conversion
     materialized a different tokenizer than the one the adapter was
-    trained against — exactly the silent-failure surface audit F02/F06
-    called out.
+    trained against — exactly the silent-failure surface this check is
+    meant to catch.
     """
     from dlm.export.preflight import check_tokenizer_vocab
     from dlm.export.tokenizer_sync import read_gguf_vocab_size
@@ -114,10 +114,9 @@ def _default_check_base_vocab(adapter_path: Path, base_gguf_path: Path) -> None:
 def _default_check_embedding_rows(adapter_path: Path, base_gguf_path: Path) -> None:
     """Cross-check adapter `modules_to_save` rows against base GGUF rows.
 
-    Sprint 11.5 (audit-04 Q2). No-op when the adapter doesn't own any
-    embedding layers. Raises `PreflightError` on byte-level mismatch
-    or unsupported base dtype. See `dlm.export.embedding_sync` for
-    the contract.
+    No-op when the adapter doesn't own any embedding layers. Raises
+    `PreflightError` on byte-level mismatch or unsupported base dtype.
+    See `dlm.export.embedding_sync` for the contract.
     """
     from dlm.export.embedding_sync import assert_embedding_rows_match
 
@@ -215,10 +214,10 @@ def run_export(
     preflight.check_adapter_config(adapter_path, spec)
     preflight.check_tokenizer_vocab(adapter_path)
     preflight.check_chat_template(adapter_path, required=plan.include_template)
-    # Audit-05 M4 / CLAUDE.md pitfall #5: re-verify the llama.cpp
+    # Re-verify the llama.cpp
     # pre-tokenizer fingerprint at export time. Protects against a
     # `vendor/llama.cpp` bump or tokenizer rewrite between
-    # `dlm init` (Sprint 06 probe ran then) and `dlm export` now.
+    # `dlm init` and `dlm export`.
     preflight.check_pretokenizer_fingerprint(spec)
     decision = require_dequantize_or_refuse(plan, adapter_path)
     was_qlora = decision.was_qlora
@@ -249,7 +248,7 @@ def run_export(
     vcheck = vocab_checker if vocab_checker is not None else _default_check_base_vocab
     vcheck(adapter_path, base_gguf_path)
 
-    # 4c. Adapter embedding rows ↔ base GGUF rows (Sprint 11.5, audit-04 Q2).
+    # 4c. Adapter embedding rows ↔ base GGUF rows.
     # Fires only when the adapter declares `modules_to_save=[embed_tokens,
     # lm_head]` AND the tokenizer has added-special tokens. Skipped
     # silently otherwise. Tests pass a no-op `embedding_checker` because
@@ -371,7 +370,7 @@ def _convert_and_quantize_base(
 ) -> None:
     """HF → fp16 GGUF → (imatrix) → quantized GGUF. Removes the fp16 intermediate.
 
-    The imatrix step (Sprint 11.6) runs between convert and quantize
+    The imatrix step runs between convert and quantize
     when the plan needs one: either a cache-keyed hit is reused or a
     fresh imatrix is built from the replay corpus. Non-k-quant levels
     and `imatrix="off"` plans skip the build entirely.
@@ -575,7 +574,7 @@ def _run_ollama_stage(
     else:
         ver_str = None
 
-    # Sprint 12.5: resolve the speculative-decoding draft, if any.
+    # Resolve the speculative-decoding draft, if any.
     draft_tag = resolve_draft(spec, override=draft_override, disabled=draft_disabled)
 
     # Modelfile rendering.

@@ -1,11 +1,11 @@
-"""Shared GGUF byte-level primitives (Sprint 11.5).
+"""Shared GGUF byte-level primitives.
 
 Both `tokenizer_sync` (metadata reader) and `gguf_tensors` (tensor-index
 reader) need the same scalar readers + type constants. Kept in a
 private module so only one copy exists; the public modules re-export
 what their callers need.
 
-Bounds (audit-04 F2): `_read_string` refuses lengths above
+Bounds guard: `_read_string` refuses lengths above
 `_MAX_STRING_BYTES`. Every caller that reads a length-prefixed array
 should also bound the length against a sensible ceiling; we don't
 enforce that here because the ceiling depends on caller context

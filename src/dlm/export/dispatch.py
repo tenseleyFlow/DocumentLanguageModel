@@ -15,7 +15,7 @@ Why pull this out of the CLI:
   which path was taken from the banner contents.
 - `cli/commands.py` had direct heavy imports (`run_vl_gguf_export`,
   `run_audio_snapshot_export`) and modality `== "vision-language"`
-  branches — both targeted by Sprint 38's B5 extraction.
+  branches — both routed through the shared dispatch helpers.
 
 All user-facing flow control is still here; the CLI is the thin
 parse+print layer on top.

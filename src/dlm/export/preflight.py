@@ -7,15 +7,15 @@ Four probes, each returning `None` on success and raising
    references the same base HF id as the spec. Catches the "exported
    adapter from a different base" footgun when users hand-manage
    multiple adapters.
-2. **Tokenizer vocab match.** The adapter's tokenizer (source of
-   truth per Sprint 12b) has the same vocab size as the model that
-   was trained. Catches Sprint 07's pad-fallback resize case: if the
-   tokenizer grew to 32001 but the adapter only has 32000 rows, the
+2. **Tokenizer vocab match.** The adapter's saved tokenizer (source of
+   truth for export) has the same vocab size as the model that was
+   trained. Catches the pad-fallback resize case: if the tokenizer
+   grew to 32001 but the adapter only has 32000 rows, the
    extra `<|pad|>` embedding is undefined.
 3. **Chat template presence.** Unless `--no-template`, the tokenizer
-   config carries a non-empty `chat_template` — Sprint 12's Modelfile
+   config carries a non-empty `chat_template` — the Modelfile
    emitter needs it.
-4. **Arch / pre-tokenizer probes** (delegated to Sprint 06's probe
+4. **Arch / pre-tokenizer probes** (delegated to the base-model probe
    suite). These are a courtesy re-check at export time, since
    registry state can drift between `dlm init` and `dlm export`.
 
@@ -130,9 +130,9 @@ def check_tokenizer_vocab(adapter_dir: Path) -> int:
 def check_chat_template(adapter_dir: Path, *, required: bool = True) -> None:
     """Assert the tokenizer config has a non-empty `chat_template`.
 
-    `--no-template` on the CLI sets `required=False` (Sprint 11 spec
-    line 165); the default requires one because Sprint 12's Modelfile
-    emitter hardcodes `TEMPLATE "..."` which needs source text.
+    `--no-template` on the CLI sets `required=False`; the default
+    requires one because the Modelfile emitter hardcodes
+    `TEMPLATE "..."` which needs source text.
     """
     if not required:
         return
@@ -164,8 +164,7 @@ def check_chat_template(adapter_dir: Path, *, required: bool = True) -> None:
 def check_pretokenizer_fingerprint(spec: BaseModelSpec) -> None:
     """Re-run the llama.cpp pre-tokenizer fingerprint probe at export time.
 
-    Audit-05 M4 / CLAUDE.md pitfall #5: "Sprint 11 re-verifies at `dlm
-    export` preflight". Sprint 06 runs the probe at resolve/init time;
+    The probe also runs at resolve/init time;
     nothing between `dlm init` and `dlm export` guarantees the
     fingerprint table + tokenizer snapshot still agree (e.g., a
     `vendor/llama.cpp` bump invalidates the recorded fingerprint).

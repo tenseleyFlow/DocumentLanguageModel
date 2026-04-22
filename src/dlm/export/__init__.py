@@ -1,6 +1,6 @@
 """GGUF export pipeline — convert trained adapters to Ollama-consumable files.
 
-See Sprint 11 for the design. Heavy imports (`torch`, `peft`,
+Heavy imports (`torch`, `peft`,
 `transformers`) stay deferred; subprocess calls to the vendored
 `llama.cpp` tools go through `dlm.export.quantize.run_checked`.
 """

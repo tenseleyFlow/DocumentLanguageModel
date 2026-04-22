@@ -122,7 +122,7 @@ def validate_mix_against_declared(entries: list[MixEntry], declared: set[str]) -
 
 
 CombinationType = Literal["linear", "svd"]
-"""Allowed `add_weighted_adapter.combination_type` values (audit-08 N4).
+"""Allowed `add_weighted_adapter.combination_type` values.
 
 - `linear` (default): weighted sum of LoRA deltas. Fast; exact for
   same-rank adapters; approximate for mixed ranks.
@@ -149,7 +149,7 @@ def build_weighted_merged(  # pragma: no cover - heavy path
     caller writes the merged adapter to an ephemeral directory and
     hands it to the existing GGUF pipeline.
 
-    `combination_type` controls PEFT's merge strategy (audit-08 N4).
+    `combination_type` controls PEFT's merge strategy.
     """
     from peft import PeftModel
 
@@ -190,8 +190,8 @@ def resolve_first_source_path(store: StorePath, entries: list[MixEntry]) -> Path
     """Return the on-disk version dir for the first mix entry.
 
     Used by the CLI to hand a `tokenizer_source` to `save_merged_to_tmp`
-    so the merged output dir includes tokenizer files for the downstream
-    preflight (audit-07 B2). All source adapters share the same base
+    so the merged output dir includes tokenizer files for downstream
+    preflight. All source adapters share the same base
     model + tokenizer (enforced by the frontmatter `base_model` being
     single-valued), so any source is interchangeable — we pick the first.
     """
@@ -210,7 +210,7 @@ _TOKENIZER_FILES: Final[tuple[str, ...]] = (
     "tokenizer.model",
 )
 """Files we copy from a source adapter dir into the merged dir so the
-downstream GGUF pipeline's preflight passes (audit-07 B2)."""
+downstream GGUF pipeline's preflight passes."""
 
 
 def save_merged_to_tmp(  # pragma: no cover - heavy path
@@ -234,7 +234,7 @@ def save_merged_to_tmp(  # pragma: no cover - heavy path
     of the source adapter dirs) INTO the adapter subdirectory so the
     export preflight's `check_tokenizer_vocab` finds
     `tokenizer_config.json`. Without this, the merged export dies in
-    preflight (audit-07 B2).
+    preflight.
 
     `training_run_source` — when set, copies `training_run.json` into
     the merged dir so the shared precision-safety helper can apply the

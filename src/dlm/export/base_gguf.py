@@ -65,7 +65,7 @@ def build_quantize_args(
     Note: `llama-quantize` takes the quant string as a POSITIONAL
     argument (no `--quant` flag upstream). Pass it verbatim.
 
-    `imatrix_path` threads Sprint 11.6's importance-matrix flag in as
+    `imatrix_path` threads the importance-matrix flag in as
     `--imatrix <path>` before the positional arguments. The upstream
     tool ignores imatrix on non-k-quant levels (`Q8_0`, `F16`) so we
     don't branch here — callers decide whether to pass a path at all.

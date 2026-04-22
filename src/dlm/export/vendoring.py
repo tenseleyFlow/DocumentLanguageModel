@@ -2,7 +2,7 @@
 
 The submodule is pinned via git at a release tag; `scripts/bump-llama-cpp.sh`
 handles deliberate bumps. This module does NOT build anything — it
-just locates files the Sprint 11 runner hands to `subprocess.run`.
+just locates files the export runner hands to `subprocess.run`.
 
 Three primary artifacts:
 
@@ -43,7 +43,7 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 VENDOR_LLAMA_CPP: Final[Path] = _REPO_ROOT / "vendor" / "llama.cpp"
 _ENV_VAR: Final[str] = "DLM_LLAMA_CPP_ROOT"
 _BUILD_ENV_VAR: Final[str] = "DLM_LLAMA_CPP_BUILD"
-"""Sprint 22 / audit-08 M6: when set, `_resolve_binary` checks
+"""When set, `_resolve_binary` checks
 `<DLM_LLAMA_CPP_BUILD>/bin/<name>` before the default vendor layout.
 Lets users point `dlm export` at a HIP-built llama.cpp without
 rebuilding the vendor dir itself (see docs/hardware/rocm.md)."""
@@ -62,7 +62,7 @@ _LLAMA_QUANTIZE_CANDIDATES: Final[tuple[str, ...]] = (
     "quantize",
 )
 # `llama-imatrix` produces the importance matrix we feed to quantize for
-# k-quant calibration (Sprint 11.6). Same build layout as llama-quantize.
+# k-quant calibration. Same build layout as llama-quantize.
 _LLAMA_IMATRIX_CANDIDATES: Final[tuple[str, ...]] = (
     "build/bin/llama-imatrix",
     "bin/llama-imatrix",
@@ -137,7 +137,7 @@ def _resolve_binary(
     `brew install llama.cpp` case where the binary lives under
     `/opt/homebrew/bin/`.
 
-    Audit-08 M6: `$DLM_LLAMA_CPP_BUILD`, when set, is checked BEFORE
+    `$DLM_LLAMA_CPP_BUILD`, when set, is checked BEFORE
     the default vendor tree. Lets ROCm users point at the HIP build
     dir produced by `scripts/build-llama-cpp-rocm.sh` without
     clobbering the CPU build.
@@ -182,7 +182,7 @@ def llama_quantize_bin(override: Path | None = None) -> Path:
 
 
 def llama_imatrix_bin(override: Path | None = None) -> Path:
-    """Path to the `llama-imatrix` binary (Sprint 11.6).
+    """Path to the `llama-imatrix` binary.
 
     Same resolver shape as `llama_quantize_bin` — checks vendored
     build layouts, then `$PATH`.
@@ -216,7 +216,8 @@ def pinned_tag(override: Path | None = None) -> str | None:
     # Git submodules carry a `.git` file (not dir) pointing at the
     # parent's `.git/modules/<name>/HEAD`; reading it directly is
     # brittle across git versions. We shell out only if the simpler
-    # VERSION file isn't there — Sprint 11's bump script maintains it.
+    # VERSION file isn't there — the vendored build metadata usually
+    # maintains it.
     return None
 
 

@@ -6,7 +6,7 @@ One file per `exports/<quant>/` directory. Records:
 - checksums of emitted GGUF artifacts
 - pinned llama.cpp tag (so a future upstream bump can detect drift)
 - created_at + created_by (dlm version)
-- path to the Modelfile Sprint 12 writes
+- path to the generated Modelfile
 - `ollama_name` the user registered with (if provided)
 
 Frozen + `extra="forbid"` per the project's strict-schema norm. Byte-

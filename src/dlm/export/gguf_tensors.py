@@ -1,9 +1,9 @@
-"""Minimal GGUF tensor-index reader (Sprint 11.5).
+"""Minimal GGUF tensor-index reader.
 
 Purpose: locate a named tensor in an emitted GGUF file and read a
 single row of its data. We only need two rows (`token_embd.weight`
 and `output.weight` at the added-special-token ids) to close the
-audit-04 Q2 gap — verifying the adapter's trained embedding rows
+embedding-sync gap — verifying the adapter's trained embedding rows
 match what `convert_hf_to_gguf.py` wrote into the base.
 
 Deliberately narrow scope:
@@ -52,7 +52,7 @@ from dlm.export._gguf_io import (
 from dlm.export.errors import PreflightError
 
 # ggml_type enum slice — we only support the *uncompressed* scalar types
-# used for embedding tensors in Sprint 11's emission path. K-quant
+# used for embedding tensors in the current export path. K-quant
 # tensors (Q4_K, Q5_K, ...) don't admit a row-sized read without
 # dequantizing a block; we refuse them explicitly rather than produce
 # meaningless bytes.

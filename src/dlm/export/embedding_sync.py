@@ -1,6 +1,6 @@
-"""Cross-check adapter embedding rows against base GGUF rows (Sprint 11.5).
+"""Cross-check adapter embedding rows against base GGUF rows.
 
-Closes audit-04 Q2. Sprint 07's pad-fallback path sets
+The pad-fallback path sets
 `modules_to_save=["embed_tokens","lm_head"]` so the LoRA adapter
 carries its own trained embedding / lm-head rows. At export time the
 base GGUF's corresponding rows must match byte-for-byte, or the
@@ -74,7 +74,7 @@ def assert_embedding_rows_match(
 
     Skip conditions (no-raise):
 
-    - `adapter_config.json` missing or unreadable — Sprint 11's
+    - `adapter_config.json` missing or unreadable — export preflight's
       `check_adapter_config` already owns that error path.
     - `modules_to_save` absent / doesn't include embed_tokens or
       lm_head — adapter doesn't own any embedding rows.
@@ -91,7 +91,7 @@ def assert_embedding_rows_match(
     try:
         cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        # Sprint 11's preflight owns the "unreadable adapter config"
+        # Export preflight owns the "unreadable adapter config"
         # error path; we silently opt out here rather than double-report.
         return
 
@@ -157,9 +157,8 @@ def assert_embedding_rows_match(
         for tid in added_token_ids:
             if tid < 0 or tid >= len(adapter_rows):
                 # Added token id is out of the adapter-tensor vocab
-                # range. Either the tokenizer added tokens WITHOUT
-                # resizing embed_tokens (should be impossible post
-                # audit-04 M6), or the safetensors shape is stale.
+                # range. Either the tokenizer added tokens without
+                # resizing embed_tokens, or the safetensors shape is stale.
                 raise PreflightError(
                     probe="embedding_row_sha",
                     detail=(

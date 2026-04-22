@@ -1,6 +1,6 @@
 """Static mean-gate fallback for Ollama / llama.cpp export.
 
-The learned gate (Sprint 34) runs in PyTorch at `dlm prompt` time. The
+The learned gate runs in PyTorch at `dlm prompt` time. The
 GGUF runtime (Ollama, llama.cpp) can't evaluate a torch module at
 inference, so when the user runs `dlm export` on a document with
 `training.gate.enabled: true` we fall back to:

@@ -1,4 +1,4 @@
-"""Speculative-decoding draft model pairs (Sprint 12.5).
+"""Speculative-decoding draft model pairs.
 
 Ollama ≥ 0.5 accepts a `PARAMETER draft_model <tag>` directive that
 wires a small model as the speculative-decoding drafter for a large
