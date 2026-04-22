@@ -263,3 +263,52 @@ def save_merged_to_tmp(  # pragma: no cover - heavy path
             shutil.copy2(src, adapter_dir / "training_run.json")
 
     return adapter_dir
+
+
+def build_and_stage(  # pragma: no cover - heavy path
+    *,
+    store: StorePath,
+    spec: BaseModelSpec,
+    cached_base_dir: Path,
+    entries: list[MixEntry],
+    combination_type: Literal["linear", "svd"],
+) -> Path:
+    """End-to-end weighted-merge: load base → compose → stage to tmp.
+
+    Encapsulates the transformers + PEFT call chain the CLI used to run
+    inline: load the base with ``AutoModelForCausalLM.from_pretrained``,
+    compose the named adapters via :func:`build_weighted_merged`, and
+    stage the result to the store's cache dir via
+    :func:`save_merged_to_tmp`. Returns the adapter-directory path
+    suitable for ``run_export``'s ``adapter_path_override``.
+
+    Caller (``dlm.cli.commands.export_cmd``) gets a pure-path return
+    and no transformers/peft symbols in scope — the heavy import
+    boundary lives inside this function.
+    """
+    from transformers import AutoModelForCausalLM
+
+    store.ensure_layout()
+    base_model = AutoModelForCausalLM.from_pretrained(
+        str(cached_base_dir), revision=spec.revision
+    )
+    merged = build_weighted_merged(
+        base_model,
+        store,
+        spec,
+        entries,
+        combination_type=combination_type,
+    )
+    merge_dir = store.cache_dir_for(
+        "_export_merged_" + "_".join(e.name for e in entries)
+    )
+    # Copy tokenizer + training_run.json from a source adapter so the
+    # downstream preflight (tokenizer_vocab) + merge-safety (was_qlora)
+    # gates both work on the composite (audit-07 B2).
+    first_source = resolve_first_source_path(store, entries)
+    return save_merged_to_tmp(
+        merged,
+        merge_dir,
+        tokenizer_source=first_source,
+        training_run_source=first_source,
+    )

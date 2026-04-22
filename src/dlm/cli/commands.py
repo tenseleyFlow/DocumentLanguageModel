@@ -1794,35 +1794,15 @@ def export_cmd(
         # then feed the path to run_export as an override. The tmp
         # dir lives under the store's cache/ so it cleans up with
         # the rest of the store on `dlm pack`.
-        from transformers import AutoModelForCausalLM
+        from dlm.export.weighted_merge import MixEntry, build_and_stage
 
-        from dlm.export.weighted_merge import (
-            MixEntry,
-            build_weighted_merged,
-            resolve_first_source_path,
-            save_merged_to_tmp,
-        )
-
-        store.ensure_layout()
         entries_typed = [MixEntry(name=n, weight=w) for (n, w) in mix_entries]
-        base_model = AutoModelForCausalLM.from_pretrained(str(cached.path), revision=spec.revision)
-        merged = build_weighted_merged(
-            base_model,
-            store,
-            spec,
-            entries_typed,
+        adapter_path_override = build_and_stage(
+            store=store,
+            spec=spec,
+            cached_base_dir=cached.path,
+            entries=entries_typed,
             combination_type=adapter_mix_method,  # type: ignore[arg-type]
-        )
-        merge_dir = store.cache_dir_for("_export_merged_" + "_".join(n for n, _ in mix_entries))
-        # Copy tokenizer + training_run.json from a source adapter so
-        # the downstream preflight (tokenizer_vocab) + merge-safety
-        # (was_qlora) gates both work on the composite (audit-07 B2).
-        first_source = resolve_first_source_path(store, entries_typed)
-        adapter_path_override = save_merged_to_tmp(
-            merged,
-            merge_dir,
-            tokenizer_source=first_source,
-            training_run_source=first_source,
         )
 
     try:
