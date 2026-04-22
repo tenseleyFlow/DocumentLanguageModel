@@ -43,8 +43,48 @@ class TestWriteText:
         assert target.read_bytes() == b"hello"
 
 
+class TestNonceSuffix:
+    """Audit-11 M9: tmp files carry a random nonce so PID reuse can't
+    collide a stale tmp with a live peer's scratch file."""
+
+    def test_tmp_path_includes_nonce(self, tmp_path: Path) -> None:
+        target = tmp_path / "file.bin"
+        tmp = atomic._tmp_path(target)
+        # Shape: `file.bin.tmp.<pid>.<8 hex chars>`
+        parts = tmp.name.rsplit(".", maxsplit=2)
+        assert len(parts) == 3
+        assert parts[1].isdigit()  # PID
+        assert len(parts[2]) == 8
+        assert all(c in "0123456789abcdef" for c in parts[2])
+
+    def test_two_calls_yield_different_tmp_names(self, tmp_path: Path) -> None:
+        """Same PID, two writers, two distinct tmps — nonce distinguishes."""
+        target = tmp_path / "file.bin"
+        a = atomic._tmp_path(target)
+        b = atomic._tmp_path(target)
+        assert a != b
+
+    def test_cleanup_recognises_nonce_suffixed_tmp(self, tmp_path: Path) -> None:
+        live = tmp_path / "real.txt.tmp.1.0a1b2c3d"
+        dead = tmp_path / "real.txt.tmp.99999999.deadbeef"
+        live.write_bytes(b"live")
+        dead.write_bytes(b"dead")
+
+        def fake_is_alive(pid: int) -> bool:
+            return pid == 1
+
+        with patch("dlm.io.atomic._is_alive", side_effect=fake_is_alive):
+            removed = atomic.cleanup_stale_tmp_files(tmp_path)
+
+        assert removed == [dead]
+        assert live.exists()
+        assert not dead.exists()
+
+
 class TestCleanupStaleTmp:
     def test_removes_only_dead_pid_tmp_files(self, tmp_path: Path) -> None:
+        """Legacy nonce-less tmps still get cleaned up — back-compat for
+        sweeps that span a pre-/post-upgrade writer on the same store."""
         live = tmp_path / "real.txt.tmp.1"
         dead = tmp_path / "real.txt.tmp.99999999"
         live.write_bytes(b"live")
