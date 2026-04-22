@@ -95,9 +95,8 @@ def gather_metrics(
 
     # We call gather per-metric to avoid building a tensor for a
     # heterogeneous dict. For a shape-stable dict of floats this is
-    # clearer than stacking. torch is a core runtime dep so the
-    # import is always available (audit-08 N6: dropped dead
-    # defensive try/except).
+    # clearer than stacking. torch is a core runtime dependency, so
+    # the import is always available.
     import torch
 
     reduced: dict[str, float] = {}

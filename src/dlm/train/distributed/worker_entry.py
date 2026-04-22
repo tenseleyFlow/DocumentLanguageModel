@@ -3,14 +3,14 @@
 Accelerate spawns one process per GPU; each invokes this module. The
 worker re-parses the subset of CLI args it cares about (path, seed,
 max_steps, resume/fresh, phase) and routes into the existing
-`dlm.train.trainer.run` — which Sprint 23 still owns the single-GPU
-I/O shape for.
+`dlm.train.trainer.run`, which still owns the single-process I/O
+shape.
 
 Full DDP integration (refactoring `trainer.run` to gate its I/O via
-`rank_io.master_only`) is tracked as Sprint 23 follow-up; this entry
-makes the launcher path complete end-to-end from the CLI but the
-actual multi-GPU training loop remains a scaffold until the
-integration test lands on real hardware.
+`rank_io.master_only`) remains follow-up work; this entry makes the
+launcher path complete end-to-end from the CLI but the actual
+multi-GPU training loop remains a scaffold until the integration test
+lands on real hardware.
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ def _strip_gpus_flag(args: list[str]) -> list[str]:
     """Drop `--gpus <value>` / `--gpus=<value>` from argv (worker side).
 
     Per-rank invocations must not recurse into the launcher branch of
-    `dlm train`. Delegates to the shared `strip_gpus_flag` helper
-    (audit-08 N1); the worker passes argv without argv[0].
+    `dlm train`. Delegates to the shared `strip_gpus_flag` helper;
+    the worker passes argv without argv[0].
     """
     from dlm.train.distributed.gpus import strip_gpus_flag
 

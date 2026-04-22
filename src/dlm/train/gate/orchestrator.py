@@ -110,8 +110,8 @@ def run_post_sft_gate(
     fewer than two adapters; callers don't need to check the config
     themselves. Embedding is injected as a callable so tests can stub
     it without loading an HF model. Any `GateTrainingError` is logged
-    and swallowed — Sprint 34 treats gate training as best-effort so
-    an SFT commit is never undone by a gate hiccup.
+    and swallowed — gate training is best-effort, so an SFT commit is
+    never undone by a gate hiccup.
     """
     training = parsed.frontmatter.training
     gate_cfg = training.gate

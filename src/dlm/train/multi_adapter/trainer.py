@@ -14,7 +14,7 @@ to a single `run()` call — the orchestrator is a safe default entry
 point regardless of document shape.
 
 Scope note: inference selection, export merge, and doctor memory
-refusal layer on in sprint 20b. This module owns only the per-adapter
+refusal are handled elsewhere. This module owns only the per-adapter
 orchestration and the resulting adapter-versioned store layout.
 """
 
@@ -143,8 +143,7 @@ def _maybe_run_gate_pass(
     """Run the post-SFT learned-gate training pass when enabled.
 
     Kept separate so the multi-adapter orchestrator's happy path stays
-    short. All errors are swallowed — gate training is best-effort per
-    the Sprint 34 risk matrix.
+    short. All errors are swallowed — gate training is best-effort.
     """
     import logging
 
@@ -203,8 +202,8 @@ def _default_embedder(
 ) -> tuple[Callable[[str], Any], int]:  # pragma: no cover — heavy HF path
     """Default embedder — loads the HF base model + tokenizer.
 
-    Covered by the Sprint 34 slow integration test; unit tests pass a
-    stub via `gate_embed_factory`.
+    Covered by the slow integration tests; unit tests pass a stub via
+    `gate_embed_factory`.
     """
     from transformers import AutoTokenizer
 

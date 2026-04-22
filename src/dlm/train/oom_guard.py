@@ -93,10 +93,10 @@ def catch_cuda_oom(  # pragma: no cover
     Callers on non-CUDA devices can skip this — re-raising a
     non-CUDA OOM as an `OOMError` would be actively misleading.
     """
-    # Import torch up-front (audit-04 m4) so that a missing torch
-    # surfaces as a clean error at context-enter rather than inside the
-    # exception handler, where it would silently tunnel any caught
-    # exception past the OOM-reformatting path.
+    # Import torch up-front so that a missing torch surfaces as a
+    # clean error at context-enter rather than inside the exception
+    # handler, where it would silently tunnel any caught exception
+    # past the OOM-reformatting path.
     import torch
 
     try:

@@ -10,7 +10,7 @@ Three entry points:
   - `"resume"` → `PeftModel.from_pretrained(model, resume_path, is_trainable=True)`.
 - `apply_kbit_preparation(model, gradient_checkpointing)` runs
   `prepare_model_for_kbit_training` for the QLoRA path. MUST be called
-  BEFORE `get_peft_model` (audit risk noted in sprint spec).
+  BEFORE `get_peft_model`, which is the order PEFT + bitsandbytes require.
 
 The trainer's higher-level orchestrator composes these — we keep the
 individual functions small + testable.
@@ -41,12 +41,11 @@ def build_lora_config(
 ) -> Any:
     """Return a `peft.LoraConfig` sized for `spec`.
 
-    If `tokenizer_grew=True` (Sprint 07 bringup added a new pad token),
-    we MUST train the embedding + lm_head alongside the LoRA deltas —
+    If `tokenizer_grew=True` (bringup added a new pad token), we MUST
+    train the embedding + lm_head alongside the LoRA deltas —
     otherwise the new embedding row is undefined. `modules_to_save`
     inflates the adapter checkpoint size substantially; surfacing this
-    at the LoRA level keeps the tradeoff auditable (CLAUDE.md pitfall
-    #4 / audit F02).
+    at the LoRA level keeps the tradeoff explicit.
 
     `use_dora=True` switches from plain LoRA to DoRA (weight-
     decomposed low-rank adaptation). DoRA factors each weight update
@@ -75,11 +74,12 @@ def build_lora_config(
 def verify_resume_tokenizer_compat(adapter_dir: Path, *, tokenizer_grew: bool) -> None:
     """Assert the saved adapter's `modules_to_save` agrees with the current tokenizer.
 
-    Audit-04 M5: on resume, we load a LoRA adapter whose `adapter_config.json`
-    was written under a particular tokenizer state. If the current run's
-    tokenizer bringup grew the vocab but the saved adapter doesn't train
-    embeddings (or vice versa), the resumed training will silently corrupt
-    the `<|pad|>` row or fail to update a re-resized embedding table.
+    On resume, we load a LoRA adapter whose `adapter_config.json` was
+    written under a particular tokenizer state. If the current run's
+    tokenizer bringup grew the vocab but the saved adapter doesn't
+    train embeddings (or vice versa), the resumed training will
+    silently corrupt the `<|pad|>` row or fail to update a re-resized
+    embedding table.
 
     Raises `ResumeIntegrityError` with actionable text on mismatch. Missing
     or unreadable `adapter_config.json` is treated as a mismatch (the

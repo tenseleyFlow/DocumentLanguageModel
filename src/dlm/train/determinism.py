@@ -15,9 +15,8 @@ every RNG + backend flag the trainer touches:
 6. `torch.backends.cudnn.benchmark = False` — no autotuner (which is
    non-deterministic).
 
-MPS determinism is best-effort (audit F20); the `describe()` function
-surfaces this to the training banner so Apple Silicon users see the
-caveat before the run starts.
+MPS determinism is best-effort; the training banner surfaces this so
+Apple Silicon users see the caveat before the run starts.
 
 Heavy imports (`torch`, `numpy`) are deferred to call-sites so
 `import dlm.train` stays cheap.
@@ -99,7 +98,7 @@ def seed_everything(seed: int) -> DeterminismSummary:
         # the trainer logs a WARN for any that trigger.
         torch.use_deterministic_algorithms(True, warn_only=True)
         torch.backends.cudnn.benchmark = False
-    except ImportError:  # pragma: no cover — torch is a runtime dep once Sprint 09 lands
+    except ImportError:  # pragma: no cover — torch is a runtime dependency in production
         notes.append("torch not installed; determinism contract not enforced")
         class_ = "loose"
 

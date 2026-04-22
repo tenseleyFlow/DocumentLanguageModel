@@ -1,8 +1,8 @@
 """Structured per-step JSONL logger for training runs.
 
 One file per run at `logs/train-<run_id>-<started_at>.jsonl`. Every
-line is a self-describing JSON object so downstream tools (Sprint 20's
-`dlm metrics`, ad-hoc scripts) can parse it without state.
+line is a self-describing JSON object so downstream tools (`dlm
+metrics`, ad-hoc scripts) can parse it without state.
 
 Design
 ------
@@ -17,8 +17,8 @@ Design
   versions, and the training-plan snapshot. Followed by `"type":
   "step"` records with `step`, `loss`, `lr`, `grad_norm`,
   `tokens_per_sec`, and optional `val_loss` on eval steps.
-- **No Rich / tqdm here.** That's a Sprint 13 UX concern. The logger
-  is plain JSONL so CI and automation can consume it directly.
+- **No Rich / tqdm here.** The logger is plain JSONL so CI and
+  automation can consume it directly.
 """
 
 from __future__ import annotations

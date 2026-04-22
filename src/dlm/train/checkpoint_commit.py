@@ -18,7 +18,7 @@ Lifecycle
    `training_state.pt` + sha256.
 3. `fsync_dir(path)` flushes the directory entry to disk.
 4. `store.set_current_adapter(path)` atomically flips the pointer via
-   `os.replace` on a tmp file (already implemented in Sprint 04).
+   `os.replace` on a tmp file.
 
 The `commit_version()` helper bundles steps 1 + 3 + 4 around a
 caller-supplied writer function, so the "happy path" is one call. If

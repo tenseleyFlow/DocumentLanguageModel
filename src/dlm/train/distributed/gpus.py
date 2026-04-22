@@ -25,9 +25,9 @@ class UnsupportedGpuSpecError(ValueError):
 def strip_gpus_flag(args: list[str], *, skip_argv0: bool = False) -> list[str]:
     """Drop `--gpus <value>` / `--gpus=<value>` from an argv-like list.
 
-    Shared helper (audit-08 N1) so the launcher side (strips argv[0]
-    because `accelerate launch -m <entry>` substitutes it) and the
-    worker side (passes argv[1:] from `sys.argv`) don't drift. The
+    Shared helper so the launcher side (strips argv[0] because
+    `accelerate launch -m <entry>` substitutes it) and the worker
+    side (passes argv[1:] from `sys.argv`) don't drift. The
     `skip_argv0` flag controls which input convention is used.
     """
     start = 1 if skip_argv0 else 0

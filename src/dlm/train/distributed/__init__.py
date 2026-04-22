@@ -1,6 +1,6 @@
 """Distributed (multi-GPU) training via HuggingFace Accelerate.
 
-Sprint 23 scope: single-node, multi-GPU DDP. No multi-node, FSDP, or
+Current scope: single-node, multi-GPU DDP. No multi-node, FSDP, or
 DeepSpeed.
 
 Surface:

@@ -110,8 +110,8 @@ def load_processor(spec: BaseModelSpec) -> Any:  # pragma: no cover
 
 _AUDIO_MODEL_CLASSES: dict[str, str] = {
     # Maps `BaseModelSpec.architecture` → transformers class name.
-    # Sprint 35.2 v1 ships Qwen2-Audio only; add new entries here when
-    # more audio-LM families land in the registry.
+    # Add new entries here as more audio-LM families land in the
+    # registry.
     "Qwen2AudioForConditionalGeneration": "Qwen2AudioForConditionalGeneration",
 }
 

@@ -87,7 +87,7 @@ def pretokenize_rows(
 
     Rows that carry neither ``messages`` nor ``text`` — preference
     rows destined for DPOTrainer — pass through untouched. DPOTrainer
-    owns its own tokenization path (Sprint 17).
+    owns its own tokenization path.
     """
     sha = tokenizer_sha256(tokenizer) if cache is not None else ""
     stats_hits = 0

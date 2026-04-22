@@ -59,11 +59,11 @@ STATE_SIDECAR_VERSION = 2
 RNG state out of the torch payload into a JSON sidecar, dropping
 `weights_only=False` from the load path. The writer always emits
 v2; the reader accepts v1 (legacy) with a migration warning."""
-# Run-level flags the inference path consumes without loading torch
-# (audit-05 M1): separate from `pinned_versions.json`, which is a pure
-# package-version manifest. This file records *how* the adapter was
-# trained — currently just the QLoRA flag; future fields (e.g., base
-# compute dtype) extend this rather than polluting version metadata.
+# Run-level flags the inference path consumes without loading torch:
+# separate from `pinned_versions.json`, which is a pure package-version
+# manifest. This file records *how* the adapter was trained —
+# currently just the QLoRA flag; future fields (e.g., base compute
+# dtype) extend this rather than polluting version metadata.
 TRAINING_RUN_FILENAME = "training_run.json"
 
 
@@ -101,10 +101,10 @@ class TrainingState(TypedDict):
     dlm_manifest_hash: str | None
     base_model_revision: str
     pinned_versions: PinnedVersions
-    # audit-05 M1: explicit QLoRA flag. `InferencePlan` reads this via
-    # `training_run.json` (written alongside) rather than inferring from
-    # the bitsandbytes version pin, which false-positives on plain LoRA
-    # runs on CUDA+bnb hosts.
+    # Explicit QLoRA flag. `InferencePlan` reads this via
+    # `training_run.json` (written alongside) rather than inferring
+    # from the bitsandbytes version pin, which false-positives on
+    # plain LoRA runs on CUDA+bnb hosts.
     use_qlora: bool
 
 
@@ -241,8 +241,8 @@ def save_state(directory: Path, state: TrainingState) -> None:
         json.dumps(dict(state["pinned_versions"]), sort_keys=True, indent=2) + "\n",
     )
 
-    # Run-level flags (audit-05 M1). Separate file so `InferencePlan`
-    # can read `use_qlora` without loading torch or the whole state dict.
+    # Run-level flags. Separate file so `InferencePlan` can read
+    # `use_qlora` without loading torch or the whole state dict.
     training_run_path = directory / TRAINING_RUN_FILENAME
     write_text(
         training_run_path,
@@ -284,10 +284,10 @@ def load_state(directory: Path, *, runtime_versions: PinnedVersions) -> Training
     try:
         torch_payload = torch.load(io.BytesIO(blob), weights_only=True)
     except Exception as weights_only_exc:
-        # Legacy v1 format (pre-audit-11 B7) stored everything including
-        # numpy ndarrays under weights_only=False. Retry with the legacy
-        # loader + log a one-time migration notice. The next release
-        # drops this branch; callers should re-save.
+        # Legacy v1 format stored everything including numpy ndarrays
+        # under weights_only=False. Retry with the legacy loader +
+        # log a one-time migration notice. The next release drops this
+        # branch; callers should re-save.
         try:
             torch_payload = torch.load(io.BytesIO(blob), weights_only=False)
         except Exception as exc:
@@ -362,11 +362,11 @@ def _merge_rng_sidecar(directory: Path, torch_payload: dict[str, Any]) -> dict[s
 def _version_diff(pinned: PinnedVersions, runtime: PinnedVersions) -> list[str]:
     """Return `["key: saved→current", ...]` for keys whose versions differ.
 
-    Asymmetric handling of `None` (audit-04 M6): losing a pinned package
-    between save + resume (e.g., a QLoRA checkpoint from a CUDA box
-    being resumed on Apple Silicon without `bitsandbytes`) is drift
-    the user should see. Gaining a package that wasn't pinned is not
-    drift — there was no prior state to diverge from.
+    Asymmetric handling of `None`: losing a pinned package between
+    save + resume (e.g., a QLoRA checkpoint from a CUDA box being
+    resumed on Apple Silicon without `bitsandbytes`) is drift the user
+    should see. Gaining a package that wasn't pinned is not drift —
+    there was no prior state to diverge from.
 
     Rules:
     - saved=str, current=str, equal    → no drift

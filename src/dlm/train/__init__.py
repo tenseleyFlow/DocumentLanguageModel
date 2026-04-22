@@ -1,8 +1,8 @@
 """Training engine — load base, attach LoRA/QLoRA, run one SFT cycle.
 
-See Sprint 09 for the design. Heavy imports (`torch`, `transformers`,
-`peft`, `trl`, `bitsandbytes`) are deferred to the functions that use
-them so `import dlm.train` stays cheap.
+Heavy imports (`torch`, `transformers`, `peft`, `trl`,
+`bitsandbytes`) are deferred to the functions that use them so
+`import dlm.train` stays cheap.
 """
 
 from __future__ import annotations
