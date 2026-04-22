@@ -61,6 +61,11 @@ class TestLicenseFields:
             assert entry.requires_acceptance is True
             assert entry.redistributable is False
 
+    def test_gemma2_entry_is_gated_and_nonredistributable(self) -> None:
+        entry = BASE_MODELS["gemma-2-2b-it"]
+        assert entry.requires_acceptance is True
+        assert entry.redistributable is False
+
     def test_apache_entries_are_open_and_redistributable(self) -> None:
         for key in (
             "qwen2.5-0.5b",
@@ -115,6 +120,12 @@ class TestArchitectureShapes:
         assert entry.gguf_arch == "olmo2"
         assert entry.architecture == "Olmo2ForCausalLM"
         assert entry.template == "olmo2"
+
+    def test_gemma2_uses_gemma2_converter_path(self) -> None:
+        entry = BASE_MODELS["gemma-2-2b-it"]
+        assert entry.gguf_arch == "gemma2"
+        assert entry.architecture == "Gemma2ForCausalLM"
+        assert entry.template == "gemma2"
 
     def test_size_gb_fp16_monotonic_within_family(self) -> None:
         qwen_sizes = [

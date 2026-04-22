@@ -18,6 +18,10 @@ def _gated_spec() -> object:
     return BASE_MODELS["llama-3.2-1b"]
 
 
+def _gated_gemma_spec() -> object:
+    return BASE_MODELS["gemma-2-2b-it"]
+
+
 class TestIsGated:
     def test_non_gated_returns_false(self) -> None:
         assert is_gated(_non_gated_spec()) is False  # type: ignore[arg-type]
@@ -57,6 +61,15 @@ class TestRequireAcceptance:
         assert acceptance.license_spdx == spec.license_spdx  # type: ignore[attr-defined]
         assert acceptance.license_url == spec.license_url  # type: ignore[attr-defined]
         assert isinstance(acceptance.accepted_at, datetime)
+
+    def test_gemma_gate_uses_current_google_terms_url(self) -> None:
+        acceptance = require_acceptance(
+            _gated_gemma_spec(),  # type: ignore[arg-type]
+            accept_license=True,
+            via="cli_flag",
+        )
+        assert acceptance is not None
+        assert acceptance.license_url == "https://ai.google.dev/gemma/terms"
 
     @pytest.mark.parametrize("via", ["cli_flag", "interactive", "frontmatter"])
     def test_via_roundtrip(self, via: str) -> None:

@@ -81,7 +81,8 @@ class TemplateRegistryError(OllamaError):
     """Requested template dialect not in the registry.
 
     Registry ships one entry per `BaseModelSpec.template` Literal value
-    (`chatml`, `smollm3`, `olmo2`, `llama3`, `phi3`, `mistral`).
+    (`chatml`, `gemma2`, `smollm3`, `olmo2`, `llama3`, `phi3`,
+    `mistral`).
     Unknown dialect usually means an hf:-escape-hatch base whose
     template inference picked a dialect we haven't templated — remedy
     is to add it to the registry.

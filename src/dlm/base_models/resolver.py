@@ -28,7 +28,7 @@ from dlm.base_models.errors import (
 from dlm.base_models.registry import BASE_MODELS, known_keys
 from dlm.base_models.schema import BaseModelSpec
 
-TemplateDialect = Literal["chatml", "smollm3", "olmo2", "llama3", "phi3", "mistral"]
+TemplateDialect = Literal["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "mistral"]
 
 _LOG = logging.getLogger(__name__)
 
@@ -239,6 +239,8 @@ def _infer_gguf_arch(architecture: str) -> str:
 def _infer_template(hf_id: str, architecture: str) -> TemplateDialect:
     """Best-effort template dialect picker for `hf:` synthesis."""
     lower = hf_id.lower()
+    if "gemma-2" in lower or architecture.startswith("Gemma2"):
+        return "gemma2"
     if "smollm3" in lower or architecture.startswith("SmolLM3"):
         return "smollm3"
     if "olmo-2" in lower or architecture.startswith("Olmo2"):

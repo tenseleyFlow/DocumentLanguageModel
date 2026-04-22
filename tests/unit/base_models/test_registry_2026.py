@@ -111,3 +111,30 @@ class TestOlmo2RegistryEntry:
         assert spec.size_gb_fp16 == pytest.approx(14.6)
         assert spec.context_length == 4096
         assert spec.recommended_seq_len == 2048
+
+
+class TestGemma2RegistryEntry:
+    def test_entry_present(self) -> None:
+        assert "gemma-2-2b-it" in BASE_MODELS
+
+    def test_live_hf_id_and_architecture_match_current_release(self) -> None:
+        spec = BASE_MODELS["gemma-2-2b-it"]
+        assert spec.hf_id == "google/gemma-2-2b-it"
+        assert spec.architecture == "Gemma2ForCausalLM"
+        assert spec.template == "gemma2"
+        assert spec.gguf_arch == "gemma2"
+        assert spec.tokenizer_pre == "gemma"
+
+    def test_entry_follows_gemma_gating_pattern(self) -> None:
+        spec = BASE_MODELS["gemma-2-2b-it"]
+        assert spec.license_spdx == "Gemma"
+        assert spec.license_url == "https://ai.google.dev/gemma/terms"
+        assert spec.requires_acceptance is True
+        assert spec.redistributable is False
+
+    def test_entry_uses_model_card_context_and_size_hints(self) -> None:
+        spec = BASE_MODELS["gemma-2-2b-it"]
+        assert spec.params == 2_600_000_000
+        assert spec.size_gb_fp16 == pytest.approx(5.2)
+        assert spec.context_length == 8192
+        assert spec.recommended_seq_len == 2048

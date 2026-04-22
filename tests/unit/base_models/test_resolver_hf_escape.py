@@ -78,6 +78,7 @@ class TestInferTemplate:
     @pytest.mark.parametrize(
         ("hf_id", "architecture", "expected"),
         [
+            ("google/gemma-2-2b-it", "Gemma2ForCausalLM", "gemma2"),
             ("HuggingFaceTB/SmolLM3-3B", "SmolLM3ForCausalLM", "smollm3"),
             ("allenai/OLMo-2-1124-7B-Instruct", "Olmo2ForCausalLM", "olmo2"),
             ("meta-llama/Llama-3.2-1B-Instruct", "LlamaForCausalLM", "llama3"),

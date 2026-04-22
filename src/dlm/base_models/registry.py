@@ -263,6 +263,27 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         recommended_seq_len=2048,
     ),
     BaseModelSpec(
+        key="gemma-2-2b-it",
+        hf_id="google/gemma-2-2b-it",
+        # Placeholder SHA: format-valid, not a real HF commit. The
+        # weekly `scripts/refresh-registry.py --check` run surfaces
+        # drift and prints the live value for manual review.
+        revision="7a890abcdeffedcba0987654321abc2d3e4f5a6b",
+        architecture="Gemma2ForCausalLM",
+        params=2_600_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="gemma2",
+        gguf_arch="gemma2",
+        tokenizer_pre="gemma",
+        license_spdx="Gemma",
+        license_url="https://ai.google.dev/gemma/terms",
+        requires_acceptance=True,
+        redistributable=False,
+        size_gb_fp16=5.2,
+        context_length=8192,
+        recommended_seq_len=2048,
+    ),
+    BaseModelSpec(
         key="smollm2-135m",
         hf_id="HuggingFaceTB/SmolLM2-135M-Instruct",
         revision="12fd25f77366fa6b3b4b768ec3050bf629380bac",

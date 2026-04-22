@@ -23,7 +23,7 @@ from typing import Final, Literal
 
 from dlm.export.ollama.errors import TemplateRegistryError
 
-Dialect = Literal["chatml", "smollm3", "olmo2", "llama3", "phi3", "mistral"]
+Dialect = Literal["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "mistral"]
 
 _TEMPLATES_DIR: Final[Path] = Path(__file__).resolve().parent / "templates"
 
@@ -61,6 +61,15 @@ _REGISTRY: Final[dict[Dialect, DialectTemplate]] = {
         # prevents runaway prompt-continuation when the model tries to
         # synthesize a new turn instead of yielding.
         default_stops=("<|im_end|>", "<|endoftext|>", "<|im_start|>"),
+    ),
+    "gemma2": DialectTemplate(
+        dialect="gemma2",
+        template_path=_TEMPLATES_DIR / "gemma2.gotmpl",
+        # Gemma 2 instruct uses `<start_of_turn>` / `<end_of_turn>`
+        # framing and a trailing `<start_of_turn>model` generation
+        # prompt. Stop on both turn-boundary tokens and `<eos>` so
+        # Ollama yields instead of continuing into a fresh role block.
+        default_stops=("<end_of_turn>", "<eos>", "<start_of_turn>"),
     ),
     "smollm3": DialectTemplate(
         dialect="smollm3",

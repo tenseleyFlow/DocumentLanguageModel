@@ -101,6 +101,7 @@ class BaseModelSpec(BaseModel):
     target_modules: list[str] = Field(..., min_length=1)
     template: Literal[
         "chatml",
+        "gemma2",
         "smollm3",
         "olmo2",
         "llama3",
