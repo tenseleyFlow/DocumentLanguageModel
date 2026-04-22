@@ -115,27 +115,43 @@ class TestOlmo2RegistryEntry:
 
 
 class TestGemma2RegistryEntry:
-    def test_entry_present(self) -> None:
-        assert "gemma-2-2b-it" in BASE_MODELS
+    @pytest.mark.parametrize("key", ["gemma-2-2b-it", "gemma-2-9b-it"])
+    def test_entry_present(self, key: str) -> None:
+        assert key in BASE_MODELS
 
-    def test_live_hf_id_and_architecture_match_current_release(self) -> None:
-        spec = BASE_MODELS["gemma-2-2b-it"]
-        assert spec.hf_id == "google/gemma-2-2b-it"
+    @pytest.mark.parametrize(
+        ("key", "hf_id", "params", "size_gb_fp16"),
+        [
+            ("gemma-2-2b-it", "google/gemma-2-2b-it", 2_600_000_000, 5.2),
+            ("gemma-2-9b-it", "google/gemma-2-9b-it", 9_000_000_000, 18.0),
+        ],
+    )
+    def test_live_hf_id_and_architecture_match_current_release(
+        self,
+        key: str,
+        hf_id: str,
+        params: int,
+        size_gb_fp16: float,
+    ) -> None:
+        spec = BASE_MODELS[key]
+        assert spec.hf_id == hf_id
         assert spec.architecture == "Gemma2ForCausalLM"
         assert spec.template == "gemma2"
         assert spec.gguf_arch == "gemma2"
         assert spec.tokenizer_pre == "gemma"
+        assert spec.params == params
+        assert spec.size_gb_fp16 == pytest.approx(size_gb_fp16)
 
-    def test_entry_follows_gemma_gating_pattern(self) -> None:
-        spec = BASE_MODELS["gemma-2-2b-it"]
+    @pytest.mark.parametrize("key", ["gemma-2-2b-it", "gemma-2-9b-it"])
+    def test_entry_follows_gemma_gating_pattern(self, key: str) -> None:
+        spec = BASE_MODELS[key]
         assert spec.license_spdx == "Gemma"
         assert spec.license_url == "https://ai.google.dev/gemma/terms"
         assert spec.requires_acceptance is True
         assert spec.redistributable is False
 
-    def test_entry_uses_model_card_context_and_size_hints(self) -> None:
-        spec = BASE_MODELS["gemma-2-2b-it"]
-        assert spec.params == 2_600_000_000
-        assert spec.size_gb_fp16 == pytest.approx(5.2)
+    @pytest.mark.parametrize("key", ["gemma-2-2b-it", "gemma-2-9b-it"])
+    def test_entry_uses_model_card_context_hints(self, key: str) -> None:
+        spec = BASE_MODELS[key]
         assert spec.context_length == 8192
         assert spec.recommended_seq_len == 2048

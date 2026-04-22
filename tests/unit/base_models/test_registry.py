@@ -61,10 +61,11 @@ class TestLicenseFields:
             assert entry.requires_acceptance is True
             assert entry.redistributable is False
 
-    def test_gemma2_entry_is_gated_and_nonredistributable(self) -> None:
-        entry = BASE_MODELS["gemma-2-2b-it"]
-        assert entry.requires_acceptance is True
-        assert entry.redistributable is False
+    def test_gemma2_entries_are_gated_and_nonredistributable(self) -> None:
+        for key in ("gemma-2-2b-it", "gemma-2-9b-it"):
+            entry = BASE_MODELS[key]
+            assert entry.requires_acceptance is True
+            assert entry.redistributable is False
 
     def test_apache_entries_are_open_and_redistributable(self) -> None:
         for key in (
@@ -122,10 +123,11 @@ class TestArchitectureShapes:
         assert entry.template == "olmo2"
 
     def test_gemma2_uses_gemma2_converter_path(self) -> None:
-        entry = BASE_MODELS["gemma-2-2b-it"]
-        assert entry.gguf_arch == "gemma2"
-        assert entry.architecture == "Gemma2ForCausalLM"
-        assert entry.template == "gemma2"
+        for key in ("gemma-2-2b-it", "gemma-2-9b-it"):
+            entry = BASE_MODELS[key]
+            assert entry.gguf_arch == "gemma2"
+            assert entry.architecture == "Gemma2ForCausalLM"
+            assert entry.template == "gemma2"
 
     def test_size_gb_fp16_monotonic_within_family(self) -> None:
         qwen_sizes = [
@@ -138,3 +140,5 @@ class TestArchitectureShapes:
             BASE_MODELS[k].size_gb_fp16 for k in ("smollm2-135m", "smollm2-360m", "smollm2-1.7b")
         ]
         assert smol_sizes == sorted(smol_sizes)
+        gemma_sizes = [BASE_MODELS[k].size_gb_fp16 for k in ("gemma-2-2b-it", "gemma-2-9b-it")]
+        assert gemma_sizes == sorted(gemma_sizes)
