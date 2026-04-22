@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import sys
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -11,7 +13,7 @@ from typer.testing import CliRunner
 
 from dlm.cli.app import app
 from dlm.pack.errors import BaseLicenseRefusedError
-from dlm.pack.packer import pack
+from dlm.pack.packer import _platform_hint, pack
 
 
 def _scaffold_doc_and_store(tmp_path: Path, *, base: str = "smollm2-135m") -> Path:
@@ -220,3 +222,25 @@ class TestStoreLock:
         assert observed.get("second_acquire") == "blocked"
         # The packer is the same process — holder_pid matches ours.
         assert observed.get("holder_pid") == _os.getpid()
+
+
+class TestPlatformHint:
+    def test_import_error_falls_back_to_sys_platform(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.INFO)
+
+        def _boom() -> object:
+            raise ImportError("torch unavailable")
+
+        assert _platform_hint(detect_backend=_boom) == sys.platform
+        assert "falling back to" in caplog.text
+
+    def test_oserror_falls_back_to_unknown(self, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
+
+        def _boom() -> object:
+            raise OSError("cuda init failed")
+
+        assert _platform_hint(detect_backend=_boom) == f"{sys.platform}-unknown"
+        assert "unknown backend" in caplog.text

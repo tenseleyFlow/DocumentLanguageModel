@@ -30,14 +30,16 @@ but the CPU cost is amortized over small metadata files.
 
 from __future__ import annotations
 
+import logging
 import shutil
 import sys
 import tarfile
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from dlm.pack.errors import BaseLicenseRefusedError
 from dlm.pack.format import (
@@ -57,6 +59,8 @@ from dlm.pack.layout import (
 
 if TYPE_CHECKING:
     from dlm.store.paths import StorePath
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -183,22 +187,27 @@ def pack(
 # --- internals --------------------------------------------------------------
 
 
-def _platform_hint() -> str:
+def _platform_hint(detect_backend: Callable[[], Any] | None = None) -> str:
     """`<os>-<accelerator>` — more informative than `sys.platform` alone.
 
     `sys.platform` collapses both "CUDA Linux" and "CPU-only Linux" to
     `"linux"`, which loses the information `dlm doctor` on the receiving
     host most needs: can this host reasonably resume training? Audit-04
-    N2. Falls back to `sys.platform` if the hardware detector can't
-    import torch (packaging context without torch installed).
+    N2. Falls back to `sys.platform` if the hardware detector can't be
+    imported (packaging context without torch installed), and to
+    `"unknown"` when backend detection itself errors. `detect_backend`
+    is an injection seam for unit tests.
     """
     try:
-        from dlm.hardware.backend import detect
-    except ImportError:  # pragma: no cover — dev env has torch
+        if detect_backend is None:
+            from dlm.hardware.backend import detect as detect_backend
+        assert detect_backend is not None
+        backend = detect_backend().value
+    except ImportError as exc:  # pragma: no cover — dev env has torch
+        _LOG.info("pack platform hint falling back to %s: %s", sys.platform, exc)
         return sys.platform
-    try:
-        backend = detect().value
-    except Exception:
+    except OSError as exc:
+        _LOG.info("pack platform hint falling back to unknown backend: %s", exc)
         backend = "unknown"
     return f"{sys.platform}-{backend}"
 

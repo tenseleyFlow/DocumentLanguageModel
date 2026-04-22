@@ -8,6 +8,7 @@ import pytest
 
 from dlm.store.paths import for_dlm
 from dlm.train.checkpoint_commit import (
+    _uniquify_rejected,
     allocate_next_version,
     commit_version,
     fsync_dir,
@@ -119,3 +120,15 @@ class TestFsyncDir:
     def test_fsync_no_error_on_real_dir(self, tmp_path: Path) -> None:
         """fsync_dir is side-effectful; just assert it doesn't raise."""
         fsync_dir(tmp_path)
+
+
+class TestRejectedPathAllocation:
+    def test_raises_after_1000_collisions(self, tmp_path: Path) -> None:
+        pending = tmp_path / "v0001"
+        pending.mkdir()
+        (tmp_path / "v0001-rejected").mkdir()
+        for i in range(1, 1000):
+            (tmp_path / f"v0001-rejected-{i}").mkdir()
+
+        with pytest.raises(RuntimeError, match="after 1000 attempts"):
+            _uniquify_rejected(pending)

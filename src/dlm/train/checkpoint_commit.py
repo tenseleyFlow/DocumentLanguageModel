@@ -88,7 +88,14 @@ def commit_version(
         # `current.txt` never points at it. Uniquify to avoid
         # clobbering a prior rejected commit at the same version
         # number (can happen on repeated `dlm train --fresh` retries).
-        rejected = _uniquify_rejected(pending)
+        try:
+            rejected = _uniquify_rejected(pending)
+        except RuntimeError:
+            _LOG.exception(
+                "non-finite adapter weights + rejected-dir allocation failed; leaving %s in place",
+                pending,
+            )
+            raise
         try:
             pending.rename(rejected)
             _LOG.error(
@@ -130,9 +137,9 @@ def _uniquify_rejected(pending: Path) -> Path:
         candidate = pending.parent / f"{pending.name}-rejected-{i}"
         if not candidate.exists():
             return candidate
-    # Fallback: return `base` and let rename fail with the original
-    # OSError so the caller logs the condition.
-    return base
+    raise RuntimeError(
+        f"could not allocate unique rejected checkpoint path for {pending} after 1000 attempts"
+    )
 
 
 def fsync_dir(path: Path) -> None:
