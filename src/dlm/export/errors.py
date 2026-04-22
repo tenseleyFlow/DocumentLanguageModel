@@ -71,6 +71,16 @@ class ExportManifestError(ExportError):
     """`export_manifest.json` is unreadable, mis-shaped, or checksum drift."""
 
 
+class ProcessorLoadError(ExportError):
+    """HF-snapshot export couldn't load the processor for a VL/audio base.
+
+    Ships the recipient-unloadable state before network/license/cache
+    problems surface at inference. The dispatcher raises this instead
+    of swallowing the heavy exception so the CLI prints one crisp
+    remediation banner.
+    """
+
+
 class VlGgufUnsupportedError(ExportError):
     """VL GGUF emission refused before any subprocess launched.
 
