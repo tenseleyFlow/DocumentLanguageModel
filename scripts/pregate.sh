@@ -72,6 +72,49 @@ if [[ -n "$scatter" ]]; then
     exit 1
 fi
 
+echo "==> new sprint jargon in src/dlm"
+# Sprint 39 M4: planning terms like `Sprint 23` or `audit-08` should
+# not leak into newly added product/runtime strings under src/dlm.
+# Compare the current tree against the upstream merge-base when one
+# exists, so committed fixes in the working tree override older
+# branch-local additions that have not been pushed yet.
+collect_src_dlm_diff() {
+    local upstream
+    upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
+    if [[ -n "$upstream" ]]; then
+        local merge_base
+        merge_base=$(git merge-base "$upstream" HEAD 2>/dev/null || true)
+        if [[ -n "$merge_base" ]]; then
+            git diff --unified=0 --no-color "$merge_base" -- 'src/dlm/**' 2>/dev/null || true
+            return
+        fi
+    fi
+
+    git diff --unified=0 --no-color HEAD -- 'src/dlm/**' 2>/dev/null || true
+}
+
+jargon_hits=$(
+    collect_src_dlm_diff | awk '
+        /^diff --git / {
+            file = $4
+            sub("^b/", "", file)
+            next
+        }
+        /^\+\+\+ b\// {
+            file = substr($0, 7)
+            next
+        }
+        /^\+[^+]/ && ($0 ~ /Sprint [0-9]+/ || $0 ~ /audit-[0-9]+/) {
+            print file ":" substr($0, 2)
+        }
+    ' | sort -u
+)
+if [[ -n "$jargon_hits" ]]; then
+    echo "$jargon_hits"
+    echo "  new Sprint/audit jargon leaked into src/dlm/ — translate it into product or operator language."
+    exit 1
+fi
+
 echo "==> stale dlm_version pin"
 # Any test that hard-pins a frontmatter version exact-match should use
 # >= so schema bumps don't retroactively break the test. Exact pins are

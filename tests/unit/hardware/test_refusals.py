@@ -129,8 +129,9 @@ class TestMultiGpuRefusals:
     ) -> None:
         with ctx():
             caps = probe()
-        with pytest.raises(ResolutionError, match=expected):
+        with pytest.raises(ResolutionError, match=expected) as exc_info:
             check_multi_gpu_refusals(caps, world_size=2)
+        assert "Sprint" not in str(exc_info.value)
 
     def test_homogeneous_cuda_accepts_unknown_or_matching_sms(self) -> None:
         assert_homogeneous_cuda([(8, 0), (8, 0), None])

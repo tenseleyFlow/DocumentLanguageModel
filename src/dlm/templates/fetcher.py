@@ -58,6 +58,6 @@ def fetch_all(
     this always raises `RemoteFetchUnavailable`.
     """
     raise RemoteFetchUnavailable(
-        "remote template gallery fetch is not wired yet — upstream repo "
-        "and signing key are pending (Sprint 27 deferred polish).",
+        "remote template gallery fetch is not available yet — no pinned "
+        "upstream gallery or signing key has been configured.",
     )

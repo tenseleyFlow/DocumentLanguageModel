@@ -130,7 +130,7 @@ def check_multi_gpu_refusals(caps: Capabilities, world_size: int) -> None:
         )
     if caps.backend == Backend.ROCM:
         raise ResolutionError(
-            "Multi-GPU training on ROCm is out of scope for Sprint 23; "
+            "Multi-GPU training on ROCm is not supported yet; "
             "train single-GPU on ROCm or use a CUDA host for multi-GPU runs.",
         )
     # CUDA path — heterogeneous detection is the caller's responsibility

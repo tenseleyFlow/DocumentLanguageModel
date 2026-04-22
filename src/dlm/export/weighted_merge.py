@@ -300,7 +300,7 @@ def build_and_stage(  # pragma: no cover - heavy path
     merge_dir = store.cache_dir_for("_export_merged_" + "_".join(e.name for e in entries))
     # Copy tokenizer + training_run.json from a source adapter so the
     # downstream preflight (tokenizer_vocab) + shared precision-safety
-    # gate both work on the composite (audit-07 B2).
+    # gate both work on the composite artifact.
     first_source = resolve_first_source_path(store, entries)
     return save_merged_to_tmp(
         merged,

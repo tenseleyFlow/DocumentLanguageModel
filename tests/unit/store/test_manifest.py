@@ -195,6 +195,8 @@ class TestCorruptHandling:
             load_manifest(path)
         assert exc_info.value.found_version == 999
         assert exc_info.value.expected_version == CURRENT_MANIFEST_SCHEMA_VERSION
+        assert "requires migration to" in str(exc_info.value)
+        assert "Sprint" not in str(exc_info.value)
         # Still catchable as the parent class:
         assert isinstance(exc_info.value, ManifestCorruptError)
 

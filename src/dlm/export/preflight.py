@@ -86,8 +86,8 @@ def check_tokenizer_vocab(adapter_dir: Path) -> int:
             probe="tokenizer_vocab",
             detail=(
                 f"adapter dir {adapter_dir} is missing tokenizer_config.json. "
-                "Sprint 07 bringup writes this at training end; a checkpoint "
-                "predating Sprint 07 can't be exported — re-train."
+                "This checkpoint predates tokenizer metadata capture, so "
+                "export cannot verify vocab size safely — re-train."
             ),
         )
     try:

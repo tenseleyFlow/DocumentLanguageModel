@@ -47,6 +47,8 @@ def test_templates_list_refresh_falls_back_to_bundled() -> None:
     # Refresh is currently a no-op that warns + falls back; the bundled
     # list still renders and the exit code is 0.
     assert result.exit_code == 0, result.output
+    assert "not available yet" in result.output
+    assert "Sprint" not in result.output
     assert "coding-tutor" in result.output
 
 

@@ -76,8 +76,9 @@ class TestTokenizerVocab:
         assert check_tokenizer_vocab(tmp_path) == 5000
 
     def test_missing_tokenizer_config_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(PreflightError, match="tokenizer_config.json"):
+        with pytest.raises(PreflightError, match="tokenizer metadata capture") as exc_info:
             check_tokenizer_vocab(tmp_path)
+        assert "Sprint" not in str(exc_info.value)
 
     def test_malformed_config_raises(self, tmp_path: Path) -> None:
         (tmp_path / "tokenizer_config.json").write_text("not json {{{")

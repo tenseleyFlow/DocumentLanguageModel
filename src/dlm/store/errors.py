@@ -36,7 +36,7 @@ class ManifestVersionError(ManifestCorruptError):
         self.expected_version = expected_version
         reason = (
             f"schema_version {found_version} requires migration to {expected_version} "
-            "(Sprint 12b owns the framework)"
+            "before this store can be used"
         )
         super().__init__(path, reason)
 
