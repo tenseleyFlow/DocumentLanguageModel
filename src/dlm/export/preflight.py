@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dlm.export.errors import PreflightError
+from dlm.export.precision_safety import was_trained_with_qlora
 
 if TYPE_CHECKING:
     from dlm.base_models import BaseModelSpec
@@ -248,25 +249,10 @@ def check_vl_target_modules_lm_only(adapter_dir: Path) -> None:
 
 
 def check_was_adapter_qlora(adapter_dir: Path) -> bool:
-    """Read the audit-05 M1 `training_run.json` flag.
+    """Strict export-time QLoRA probe.
 
-    Returns False when the file is missing (legacy adapter trained
-    before audit-05 landed the explicit flag). A malformed file is
-    NOT silently treated as "not QLoRA" — that would let a corrupt
-    adapter bypass the pitfall-3 merge gate; we raise instead.
+    Uses the shared precision-safety helper so export and inference
+    agree on the legacy `pinned_versions.json` fallback, while still
+    refusing corrupt `training_run.json` files at export time.
     """
-    training_run_path = adapter_dir / "training_run.json"
-    if not training_run_path.exists():
-        return False
-    try:
-        data = json.loads(training_run_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise PreflightError(
-            probe="training_run_json",
-            detail=(
-                f"adapter {adapter_dir}/training_run.json is unreadable "
-                f"({exc}); cannot determine use_qlora, refusing merge-safety "
-                "bypass. Re-run `dlm train` or fix the file."
-            ),
-        ) from exc
-    return bool(data.get("use_qlora", False))
+    return was_trained_with_qlora(adapter_dir, strict_training_run=True)

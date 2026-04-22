@@ -16,7 +16,8 @@ The solution
 
 `InferencePlan` is the twin of Sprint 05's `TrainingPlan`: a
 hardware-doctor decision, but for the inference path. It reads the
-saved adapter's training metadata (`pinned_versions.json`) to learn
+saved adapter's training metadata (`training_run.json`, with a legacy
+`pinned_versions.json` fallback) to learn
 whether QLoRA was in play, cross-references with the current `Capabilities`,
 and emits:
 
@@ -34,11 +35,11 @@ debuggable without reading source.
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from dlm.export.precision_safety import was_trained_with_qlora
 from dlm.hardware.backend import Backend
 
 PrecisionLit = Literal["bf16", "fp16"]
@@ -77,7 +78,7 @@ def resolve_inference(adapter_dir: Path, caps: Any) -> InferencePlan:
     - Non-QLoRA adapter → load at the host's best precision (bf16 on
       capable CUDA, else fp16).
     """
-    was_qlora = _was_adapter_qlora(adapter_dir)
+    was_qlora = was_trained_with_qlora(adapter_dir)
     backend = caps.backend
 
     if backend == Backend.CUDA:
@@ -130,46 +131,6 @@ def resolve_inference(adapter_dir: Path, caps: Any) -> InferencePlan:
         attn_implementation="sdpa",
         reason=f"LoRA adapter on {backend}; fp16 load.",
     )
-
-
-# --- internals ---------------------------------------------------------------
-
-
-def _was_adapter_qlora(adapter_dir: Path) -> bool:
-    """Read the explicit `use_qlora` flag from the training-run sidecar.
-
-    Audit-05 M1: earlier versions inferred this from the `bitsandbytes`
-    package pin, which false-positived on plain LoRA runs on
-    CUDA+bnb hosts. The training-state sidecar now writes
-    `training_run.json` with an explicit `use_qlora: bool` that records
-    what the *training plan* decided, not what happened to be installed.
-
-    Missing or malformed `training_run.json` → fall back to the bnb
-    pin heuristic for backwards compatibility with adapters trained
-    before Sprint 10's audit-05 patch.
-    """
-    training_run_path = adapter_dir / "training_run.json"
-    if training_run_path.exists():
-        try:
-            data = json.loads(training_run_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            pass
-        else:
-            if "use_qlora" in data:
-                return bool(data["use_qlora"])
-
-    # Legacy fallback: pre-audit-05 adapters only have pinned_versions.json.
-    # This is imprecise (see audit-05 M1) but preserves behavior for
-    # already-written checkpoints that don't have the explicit flag.
-    pinned_path = adapter_dir / "pinned_versions.json"
-    if not pinned_path.exists():
-        return False
-    try:
-        pinned = json.loads(pinned_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    bnb = pinned.get("bitsandbytes")
-    return isinstance(bnb, str) and bool(bnb)
 
 
 def _best_cuda_precision(caps: Any) -> PrecisionLit:

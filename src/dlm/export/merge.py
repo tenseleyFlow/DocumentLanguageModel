@@ -1,10 +1,9 @@
 """Merged-GGUF export path — where LoRA deltas fuse into the base.
 
 CLAUDE.md pitfall #3: `merge_and_unload` on a 4-bit QLoRA base is
-precision-unsafe. This module is the single enforcement point for
-the rule — `ExportPlan.assert_merge_safe(was_qlora=...)` is called
-here, and the fp16-merge path is only entered when the user has
-explicitly confirmed via `--dequantize`.
+precision-unsafe. The canonical safety decision now lives in
+`dlm.export.precision_safety`; this module only hosts the heavy HF
+merge work plus a tiny pure helper used by property tests.
 
 The actual HF work (loading the base in fp16, calling `merge_and_unload`,
 saving to a tmpdir) is pragma'd from unit coverage: it needs a real
@@ -21,12 +20,12 @@ from dlm.export.plan import ExportPlan
 
 
 def check_merge_safety(plan: ExportPlan, *, was_qlora: bool) -> None:
-    """Pure-python safety gate — no subprocess, no HF, just rule enforcement.
+    """Pure-python truth-table helper — no subprocess, no HF.
 
-    Delegates to `ExportPlan.assert_merge_safe` so there's exactly one
-    rule in the codebase. This wrapper exists so callers read
-    "merge.check_merge_safety" at the call site, which reads like a
-    safety check rather than a plan mutation.
+    Main export entry points use `dlm.export.precision_safety` so the
+    adapter-metadata probe and the merged-export gate stay together.
+    This wrapper remains for focused unit/property tests over the
+    boolean truth table itself.
     """
     plan.assert_merge_safe(was_qlora=was_qlora)
 

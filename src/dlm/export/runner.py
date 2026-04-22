@@ -31,6 +31,7 @@ from dlm.export.manifest import (
     utc_now,
 )
 from dlm.export.plan import ExportPlan
+from dlm.export.precision_safety import require_dequantize_or_refuse
 from dlm.export.quantize import run_checked
 
 if TYPE_CHECKING:
@@ -218,10 +219,8 @@ def run_export(
     # `vendor/llama.cpp` bump or tokenizer rewrite between
     # `dlm init` (Sprint 06 probe ran then) and `dlm export` now.
     preflight.check_pretokenizer_fingerprint(spec)
-    was_qlora = preflight.check_was_adapter_qlora(adapter_path)
-
-    # 2. Merge-safety gate (pitfall #3).
-    merge.check_merge_safety(plan, was_qlora=was_qlora)
+    decision = require_dequantize_or_refuse(plan, adapter_path)
+    was_qlora = decision.was_qlora
 
     # 3. Prepare the output directory.
     export_dir = store.export_quant_dir(plan.quant)

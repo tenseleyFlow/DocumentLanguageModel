@@ -33,6 +33,12 @@ def _write_tokenizer_config(dir_: Path, **overrides: object) -> None:
     (dir_ / "tokenizer_config.json").write_text(json.dumps(data))
 
 
+def _write_pinned_versions(dir_: Path, *, bnb: str | None) -> None:
+    data = {"torch": "2.4.0", "bitsandbytes": bnb}
+    dir_.mkdir(parents=True, exist_ok=True)
+    (dir_ / "pinned_versions.json").write_text(json.dumps(data))
+
+
 class TestAdapterConfig:
     def test_matching_base_ok(self, tmp_path: Path) -> None:
         _write_adapter_config(tmp_path)
@@ -112,6 +118,10 @@ class TestQloraFlag:
     def test_missing_file_returns_false(self, tmp_path: Path) -> None:
         assert check_was_adapter_qlora(tmp_path) is False
 
+    def test_missing_training_run_falls_back_to_pinned_versions(self, tmp_path: Path) -> None:
+        _write_pinned_versions(tmp_path, bnb="0.43.1")
+        assert check_was_adapter_qlora(tmp_path) is True
+
     def test_true_flag_returns_true(self, tmp_path: Path) -> None:
         (tmp_path / "training_run.json").write_text(json.dumps({"use_qlora": True}))
         assert check_was_adapter_qlora(tmp_path) is True
@@ -122,6 +132,7 @@ class TestQloraFlag:
 
     def test_malformed_json_raises(self, tmp_path: Path) -> None:
         """Corrupt `training_run.json` must not silently bypass the pitfall-3 merge gate."""
+        _write_pinned_versions(tmp_path, bnb="0.43.1")
         (tmp_path / "training_run.json").write_text("not json")
         with pytest.raises(PreflightError, match="training_run_json"):
             check_was_adapter_qlora(tmp_path)

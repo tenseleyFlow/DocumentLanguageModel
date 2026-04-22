@@ -46,6 +46,7 @@ from dlm.export.manifest import (
 )
 from dlm.export.ollama.vl_modelfile import VlModelfileContext, render_vl_modelfile
 from dlm.export.plan import ExportPlan
+from dlm.export.precision_safety import require_dequantize_or_refuse
 from dlm.export.quantize import run_checked
 from dlm.io.atomic import write_text as atomic_write_text
 
@@ -178,8 +179,7 @@ def run_vl_gguf_export(
     preflight.check_tokenizer_vocab(adapter_path)
     preflight.check_chat_template(adapter_path, required=False)
     preflight.check_vl_target_modules_lm_only(adapter_path)
-    was_qlora = preflight.check_was_adapter_qlora(adapter_path)
-    merge.check_merge_safety(plan, was_qlora=was_qlora)
+    require_dequantize_or_refuse(plan, adapter_path)
 
     export_dir = store.exports / f"vl-gguf-{plan.quant}"
     export_dir.mkdir(parents=True, exist_ok=True)

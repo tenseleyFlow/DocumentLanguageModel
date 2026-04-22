@@ -237,8 +237,8 @@ def save_merged_to_tmp(  # pragma: no cover - heavy path
     preflight (audit-07 B2).
 
     `training_run_source` — when set, copies `training_run.json` into
-    the merged dir so `check_was_adapter_qlora` fires the merge-safety
-    gate correctly on QLoRA-derived composites.
+    the merged dir so the shared precision-safety helper can apply the
+    merge-safety gate correctly on QLoRA-derived composites.
     """
     import shutil
 
@@ -299,8 +299,8 @@ def build_and_stage(  # pragma: no cover - heavy path
     )
     merge_dir = store.cache_dir_for("_export_merged_" + "_".join(e.name for e in entries))
     # Copy tokenizer + training_run.json from a source adapter so the
-    # downstream preflight (tokenizer_vocab) + merge-safety (was_qlora)
-    # gates both work on the composite (audit-07 B2).
+    # downstream preflight (tokenizer_vocab) + shared precision-safety
+    # gate both work on the composite (audit-07 B2).
     first_source = resolve_first_source_path(store, entries)
     return save_merged_to_tmp(
         merged,
