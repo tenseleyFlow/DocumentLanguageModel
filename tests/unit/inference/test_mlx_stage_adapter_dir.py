@@ -81,9 +81,7 @@ class TestStageSuccess:
         assert lp["dropout"] == pytest.approx(0.05)
         assert lp["keys"] == ["q_proj", "v_proj"]
 
-    def test_tensor_keys_match_mlx_layout(
-        self, tmp_path: Path, stub_num_layers: None
-    ) -> None:
+    def test_tensor_keys_match_mlx_layout(self, tmp_path: Path, stub_num_layers: None) -> None:
         src = tmp_path / "peft"
         dst = tmp_path / "mlx"
         _write_peft_adapter(src)
@@ -98,9 +96,7 @@ class TestStageSuccess:
             assert ".lora_a" in key or ".lora_b" in key
             assert not key.endswith(".weight")
 
-    def test_dora_emits_dora_fine_tune_type(
-        self, tmp_path: Path, stub_num_layers: None
-    ) -> None:
+    def test_dora_emits_dora_fine_tune_type(self, tmp_path: Path, stub_num_layers: None) -> None:
         src = tmp_path / "peft"
         dst = tmp_path / "mlx"
         _write_peft_adapter(src)
@@ -131,18 +127,14 @@ class TestStagePreflight:
         with pytest.raises(MlxConversionError, match="no adapter_model.safetensors"):
             stage_mlx_adapter_dir(src, tmp_path / "out", base_hf_id="org/fake")
 
-    def test_dst_dir_created_if_missing(
-        self, tmp_path: Path, stub_num_layers: None
-    ) -> None:
+    def test_dst_dir_created_if_missing(self, tmp_path: Path, stub_num_layers: None) -> None:
         src = tmp_path / "peft"
         _write_peft_adapter(src)
         dst = tmp_path / "nested" / "dst"
         stage_mlx_adapter_dir(src, dst, base_hf_id="org/fake")
         assert dst.is_dir()
 
-    def test_peft_config_missing_r_refused(
-        self, tmp_path: Path, stub_num_layers: None
-    ) -> None:
+    def test_peft_config_missing_r_refused(self, tmp_path: Path, stub_num_layers: None) -> None:
         src = tmp_path / "peft"
         _write_peft_adapter(src)
         cfg = json.loads((src / "adapter_config.json").read_text())

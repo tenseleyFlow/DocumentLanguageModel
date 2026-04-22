@@ -55,23 +55,16 @@ class TestPushUrl:
         with pytest.raises(SinkError, match="pack file missing"):
             push_url(tmp_path / "nope.pack", "https://example.com/upload")
 
-    def test_happy_path_sends_pack_bytes(
-        self, pack: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_happy_path_sends_pack_bytes(self, pack: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}
 
-        def _fake_urlopen(
-            req: urllib.request.Request, data: object, timeout: int
-        ) -> _FakeResponse:
+        def _fake_urlopen(req: urllib.request.Request, data: object, timeout: int) -> _FakeResponse:
             captured["method"] = req.get_method()
             captured["url"] = req.full_url
             captured["headers"] = dict(req.header_items())
             # urllib passes our streaming read adapter's output as `data`;
             # materialize it fully so we can assert length.
-            if hasattr(data, "read"):
-                body = data.read()
-            else:
-                body = data
+            body = data.read() if hasattr(data, "read") else data
             assert isinstance(body, (bytes, bytearray))
             captured["body_len"] = len(body)
             return _FakeResponse(status=201)
@@ -92,14 +85,10 @@ class TestPushUrl:
         assert "Authorization" not in headers
         assert captured["body_len"] == pack.stat().st_size
 
-    def test_auth_header_from_env(
-        self, pack: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_auth_header_from_env(self, pack: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         captured_auth: list[str | None] = []
 
-        def _fake_urlopen(
-            req: urllib.request.Request, data: object, timeout: int
-        ) -> _FakeResponse:
+        def _fake_urlopen(req: urllib.request.Request, data: object, timeout: int) -> _FakeResponse:
             captured_auth.append(req.get_header("Authorization"))
             return _FakeResponse(status=200)
 
@@ -109,12 +98,8 @@ class TestPushUrl:
         push_url(pack, "https://example.com/upload")
         assert captured_auth == ["Bearer secret-token"]
 
-    def test_non_2xx_raises_sink_error(
-        self, pack: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        def _fake_urlopen(
-            req: urllib.request.Request, data: object, timeout: int
-        ) -> _FakeResponse:
+    def test_non_2xx_raises_sink_error(self, pack: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _fake_urlopen(req: urllib.request.Request, data: object, timeout: int) -> _FakeResponse:
             raise urllib.error.HTTPError(
                 url=req.full_url,
                 code=403,
@@ -131,9 +116,7 @@ class TestPushUrl:
     def test_network_error_raises_sink_error(
         self, pack: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def _fake_urlopen(
-            req: urllib.request.Request, data: object, timeout: int
-        ) -> _FakeResponse:
+        def _fake_urlopen(req: urllib.request.Request, data: object, timeout: int) -> _FakeResponse:
             raise urllib.error.URLError("connection refused")
 
         monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
@@ -144,9 +127,7 @@ class TestPushUrl:
     def test_progress_called_at_start_and_end(
         self, pack: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def _fake_urlopen(
-            req: urllib.request.Request, data: object, timeout: int
-        ) -> _FakeResponse:
+        def _fake_urlopen(req: urllib.request.Request, data: object, timeout: int) -> _FakeResponse:
             # Drain the stream so the 100% progress call fires.
             if hasattr(data, "read"):
                 data.read()
@@ -170,9 +151,7 @@ class TestPushUrl:
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        def _fake_urlopen(
-            req: urllib.request.Request, data: object, timeout: int
-        ) -> _FakeResponse:
+        def _fake_urlopen(req: urllib.request.Request, data: object, timeout: int) -> _FakeResponse:
             return _FakeResponse(status=200)
 
         monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
@@ -223,9 +202,7 @@ class TestPullUrl:
         # total is 0 because server didn't advertise Content-Length
         assert all(t == 0 for _, t in seen)
 
-    def test_non_2xx_raises(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_non_2xx_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         def _fake_urlopen(req: urllib.request.Request, timeout: int) -> _FakeResponse:
             raise urllib.error.HTTPError(
                 url=req.full_url,
@@ -239,9 +216,7 @@ class TestPullUrl:
         with pytest.raises(SinkError, match="HTTP 404"):
             pull_url("https://example.com/p", tmp_path / "out.pack")
 
-    def test_creates_parent_dir(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_creates_parent_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         out = tmp_path / "nested" / "dir" / "fetched.pack"
 
         def _fake_urlopen(req: urllib.request.Request, timeout: int) -> _FakeResponse:

@@ -192,8 +192,7 @@ def save_state(directory: Path, state: TrainingState) -> None:
     # rejects str subclasses (e.g., `torch.__version__` is a
     # `TorchVersion`). Coerce pinned values to plain str/None.
     pinned_plain: dict[str, str | None] = {
-        k: (str(v) if v is not None else None)
-        for k, v in dict(state["pinned_versions"]).items()
+        k: (str(v) if v is not None else None) for k, v in dict(state["pinned_versions"]).items()
     }
     torch_payload: dict[str, Any] = {
         "_state_sidecar_version": STATE_SIDECAR_VERSION,

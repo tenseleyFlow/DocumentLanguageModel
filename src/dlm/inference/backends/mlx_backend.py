@@ -74,7 +74,9 @@ def _resolve_base_num_hidden_layers(base_hf_id: str) -> int:
         from huggingface_hub import snapshot_download
 
         snapshot_dir = Path(
-            snapshot_download(repo_id=base_hf_id, local_files_only=True, allow_patterns=["config.json"])
+            snapshot_download(
+                repo_id=base_hf_id, local_files_only=True, allow_patterns=["config.json"]
+            )
         )
         cfg_path = snapshot_dir / "config.json"
         if cfg_path.exists():
@@ -123,9 +125,7 @@ def stage_mlx_adapter_dir(
     try:
         peft_config = json.loads(src_config.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise MlxConversionError(
-            f"cannot read {src_config}: {type(exc).__name__}: {exc}"
-        ) from exc
+        raise MlxConversionError(f"cannot read {src_config}: {type(exc).__name__}: {exc}") from exc
 
     from dlm.inference.mlx_adapter import (
         build_mlx_adapter_config,
@@ -142,9 +142,7 @@ def stage_mlx_adapter_dir(
         json.dumps(mlx_config, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    peft_safetensors_to_mlx_safetensors(
-        peft_adapter_dir, dst_dir / "adapters.safetensors"
-    )
+    peft_safetensors_to_mlx_safetensors(peft_adapter_dir, dst_dir / "adapters.safetensors")
     return dst_dir
 
 

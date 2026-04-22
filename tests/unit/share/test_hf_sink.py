@@ -75,9 +75,7 @@ def patched_hub(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[dict[str, obj
     # it with our stand-in so tests that want a failure can raise it.
     import huggingface_hub.utils
 
-    monkeypatch.setattr(
-        huggingface_hub.utils, "HfHubHTTPError", _FakeHfHubHTTPError, raising=False
-    )
+    monkeypatch.setattr(huggingface_hub.utils, "HfHubHTTPError", _FakeHfHubHTTPError, raising=False)
     return captured
 
 
@@ -123,7 +121,10 @@ class TestPushHf:
         assert "smollm2-135m" in body
 
     def test_create_repo_failure_translates_to_sink_error(
-        self, pack: Path, patched_hub: dict[str, list[dict[str, object]]], monkeypatch: pytest.MonkeyPatch
+        self,
+        pack: Path,
+        patched_hub: dict[str, list[dict[str, object]]],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         import huggingface_hub
 
@@ -136,7 +137,10 @@ class TestPushHf:
             push_hf(pack, "user/myadapter")
 
     def test_upload_failure_translates_to_sink_error(
-        self, pack: Path, patched_hub: dict[str, list[dict[str, object]]], monkeypatch: pytest.MonkeyPatch
+        self,
+        pack: Path,
+        patched_hub: dict[str, list[dict[str, object]]],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         import huggingface_hub
 
@@ -177,7 +181,10 @@ class TestPullHf:
         assert call["repo_type"] == "model"
 
     def test_download_failure_translates_to_sink_error(
-        self, tmp_path: Path, patched_hub: dict[str, list[dict[str, object]]], monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        patched_hub: dict[str, list[dict[str, object]]],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         import huggingface_hub
 

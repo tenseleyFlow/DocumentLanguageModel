@@ -312,9 +312,7 @@ class TestLegacyV1Compat:
         torch.save(payload, buf)
         blob = buf.getvalue()
         (directory / STATE_FILENAME).write_bytes(blob)
-        (directory / STATE_SHA_FILENAME).write_text(
-            hashlib.sha256(blob).hexdigest() + "\n"
-        )
+        (directory / STATE_SHA_FILENAME).write_text(hashlib.sha256(blob).hexdigest() + "\n")
 
     def test_v1_payload_loads_with_migration_warning(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -322,9 +320,7 @@ class TestLegacyV1Compat:
         self._write_v1_sidecar(tmp_path)
 
         with caplog.at_level(logging.WARNING, logger="dlm.train.state_sidecar"):
-            loaded = load_state(
-                tmp_path, runtime_versions={"torch": torch.__version__}
-            )
+            loaded = load_state(tmp_path, runtime_versions={"torch": torch.__version__})
 
         assert loaded["global_step"] == 10
         assert loaded["numpy_rng_state"] is not None

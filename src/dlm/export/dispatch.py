@@ -98,9 +98,7 @@ def emit_vl_snapshot(
     from dlm.export.vl_snapshot import run_vl_snapshot_export
 
     banner: list[str] = []
-    if not skip_gguf_flag_warning and (
-        quant is not None or merged or adapter_mix_raw is not None
-    ):
+    if not skip_gguf_flag_warning and (quant is not None or merged or adapter_mix_raw is not None):
         banner.append(
             "[yellow]export:[/yellow] ignoring GGUF-only flags "
             "(--quant / --merged / --adapter-mix) — they're not applicable "
@@ -173,9 +171,7 @@ def dispatch_vl_export(
         verdict = None
 
     if verdict is None or verdict.support is SupportLevel.UNSUPPORTED:
-        tag_note = (
-            f"at tag={verdict.llama_cpp_tag or 'unknown'} " if verdict is not None else ""
-        )
+        tag_note = f"at tag={verdict.llama_cpp_tag or 'unknown'} " if verdict is not None else ""
         probe_banner.append(
             f"[yellow]export:[/yellow] base {spec.key!r} "
             f"(arch={spec.architecture}) is not covered by the vendored "

@@ -289,9 +289,7 @@ def build_and_stage(  # pragma: no cover - heavy path
     from transformers import AutoModelForCausalLM
 
     store.ensure_layout()
-    base_model = AutoModelForCausalLM.from_pretrained(
-        str(cached_base_dir), revision=spec.revision
-    )
+    base_model = AutoModelForCausalLM.from_pretrained(str(cached_base_dir), revision=spec.revision)
     merged = build_weighted_merged(
         base_model,
         store,
@@ -299,9 +297,7 @@ def build_and_stage(  # pragma: no cover - heavy path
         entries,
         combination_type=combination_type,
     )
-    merge_dir = store.cache_dir_for(
-        "_export_merged_" + "_".join(e.name for e in entries)
-    )
+    merge_dir = store.cache_dir_for("_export_merged_" + "_".join(e.name for e in entries))
     # Copy tokenizer + training_run.json from a source adapter so the
     # downstream preflight (tokenizer_vocab) + merge-safety (was_qlora)
     # gates both work on the composite (audit-07 B2).

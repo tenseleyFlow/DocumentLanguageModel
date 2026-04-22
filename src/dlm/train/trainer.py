@@ -403,9 +403,7 @@ def run_training_loop(ctx: PreflightContext, log: StepLogger) -> TrainLoopResult
 
     # Register the metrics + JSONL callback on the live trainer.
     # Guarded for the factory test-seam path.
-    _attach_dlm_trainer_callback(
-        sft, recorder=ctx.recorder, run_id=ctx.run_id, step_logger=log
-    )
+    _attach_dlm_trainer_callback(sft, recorder=ctx.recorder, run_id=ctx.run_id, step_logger=log)
 
     start = time.perf_counter()
     train_result = sft.train()
@@ -427,9 +425,7 @@ def run_training_loop(ctx: PreflightContext, log: StepLogger) -> TrainLoopResult
 
     # Per-mode val-loss split (audit-08 N9). Each call is guarded,
     # failures degrade to None.
-    val_loss_cpt, val_loss_sft = compute_val_loss_by_mode(
-        sft, getattr(sft, "eval_dataset", None)
-    )
+    val_loss_cpt, val_loss_sft = compute_val_loss_by_mode(sft, getattr(sft, "eval_dataset", None))
 
     # Early-stop detection (audit-05 M2). Prefer HF's real signal
     # (the callback sets `control.should_training_stop`); fall back
