@@ -8,7 +8,9 @@ from typing import Any
 
 from typer.testing import CliRunner
 
+from dlm.base_models import BaseModelSpec
 from dlm.cli.app import app
+from dlm.doc.schema import TrainingConfig
 
 
 def _init_doc(tmp_path: Path, *, base: str = "smollm2-135m") -> Path:
@@ -33,7 +35,85 @@ def _fake_doctor_result() -> object:
     return SimpleNamespace(plan=object(), capabilities=object())
 
 
+def _spec(**overrides: object) -> BaseModelSpec:
+    defaults: dict[str, object] = {
+        "key": "demo-1b",
+        "hf_id": "org/demo-1b",
+        "revision": "0123456789abcdef0123456789abcdef01234567",
+        "architecture": "DemoForCausalLM",
+        "params": 1_000_000_000,
+        "target_modules": ["q_proj", "v_proj"],
+        "template": "chatml",
+        "gguf_arch": "demo",
+        "tokenizer_pre": "demo",
+        "license_spdx": "Apache-2.0",
+        "license_url": None,
+        "requires_acceptance": False,
+        "redistributable": True,
+        "size_gb_fp16": 2.0,
+        "context_length": 4096,
+        "recommended_seq_len": 2048,
+    }
+    defaults.update(overrides)
+    return BaseModelSpec.model_validate(defaults)
+
+
 class TestTrainCommandCoverage:
+    def test_train_uses_resolved_base_for_doctor_plan(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        doc = _init_doc(tmp_path)
+        runner = CliRunner()
+        captured_doctor_calls: list[dict[str, object]] = []
+        capabilities = object()
+        plan = object()
+
+        fake_result = SimpleNamespace(
+            adapter_version=1,
+            steps=2,
+            seed=42,
+            determinism=SimpleNamespace(class_="strict"),
+            adapter_path=tmp_path / "adapter",
+            log_path=tmp_path / "train.jsonl",
+            final_train_loss=0.25,
+        )
+        fake_phase = SimpleNamespace(phase="sft", result=fake_result)
+
+        def _doctor(**kwargs: object) -> object:
+            captured_doctor_calls.append(kwargs)
+            return SimpleNamespace(plan=plan, capabilities=capabilities)
+
+        resolved_spec = _spec(
+            params=4_000_000_000,
+            context_length=8192,
+            context_length_effective=1024,
+        )
+
+        monkeypatch.setattr("dlm.base_models.resolve", lambda *args, **kwargs: resolved_spec)
+        monkeypatch.setattr("dlm.hardware.doctor", _doctor)
+        monkeypatch.setattr("dlm.train.distributed.detect_world_size", lambda: 1)
+
+        def _run_phases(*args: object, **kwargs: object) -> list[object]:
+            assert args[3] is plan
+            assert kwargs["capabilities"] is capabilities
+            return [fake_phase]
+
+        monkeypatch.setattr("dlm.train.preference.phase_orchestrator.run_phases", _run_phases)
+
+        result = runner.invoke(
+            app,
+            ["--home", str(tmp_path / "home"), "train", str(doc), "--max-steps", "2"],
+        )
+        assert result.exit_code == 0, result.output
+        assert len(captured_doctor_calls) == 1
+        call = captured_doctor_calls[0]
+        assert call["base_params"] == 4_000_000_000
+        assert call["seq_len"] == 1024
+        assert call["world_size"] == 1
+        training_config = call["training_config"]
+        assert isinstance(training_config, TrainingConfig)
+        assert training_config.sequence_len == 2048
+
     def test_train_success_prints_phase_summary(self, tmp_path: Path, monkeypatch: Any) -> None:
         doc = _init_doc(tmp_path)
         runner = CliRunner()

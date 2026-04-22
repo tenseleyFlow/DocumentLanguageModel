@@ -203,6 +203,16 @@ class BaseModelSpec(BaseModel):
             return DEFAULT_REASONING_PROMPT_TEMPERATURE
         return DEFAULT_PROMPT_TEMPERATURE
 
+    @property
+    def effective_context_length(self) -> int:
+        """Context window `dlm doctor` should estimate against.
+
+        Registry rows can pin a lower practical ceiling than the
+        model's advertised nominal context length. When no such hint is
+        set, the nominal context window remains the source of truth.
+        """
+        return self.context_length_effective or self.context_length
+
     @field_validator("revision")
     @classmethod
     def _validate_revision(cls, value: str) -> str:

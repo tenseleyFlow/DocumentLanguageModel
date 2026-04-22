@@ -146,6 +146,14 @@ class TestSprint40Substrate:
                 },
             )
 
+    def test_effective_context_length_defaults_to_nominal(self) -> None:
+        spec = _minimal(context_length=4096)
+        assert spec.effective_context_length == 4096
+
+    def test_effective_context_length_honors_override(self) -> None:
+        spec = _minimal(context_length=8192, context_length_effective=4096)
+        assert spec.effective_context_length == 4096
+
 
 class TestImmutability:
     def test_spec_is_frozen(self) -> None:

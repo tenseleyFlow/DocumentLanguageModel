@@ -850,7 +850,13 @@ def train_cmd(
     from dlm.train.distributed import detect_world_size
 
     ws = detect_world_size()
-    plan = doctor(training_config=parsed.frontmatter.training, world_size=ws).plan
+    doctor_result = doctor(
+        training_config=parsed.frontmatter.training,
+        base_params=spec.params,
+        seq_len=min(parsed.frontmatter.training.sequence_len, spec.effective_context_length),
+        world_size=ws,
+    )
+    plan = doctor_result.plan
     if plan is None:
         console.print(
             "[red]doctor:[/red] no viable training plan for this host. "
@@ -897,7 +903,7 @@ def train_cmd(
             seed=seed,
             max_steps=max_steps,
             lock_mode=lock_mode,
-            capabilities=doctor().capabilities,
+            capabilities=doctor_result.capabilities,
             world_size=ws,
             strict_metrics=strict_metrics,
         )
