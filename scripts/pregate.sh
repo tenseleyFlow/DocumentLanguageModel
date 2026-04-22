@@ -58,6 +58,20 @@ if [[ -n "$advisory_hits" ]]; then
     echo "  (advisory only — confirm each has an upstream plan guard)"
 fi
 
+echo "==> modality scatter outside dlm.modality"
+# Sprint 38 B8.6: every `spec.modality == "..."` comparison lives in
+# src/dlm/modality/. Callers elsewhere go through predicate flags
+# (accepts_images, accepts_audio, requires_processor) or
+# modality_for(spec).dispatch_export() / .load_processor(). New
+# scatter means the modality abstraction is leaking again — refuse
+# the push and route the new code into the dispatch package instead.
+scatter=$(git grep -nE 'spec\.modality ==' -- 'src/dlm/**' 2>/dev/null | grep -v "src/dlm/modality/" || true)
+if [[ -n "$scatter" ]]; then
+    echo "$scatter"
+    echo "  modality scatter outside src/dlm/modality/ — route through modality_for(spec)."
+    exit 1
+fi
+
 echo "==> stale dlm_version pin"
 # Any test that hard-pins a frontmatter version exact-match should use
 # >= so schema bumps don't retroactively break the test. Exact pins are
