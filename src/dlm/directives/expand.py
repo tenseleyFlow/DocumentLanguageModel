@@ -7,11 +7,11 @@ hygiene are identical to in-body sections), and returns a tuple of
 `Section(SectionType.PROSE, ...)` ready to be concatenated with
 `parsed.sections` before `build_dataset`.
 
-Discovery + merge (Sprint 30): when a directive points at a
-directory, `discover_configs` finds every `.dlm/training.yaml` +
-`.dlm/ignore` inside the tree; for each candidate file,
-`effective_config_for` resolves the merged include/exclude verdict
-and the metadata tags to flow onto the synthesized Section.
+Discovery + merge: when a directive points at a directory,
+`discover_configs` finds every `.dlm/training.yaml` + `.dlm/ignore`
+inside the tree; for each candidate file, `effective_config_for`
+resolves the merged include/exclude verdict and the metadata tags to
+flow onto the synthesized Section.
 
 Content-hash collision defense: every synthesized Section's content
 is prefixed with a canonical `# source: <relpath>\\n\\n` header. Two
@@ -127,7 +127,7 @@ def expand_sources(
     scaffolded shape at `<corpus>/.dlm/corpus.dlm`), the user's
     intended anchor is the corpus directory, not the metadata
     directory — so relative resolution and strict confinement use the
-    grandparent as the effective base. Fixes Audit-09 B2.
+    grandparent as the effective base.
 
     `blob_store` receives ingested image bytes. When `None`, image-
     extension files are counted in `skipped_image_no_store` and no
