@@ -16,15 +16,15 @@ Design notes
   text + the encoder is deterministic (canonical key order).
 - **`O_APPEND` semantics** for writes: we open + append + close for
   each snapshot. Concurrent writers are caller's problem (store lock
-  in Sprint 04 handles it); this module assumes single-writer access.
+  handles it); this module assumes single-writer access.
 - **No partial-frame recovery.** If a write crashes mid-frame, the
   corpus tail may have a garbage zstd frame. A tail-verification
-  helper was scoped for Sprint 09 but deferred (the store lock +
-  atomic index write already prevent the worst case: the index never
-  references a partial frame). If a crash leaves unreferenced bytes
-  at the end of `corpus.zst`, they are effectively dead and are
-  reclaimed by the Sprint 14 pack-time compaction. Sprint 11 may add
-  explicit tail-repair if the slow-integration tests surface a need.
+  helper was considered but deferred (the store lock + atomic index
+  write already prevent the worst case: the index never references a
+  partial frame). If a crash leaves unreferenced bytes at the end of
+  `corpus.zst`, they are effectively dead and are reclaimed by
+  pack-time compaction. A future release may add explicit tail-repair
+  if the slow-integration tests surface a need.
 """
 
 from __future__ import annotations

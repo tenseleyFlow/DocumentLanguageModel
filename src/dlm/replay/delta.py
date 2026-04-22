@@ -13,14 +13,14 @@ computes `sha256(type || content)[:16]`). There is no stable
 cross-edit identity — a section whose content changes gets a different
 `section_id`, so it appears as `new` (plus the previous id in
 `removed`). Distinguishing "edited" from "replaced" requires an
-explicit per-section anchor. If Sprint 20 introduces anchor-based
-identity, it can re-add `ChangeSet.changed` with a real implementation
-at that point; carrying a reserved-but-always-empty field today just
-invites consumers to write code against it that never fires.
+explicit per-section anchor. If anchor-based identity lands later, it
+can re-add `ChangeSet.changed` with a real implementation at that
+point; carrying a reserved-but-always-empty field today just invites
+consumers to write code against it that never fires.
 
-The sampler in Sprint 08 needs only `new` (freshly-append-to-replay),
-`unchanged` (already-present training signal), and `removed` (for
-forgetting bookkeeping) — all three are non-lossy under this design.
+The sampler needs only `new` (freshly-append-to-replay), `unchanged`
+(already-present training signal), and `removed` (for forgetting
+bookkeeping) — all three are non-lossy under this design.
 """
 
 from __future__ import annotations

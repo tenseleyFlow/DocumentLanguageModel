@@ -1,6 +1,6 @@
 """Replay corpus — rolling append-only zstd+CBOR store of section snapshots.
 
-See Sprint 08 for the design. Public surface:
+Public surface:
 
 - `ReplayStore` — facade bound to a store's `replay/` subdir.
 - `SectionSnapshot`, `IndexEntry` — records stored in `corpus.zst` and

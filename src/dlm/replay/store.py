@@ -3,11 +3,11 @@
 Binds the low-level primitives (`corpus.append_snapshot`,
 `index.load_index`, `sampler.sample`, `eviction.evict_until`) to a
 concrete store path so callers don't juggle file paths themselves. The
-store-level exclusive lock (Sprint 04) must be held for mutating
-operations — this module doesn't acquire it, to avoid fighting the
-outer training-run lifecycle.
+store-level exclusive lock must be held for mutating operations —
+this module doesn't acquire it, to avoid fighting the outer
+training-run lifecycle.
 
-Also provides `sample_rows()` — the glue that feeds Sprint 07's
+Also provides `sample_rows()` — the glue that feeds
 `build_dataset(..., replay_rows=...)` without the caller having to
 understand snapshot → row shape herself.
 """
@@ -37,8 +37,8 @@ class ReplayStore:
 
     Construct via `ReplayStore.at(store_path.replay_corpus,
     store_path.replay_index)` — the path pair is kept explicit so the
-    Sprint 04 `StorePath` accessor remains the single source of truth
-    for filesystem layout.
+    `StorePath` accessor remains the single source of truth for
+    filesystem layout.
     """
 
     corpus_path: Path
@@ -65,7 +65,7 @@ class ReplayStore:
         Index save happens on every append so a crash mid-training
         leaves the corpus + index consistent.
 
-        **Performance (audit-04 m2):** each call does a full
+        **Performance:** each call does a full
         `load_index → append → save_index` cycle, which is O(n) in the
         existing index size. Fine for the one-shot append the trainer
         makes after each training cycle; **not** fine for loops like
@@ -104,8 +104,8 @@ class ReplayStore:
         Each row's `_dlm_section_id` is prefixed with `replay:` and
         suffixed with the snapshot's `last_seen_at` timestamp. This
         prevents a rehydrated replay section from colliding with the
-        same content in the current document under the Sprint 07
-        splitter's (seed, id, sub_index) hash.
+        same content in the current document under the splitter's
+        `(seed, id, sub_index)` hash.
         """
         from dlm.replay.sampler import sample
 

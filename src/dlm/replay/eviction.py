@@ -11,12 +11,12 @@ the size is back under cap — with two hard rules:
 2. **Evict oldest first.** `added_at` ascending. Ties are broken by
    `section_id` for deterministic output.
 
-Actually compacting `corpus.zst` is a Sprint 14 pack/unpack concern —
-this module only decides *which* index entries to drop. The caller
-updates the index and, optionally, rewrites the corpus to reclaim the
-bytes. (A sparse corpus with dead frames between live ones is a
-tolerable intermediate state because frame-level random access only
-reads what the index points at.)
+Actually compacting `corpus.zst` is a pack/unpack concern — this
+module only decides *which* index entries to drop. The caller updates
+the index and, optionally, rewrites the corpus to reclaim the bytes.
+(A sparse corpus with dead frames between live ones is a tolerable
+intermediate state because frame-level random access only reads what
+the index points at.)
 """
 
 from __future__ import annotations

@@ -2,8 +2,7 @@
 
 The index is a flat array of `IndexEntry` objects. We sort entries by
 `section_id` before serializing so byte-identical corpora + identical
-insertion orders produce byte-identical index files (CI
-reproducibility gate in Sprint 08).
+insertion orders produce byte-identical index files.
 
 The JSON format is `pydantic.TypeAdapter`-serialized with sorted keys
 and a trailing newline. I/O is atomic via `dlm.io.atomic.write_bytes`
