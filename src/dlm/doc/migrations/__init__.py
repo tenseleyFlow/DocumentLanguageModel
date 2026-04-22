@@ -43,6 +43,7 @@ from dlm.doc.migrations import (
     v9,
     v10,
     v11,
+    v12,
 )
 
 # Map of `from_version` → migrator function for the shipped schema path.
@@ -58,6 +59,7 @@ MIGRATORS: Final[dict[int, Callable[[dict[str, object]], dict[str, object]]]] = 
     9: v9.migrate,
     10: v10.migrate,
     11: v11.migrate,
+    12: v12.migrate,
 }
 
 

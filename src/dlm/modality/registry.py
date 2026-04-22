@@ -7,7 +7,9 @@ under the ``dlm.modality`` package — one per supported modality —
 registered in :data:`MODALITIES` and resolved via
 :func:`modality_for`. The split keeps the "does this spec accept
 images?" predicate next to the "route the export through the VL
-path" method: both are modality-specific concerns.
+path" method: both are modality-specific concerns. Text-family tags
+(`"text"` and `"text-moe"`) intentionally share the same dispatch
+behavior.
 
 Each instance carries:
 
@@ -85,7 +87,7 @@ class ModalityDispatch:
 
 
 class TextModality(ModalityDispatch):
-    """Text-only base — defaults carry the whole contract."""
+    """Text-family base — defaults carry the whole contract."""
 
     modality = "text"
 

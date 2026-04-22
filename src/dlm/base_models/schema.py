@@ -13,6 +13,9 @@ point:
   registry for Modelfile generation.
 - `gguf_arch` / `tokenizer_pre`: identifiers the llama.cpp converter
   matches against; export preflight uses them.
+- `reasoning_tuned` / `context_length_effective`: additive registry
+  hints for prompt defaults and realistic doctor estimates. The
+  effective length defaults to the nominal context window when unset.
 - License / gating: separate fields for SPDX, acceptance gating, and
   re-distribution — each consumed by a different policy gate (license
   acceptance, pack `--include-base`, share-protocol refusal).
@@ -121,15 +124,19 @@ class BaseModelSpec(BaseModel):
     # Size + context hints.
     size_gb_fp16: float = Field(..., gt=0)
     context_length: int = Field(..., gt=0)
+    context_length_effective: int | None = Field(None, gt=0)
     recommended_seq_len: int = Field(..., gt=0)
+    reasoning_tuned: bool = False
 
-    # Modality + multi-modal preprocessing (schema v10 + v11).
-    # Text bases leave `modality="text"` with both plans None;
+    # Modality + multi-modal preprocessing (schema v10 + v11, plus
+    # Sprint 40's additive `text-moe` discriminator).
+    # Text-family bases leave `modality in {"text", "text-moe"}`
+    # with both plans None;
     # `modality="vision-language"` requires a `vl_preprocessor_plan`
     # and rejects an audio plan; `modality="audio-language"` requires
     # an `audio_preprocessor_plan` and rejects a vl plan. Every
     # invariant is enforced below at validate time.
-    modality: Literal["text", "vision-language", "audio-language"] = "text"
+    modality: Literal["text", "text-moe", "vision-language", "audio-language"] = "text"
     vl_preprocessor_plan: VlPreprocessorPlan | None = None
     audio_preprocessor_plan: AudioPreprocessorPlan | None = None
 
@@ -156,7 +163,7 @@ class BaseModelSpec(BaseModel):
                 raise ValueError(
                     f"base {self.key!r}: vl_preprocessor_plan is invalid on an audio-language base"
                 )
-        else:  # "text"
+        else:  # "text" or "text-moe"
             if self.vl_preprocessor_plan is not None:
                 raise ValueError(
                     f"base {self.key!r}: vl_preprocessor_plan only valid with "
@@ -167,6 +174,18 @@ class BaseModelSpec(BaseModel):
                     f"base {self.key!r}: audio_preprocessor_plan only valid "
                     "with modality='audio-language'"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _effective_context_length_is_bounded(self) -> BaseModelSpec:
+        if (
+            self.context_length_effective is not None
+            and self.context_length_effective > self.context_length
+        ):
+            raise ValueError(
+                f"base {self.key!r}: context_length_effective={self.context_length_effective} "
+                f"cannot exceed context_length={self.context_length}"
+            )
         return self
 
     @field_validator("revision")

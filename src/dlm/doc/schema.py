@@ -22,7 +22,7 @@ _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 # Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
 _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 12
+CURRENT_SCHEMA_VERSION: Final[int] = 13
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
@@ -49,7 +49,11 @@ the optional image caption; audio without a transcript has no
 training signal). v12 adds the additive `training.audio` block
 (currently one field, `auto_resample: bool`) — opt-in automatic
 resampling when audio files don't match the base's pinned rate.
-Default False preserves the "refuse on SR mismatch" contract.
+Default False preserves the "refuse on SR mismatch" contract. v13 is
+an identity bump paired with Sprint 40's base-model registry refresh:
+the document frontmatter shape is unchanged, but the migration chain
+still advances so tooling can distinguish post-refresh docs from older
+ones.
 """
 
 

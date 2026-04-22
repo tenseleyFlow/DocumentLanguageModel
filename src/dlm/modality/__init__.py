@@ -13,6 +13,8 @@ Callers that previously wrote ``if spec.modality == "vision-language"``
 now read ``modality_for(spec).accepts_images`` (or one of the other
 predicate flags) or call a dispatch method directly. A pregate
 grep-gate refuses new scatter — see ``scripts/pregate.sh``.
+Text-family tags (`"text"` and Sprint 40's `"text-moe"`) share
+the same dispatcher.
 """
 
 from __future__ import annotations
@@ -24,12 +26,14 @@ from dlm.modality.vl import VisionLanguageModality
 
 MODALITIES: dict[str, ModalityDispatch] = {
     "text": TextModality(),
+    "text-moe": TextModality(),
     "vision-language": VisionLanguageModality(),
     "audio-language": AudioLanguageModality(),
 }
 """Registry: modality string → dispatcher instance. Ordered by
 registration history — future modalities append here and land a
-corresponding class under ``dlm.modality``."""
+corresponding class under ``dlm.modality``. Text-family aliases share
+the base text dispatcher intentionally."""
 
 __all__ = [
     "MODALITIES",

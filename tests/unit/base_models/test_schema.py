@@ -112,6 +112,40 @@ class TestNumericConstraints:
         with pytest.raises(ValidationError):
             _minimal(context_length=0)
 
+    def test_context_length_effective_defaults_to_none(self) -> None:
+        assert _minimal().context_length_effective is None
+
+    def test_context_length_effective_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            _minimal(context_length_effective=0)
+
+    def test_context_length_effective_cannot_exceed_nominal(self) -> None:
+        with pytest.raises(ValidationError, match="cannot exceed context_length"):
+            _minimal(context_length=4096, context_length_effective=8192)
+
+
+class TestSprint40Substrate:
+    def test_reasoning_tuned_defaults_false(self) -> None:
+        assert _minimal().reasoning_tuned is False
+
+    def test_reasoning_tuned_accepts_true(self) -> None:
+        assert _minimal(reasoning_tuned=True).reasoning_tuned is True
+
+    def test_text_moe_modality_is_accepted(self) -> None:
+        spec = _minimal(modality="text-moe")
+        assert spec.modality == "text-moe"
+
+    def test_text_moe_rejects_vl_plan(self) -> None:
+        with pytest.raises(ValidationError, match="only valid with"):
+            _minimal(
+                modality="text-moe",
+                vl_preprocessor_plan={
+                    "target_size": (224, 224),
+                    "image_token": "<image>",
+                    "num_image_tokens": 256,
+                },
+            )
+
 
 class TestImmutability:
     def test_spec_is_frozen(self) -> None:
