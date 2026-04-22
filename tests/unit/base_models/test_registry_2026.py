@@ -183,3 +183,30 @@ class TestPhi4MiniReasoningRegistryEntry:
         assert spec.size_gb_fp16 == pytest.approx(7.6)
         assert spec.context_length == 131_072
         assert spec.recommended_seq_len == 2048
+
+
+class TestMixtralRegistryEntry:
+    def test_entry_present(self) -> None:
+        assert "mixtral-8x7b-instruct" in BASE_MODELS
+
+    def test_entry_is_open_sparse_moe(self) -> None:
+        spec = BASE_MODELS["mixtral-8x7b-instruct"]
+        assert spec.license_spdx == "Apache-2.0"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+        assert spec.modality == "text-moe"
+
+    def test_entry_matches_live_family_shape(self) -> None:
+        spec = BASE_MODELS["mixtral-8x7b-instruct"]
+        assert spec.hf_id == "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        assert spec.architecture == "MixtralForCausalLM"
+        assert spec.template == "mistral"
+        assert spec.gguf_arch == "llama"
+        assert spec.tokenizer_pre == "llama-bpe"
+
+    def test_entry_uses_total_parameter_and_context_hints(self) -> None:
+        spec = BASE_MODELS["mixtral-8x7b-instruct"]
+        assert spec.params == 46_700_000_000
+        assert spec.size_gb_fp16 == pytest.approx(93.4)
+        assert spec.context_length == 32_768
+        assert spec.recommended_seq_len == 2048

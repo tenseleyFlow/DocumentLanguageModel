@@ -401,6 +401,35 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         recommended_seq_len=2048,
         reasoning_tuned=True,
     ),
+    # Mixtral-8x7B-Instruct-v0.1 — Apache-2.0 sparse MoE base.
+    #
+    # HF exposes this as `MixtralForCausalLM`, but the current vendored
+    # llama.cpp converter routes it through the Llama path rather than a
+    # distinct Mixtral architecture class. We therefore keep
+    # `gguf_arch="llama"` while marking the modality as `text-moe` so
+    # DLM's gate substrate can detect the sparse-MoE family explicitly.
+    BaseModelSpec(
+        key="mixtral-8x7b-instruct",
+        hf_id="mistralai/Mixtral-8x7B-Instruct-v0.1",
+        # Placeholder SHA: format-valid, not a real HF commit. The
+        # weekly `scripts/refresh-registry.py --check` run surfaces
+        # drift and prints the live value for manual review.
+        revision="bc0deffedcba0987654321abc2d3e4f5a6b7c8d9",
+        architecture="MixtralForCausalLM",
+        params=46_700_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="mistral",
+        gguf_arch="llama",
+        tokenizer_pre="llama-bpe",
+        license_spdx="Apache-2.0",
+        license_url="https://huggingface.co/mistralai/Mixtral-8x7B-Instruct-v0.1",
+        requires_acceptance=False,
+        redistributable=True,
+        size_gb_fp16=93.4,
+        context_length=32_768,
+        recommended_seq_len=2048,
+        modality="text-moe",
+    ),
     # Mistral Small 3.1 24B Instruct — Apache-2.0 multimodal base with
     # native vision support and 128k context.
     #

@@ -61,6 +61,7 @@ class TestInferGgufArch:
             ("Qwen2ForCausalLM", "qwen2"),
             ("Qwen3ForCausalLM", "qwen3"),
             ("MistralForCausalLM", "llama"),
+            ("MixtralForCausalLM", "llama"),
             ("Phi3ForCausalLM", "phi3"),
             ("GemmaForCausalLM", "gemma"),
             ("Gemma2ForCausalLM", "gemma2"),
@@ -86,6 +87,7 @@ class TestInferTemplate:
             ("microsoft/Phi-4-mini-reasoning", "Phi3ForCausalLM", "phi4mini"),
             ("microsoft/Phi-3.5-mini-instruct", "Phi3ForCausalLM", "phi3"),
             ("mistralai/Mistral-7B-Instruct", "MistralForCausalLM", "mistral"),
+            ("mistralai/Mixtral-8x7B-Instruct-v0.1", "MixtralForCausalLM", "mistral"),
             ("Qwen/Qwen2.5-1.5B-Instruct", "Qwen2ForCausalLM", "chatml"),
         ],
     )

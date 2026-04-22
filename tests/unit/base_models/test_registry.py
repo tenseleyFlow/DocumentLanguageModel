@@ -75,6 +75,7 @@ class TestLicenseFields:
             "qwen3-1.7b",
             "qwen3-4b",
             "qwen3-8b",
+            "mixtral-8x7b-instruct",
             "smollm3-3b",
             "olmo-2-7b-instruct",
             "smollm2-135m",

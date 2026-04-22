@@ -238,6 +238,7 @@ def _infer_gguf_arch(architecture: str) -> str:
         "Qwen2ForCausalLM": "qwen2",
         "Qwen3ForCausalLM": "qwen3",
         "MistralForCausalLM": "llama",
+        "MixtralForCausalLM": "llama",
         "Phi3ForCausalLM": "phi3",
         "GemmaForCausalLM": "gemma",
         "Gemma2ForCausalLM": "gemma2",
@@ -260,7 +261,7 @@ def _infer_template(hf_id: str, architecture: str) -> TemplateDialect:
         return "phi4mini"
     if architecture.startswith("Phi"):
         return "phi3"
-    if architecture.startswith("Mistral"):
+    if architecture.startswith(("Mistral", "Mixtral")):
         return "mistral"
     return "chatml"
 
