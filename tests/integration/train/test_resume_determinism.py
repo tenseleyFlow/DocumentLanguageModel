@@ -54,7 +54,8 @@ def _train_once(home: Path, *, max_steps: int, mode: str) -> float:
     parsed = parse_file(doc)
     spec = resolve_base_model(parsed.frontmatter.base_model)
     plan = doctor().plan
-    assert plan is not None, "determinism test needs a viable plan"
+    if plan is None:
+        pytest.skip("no viable plan on this host — determinism test needs a real trainer")
 
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()

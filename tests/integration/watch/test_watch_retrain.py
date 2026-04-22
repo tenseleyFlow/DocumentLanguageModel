@@ -57,7 +57,8 @@ def test_watch_cycle_detects_new_content_and_retrains(  # pragma: no cover - slo
     parsed = parse_file(doc_path)
     spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
     plan = doctor(training_config=parsed.frontmatter.training).plan
-    assert plan is not None
+    if plan is None:
+        pytest.skip("no viable plan on this host — watch retrain needs a real trainer")
 
     result = do_one_cycle(
         doc_path=doc_path,
