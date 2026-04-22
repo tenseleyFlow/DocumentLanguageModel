@@ -1,4 +1,4 @@
-"""Baseline (v1) pack-format migrator — identity shim (Sprint 14).
+"""Baseline (v1) pack-format migrator — identity shim.
 
 At launch, `CURRENT_PACK_FORMAT_VERSION = 1`. The first *real* migrator
 will be `v2.py` when the pack layout bumps (new subdirectories, schema
@@ -26,6 +26,6 @@ def migrate(root: Path) -> Path:
 
     Reserved for the first pack-format bump. Until then the unpacker
     never invokes this; it's part of the public surface so future
-    sprints can point downstream migrators at the same shape.
+    migrators can point downstream at the same shape.
     """
     return root

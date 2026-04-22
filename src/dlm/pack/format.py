@@ -1,4 +1,4 @@
-"""Pydantic models for `.dlm.pack` header + file manifest (Sprint 14).
+"""Pydantic models for `.dlm.pack` header + file manifest.
 
 Two models:
 
@@ -40,7 +40,7 @@ class PackHeader(BaseModel):
 
     `licensee_acceptance_url` is populated only when `--include-base`
     was used on a `BaseModelSpec.redistributable=False` model — evidence
-    that the packer-user has separate acceptance. `dlm push` (Sprint 28)
+    that the packer-user has separate acceptance. `dlm push`
     refuses redistributable=False packs regardless of this field since
     HF redistribution is the problem, not licensing paperwork.
     """
@@ -50,7 +50,7 @@ class PackHeader(BaseModel):
     # Pack format version 1 is the floor; the migrations framework
     # (`dlm.pack.migrations`) bridges v1 → vN for future bumps. The
     # `ge=1` constraint here means no v0 pack can ever reach the
-    # migrator — that's deliberate (audit-05 N8): v0 predated the
+    # migrator — that's deliberate: v0 predated the
     # format we ship, so there's nothing to migrate from.
     pack_format_version: int = Field(..., ge=1)
     created_at: datetime

@@ -1,4 +1,4 @@
-"""In-pack directory layout + required entries (Sprint 14).
+"""In-pack directory layout + required entries.
 
 All filenames + directory prefixes live here so the packer, unpacker,
 and integrity module share one source of truth. Changes here are

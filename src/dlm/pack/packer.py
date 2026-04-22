@@ -1,4 +1,4 @@
-"""Assemble a `.dlm.pack` tarball (Sprint 14).
+"""Assemble a `.dlm.pack` tarball.
 
 Public entry: `pack(dlm_path, *, out, include_exports, include_base,
 include_logs, licensee_acceptance_url)` → `Path`.
@@ -18,9 +18,9 @@ Flow:
 `include_base` on a `BaseModelSpec.redistributable=False` spec
 refuses unless `licensee_acceptance_url` is supplied; the URL goes
 into `PackHeader.licensee_acceptance_url` so `dlm show` of the pack
-(future) can surface the provenance. Audit F21.
+(future) can surface the provenance.
 
-Pack-local zstd discipline (audit F18): the outer stream is zstd-10,
+Pack-local zstd discipline: the outer stream is zstd-10,
 but individual pre-compressed blobs inside the store (`replay/
 corpus.zst`, `*.gguf`) are already compressed — recompressing them
 wastes CPU and inflates output. We let the outer stream pass them
@@ -103,7 +103,7 @@ def pack(
     manifest = load_manifest(store.manifest)
 
     # Gate: `--include-base` on non-redistributable specs without
-    # a licensee URL refuses (audit F21).
+    # a licensee URL refuses.
     spec = BASE_MODELS.get(manifest.base_model)
     if (
         include_base
@@ -158,7 +158,7 @@ def pack(
         # across hosts and invocations. Rolling them into the content
         # hash would make two packs of identical user content produce
         # different rollups and defeat byte-identical reproducibility
-        # (audit-04 B5). CHECKSUMS.sha256 still covers the header file
+        # across invocations. CHECKSUMS.sha256 still covers the header file
         # for tamper detection.
         content_checksums = {k: v for k, v in checksums.items() if k != HEADER_FILENAME}
         manifest_model = PackManifest(
@@ -192,7 +192,7 @@ def _platform_hint(detect_backend: Callable[[], Any] | None = None) -> str:
 
     `sys.platform` collapses both "CUDA Linux" and "CPU-only Linux" to
     `"linux"`, which loses the information `dlm doctor` on the receiving
-    host most needs: can this host reasonably resume training? Audit-04
+    host most needs: can this host reasonably resume training?
     N2. Falls back to `sys.platform` if the hardware detector can't be
     imported (packaging context without torch installed), and to
     `"unknown"` when backend detection itself errors. `detect_backend`
@@ -220,7 +220,7 @@ def _content_type(*, include_base: bool, include_exports: bool, include_logs: bo
     move the label — a pack with only `include_logs=True` is still
     `"minimal"` for consumers. `include_logs` is accepted + ignored
     so the signature stays call-site-symmetric with the other flags
-    (audit-05 N9).
+    at the call sites.
     """
     del include_logs
     if include_base and include_exports:
@@ -276,7 +276,7 @@ def _normalize_tarinfo(info: tarfile.TarInfo) -> tarfile.TarInfo:
 
     Default `TarInfo` carries the file's `mtime`, owner `uid/gid/uname/
     gname` — all of which vary across hosts and invocations. For
-    byte-identical packs (audit-04 B5), we zero them and pin `mode` to
+    byte-identical packs, we zero them and pin `mode` to
     a canonical 0o644 (files) / 0o755 (dirs). Content bytes stay
     intact; only the tar entry *header* is normalized.
     """

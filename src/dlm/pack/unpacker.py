@@ -1,4 +1,4 @@
-"""Install a `.dlm.pack` into the local store (Sprint 14).
+"""Install a `.dlm.pack` into the local store.
 
 Public entry: `unpack(pack_path, *, home, force, out_dir)` → `Path`
 (the restored `.dlm` file).
@@ -8,7 +8,7 @@ Flow:
 1. Decompress the zstd stream + untar into a temp staging directory.
 2. Assert layout — every entry in `REQUIRED_ENTRIES` is present.
 3. Verify `CHECKSUMS.sha256` against file contents (tamper/corruption
-   gate — audit F27).
+   gate).
 4. Read `PACK_HEADER.json`; refuse versions newer than this tool
    supports; migrate older-but-known versions via
    `dlm.pack.migrations.dispatch.apply_pending`.
@@ -114,7 +114,7 @@ def unpack(
         target_store.parent.mkdir(parents=True, exist_ok=True)
         # Atomic-swap install: stage the old store out of the way first
         # so an interrupted move doesn't leave the caller with "no store
-        # at all" (audit-04 B6). `.old-<pid>` isolates concurrent
+        # at all". `.old-<pid>` isolates concurrent
         # unpacks and keeps the original recoverable on step-2 failure.
         quarantine: Path | None = None
         if target_store.exists():
@@ -201,7 +201,7 @@ def read_pack_member_bytes(pack_path: Path, member_name: str) -> bytes | None:
 def _extract_tar_zstd(pack_path: Path, staging: Path) -> None:
     """Stream-decompress the pack's zstd+tar into `staging/` under DoS bounds.
 
-    Three defenses (audit-04 B7):
+    Three defenses:
 
     1. `max_window_size` on the zstd decompressor — refuses streams
        that claim to need > 512 MiB decompression state.
@@ -219,7 +219,7 @@ def _extract_tar_zstd(pack_path: Path, staging: Path) -> None:
     # First pass: defense-in-depth name scan + size bounds. `tarfile`
     # iterates once so we open a fresh reader below to actually extract.
     total_size = 0
-    # Audit-05 M5: refuse duplicate member names. `tar.extractall`
+    # Refuse duplicate member names. `tar.extractall`
     # silently overwrites later-with-earlier duplicates, so an attacker
     # who repacks could inject a second `store/manifest.json` that slips
     # past the CHECKSUMS verify (we compute over the final on-disk bytes,

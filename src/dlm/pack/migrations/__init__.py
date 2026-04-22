@@ -1,6 +1,6 @@
-"""Pack-format migrations (Sprint 14, audit F27).
+"""Pack-format migrations.
 
-Independent of Sprint 12b's `dlm.doc.migrations` — this registry
+Independent of `dlm.doc.migrations` — this registry
 targets `pack_format_version` (the `.dlm.pack` container shape),
 not `dlm_version` (the `.dlm` frontmatter schema). The contract is
 identical in structure so the two read the same way.

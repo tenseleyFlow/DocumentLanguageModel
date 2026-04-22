@@ -1,4 +1,4 @@
-"""Portable `.dlm.pack` bundles — pack + unpack (Sprint 14).
+"""Portable `.dlm.pack` bundles — pack + unpack.
 
 One `.dlm` + its store compressed into a single file for sharing,
 backup, and reproducibility. The container is a zstd-compressed tarball

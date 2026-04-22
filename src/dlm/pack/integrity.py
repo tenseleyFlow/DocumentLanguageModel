@@ -1,4 +1,4 @@
-"""Per-file sha256 integrity for `.dlm.pack` (Sprint 14).
+"""Per-file sha256 integrity for `.dlm.pack`.
 
 Two pure functions:
 
@@ -16,7 +16,7 @@ rollups (sorted by relpath, newline-joined).
 Heavy: chunks files at 1 MB to cap memory on large GGUFs. The outer
 pack tar is zstd-compressed but the individual files on-disk during
 pack assembly are uncompressed (the packer streams pre-compressed
-blobs without re-compression — audit F18).
+blobs without re-compression).
 """
 
 from __future__ import annotations

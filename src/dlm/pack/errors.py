@@ -1,7 +1,7 @@
-"""Typed errors for the `.dlm.pack` pipeline (Sprint 14).
+"""Typed errors for the `.dlm.pack` pipeline.
 
 Each error class maps to a distinct CLI remediation message so the
-reporter (`dlm.cli.reporter` from Sprint 13) can route them to useful
+reporter (`dlm.cli.reporter`) can route them to useful
 one-liners without scraping exception text.
 """
 
@@ -58,8 +58,8 @@ class PackLayoutError(PackError):
 class BaseLicenseRefusedError(PackError):
     """`pack --include-base` on a non-redistributable spec without the licensee flag.
 
-    Sprint 12b's `BaseModelSpec.redistributable=False` gate: the user
-    must pass `--i-am-the-licensee <url>` acknowledging they have
+    The `BaseModelSpec.redistributable=False` gate requires the user to
+    pass `--i-am-the-licensee <url>` acknowledging they have
     separate acceptance with the upstream, and the URL is recorded in
     the pack header for provenance. Refusal message includes the
     license_url from the spec.
