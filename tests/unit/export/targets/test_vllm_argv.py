@@ -60,6 +60,7 @@ class TestPrepareVllmExport:
             store=store,
             spec=_SPEC,
             served_model_name="dlm-flat",
+            training_sequence_len=2048,
             adapter_name=None,
             adapter_path_override=None,
             declared_adapter_names=None,
@@ -80,6 +81,7 @@ class TestPrepareVllmExport:
         assert _SPEC.hf_id in script
         assert "--revision" in script
         assert "--served-model-name dlm-flat" in script
+        assert "--max-model-len 2048" in script
         assert 'adapter="$SCRIPT_DIR/adapters/adapter"' in script
 
         config = json.loads(
@@ -88,6 +90,7 @@ class TestPrepareVllmExport:
         assert config["target"] == "vllm"
         assert config["model"] == _SPEC.hf_id
         assert config["served_model_name"] == "dlm-flat"
+        assert config["max_model_len"] == 2048
         assert config["lora_modules"] == [
             {"adapter_version": 3, "name": "adapter", "path": "adapters/adapter"}
         ]
@@ -116,39 +119,74 @@ class TestPrepareVllmExport:
             store=store,
             spec=_SPEC,
             served_model_name="dlm-multi",
+            training_sequence_len=4096,
             adapter_name=None,
             adapter_path_override=None,
             declared_adapter_names=("knowledge", "tone"),
         )
 
         script = prepared.launch_script_path.read_text(encoding="utf-8")
+        assert "--max-model-len 4096" in script
         assert 'knowledge="$SCRIPT_DIR/adapters/knowledge"' in script
         assert 'tone="$SCRIPT_DIR/adapters/tone"' in script
 
         config = json.loads(
             (prepared.export_dir / VLLM_CONFIG_FILENAME).read_text(encoding="utf-8")
         )
+        assert config["max_model_len"] == 4096
         assert config["lora_modules"] == [
             {"adapter_version": 2, "name": "knowledge", "path": "adapters/knowledge"},
             {"adapter_version": 4, "name": "tone", "path": "adapters/tone"},
         ]
 
+    def test_apple_silicon_export_records_conservative_runtime_env(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        store = _setup_flat_store(tmp_path)
+        monkeypatch.setattr("dlm.export.targets.vllm._sys_platform", lambda: "darwin")
+        monkeypatch.setattr("dlm.export.targets.vllm._machine", lambda: "arm64")
+
+        prepared = prepare_vllm_export(
+            store=store,
+            spec=_SPEC,
+            served_model_name="dlm-flat",
+            training_sequence_len=2048,
+            adapter_name=None,
+            adapter_path_override=None,
+            declared_adapter_names=None,
+        )
+
+        script = prepared.launch_script_path.read_text(encoding="utf-8")
+        assert "export VLLM_METAL_USE_PAGED_ATTENTION=0" in script
+        assert "export VLLM_METAL_MEMORY_FRACTION=auto" in script
+
+        config = json.loads(
+            (prepared.export_dir / VLLM_CONFIG_FILENAME).read_text(encoding="utf-8")
+        )
+        assert config["environment"] == {
+            "VLLM_METAL_MEMORY_FRACTION": "auto",
+            "VLLM_METAL_USE_PAGED_ATTENTION": "0",
+        }
+
 
 class TestVllmSmoke:
     def test_smoke_uses_absolute_runtime_paths(self, tmp_path: Path, monkeypatch: object) -> None:
         store = _setup_named_store(tmp_path)
+        monkeypatch.setattr("dlm.export.targets.vllm._sys_platform", lambda: "darwin")
+        monkeypatch.setattr("dlm.export.targets.vllm._machine", lambda: "arm64")
         prepared = prepare_vllm_export(
             store=store,
             spec=_SPEC,
             served_model_name="dlm-multi",
+            training_sequence_len=2048,
             adapter_name=None,
             adapter_path_override=None,
             declared_adapter_names=("knowledge", "tone"),
         )
-        seen: list[list[str]] = []
+        seen: list[tuple[list[str], object]] = []
 
-        def _fake_smoke(argv: list[str], **_: object) -> str:
-            seen.append(list(argv))
+        def _fake_smoke(argv: list[str], **kwargs: object) -> str:
+            seen.append((list(argv), kwargs.get("env")))
             return "vllm replied"
 
         monkeypatch.setattr("dlm.export.targets.vllm.smoke_openai_compat_server", _fake_smoke)
@@ -158,9 +196,15 @@ class TestVllmSmoke:
         assert result.attempted is True
         assert result.ok is True
         assert result.detail == "vllm replied"
-        argv = seen[0]
+        argv, env = seen[0]
         assert argv[:2] == ["vllm", "serve"]
         assert "$SCRIPT_DIR" not in " ".join(argv)
         assert _SPEC.hf_id in argv
+        assert "--max-model-len" in argv
+        assert "2048" in argv
+        assert env == {
+            "VLLM_METAL_MEMORY_FRACTION": "auto",
+            "VLLM_METAL_USE_PAGED_ATTENTION": "0",
+        }
         assert f"knowledge={prepared.export_dir / 'adapters' / 'knowledge'}" in argv
         assert f"tone={prepared.export_dir / 'adapters' / 'tone'}" in argv

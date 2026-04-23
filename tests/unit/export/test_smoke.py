@@ -26,6 +26,7 @@ def _write_server_script(tmp_path: Path, *, mode: str) -> Path:
         (
             "from __future__ import annotations\n"
             "import argparse\n"
+            "import os\n"
             "import json\n"
             "from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n"
             "\n"
@@ -37,6 +38,8 @@ def _write_server_script(tmp_path: Path, *, mode: str) -> Path:
             "\n"
             "if args.mode == 'exit':\n"
             "    raise SystemExit(3)\n"
+            "if args.mode == 'env' and os.environ.get('FAKE_SMOKE_TOKEN') != 'ready':\n"
+            "    raise SystemExit(4)\n"
             "\n"
             "class Handler(BaseHTTPRequestHandler):\n"
             "    def do_GET(self) -> None:\n"
@@ -126,3 +129,14 @@ class TestSmokeOpenAiCompatServer:
                 ],
                 startup_timeout=1.0,
             )
+
+    def test_passes_environment_to_subprocess(self, tmp_path: Path) -> None:
+        _require_loopback_bind()
+        script = _write_server_script(tmp_path, mode="env")
+
+        first_line = smoke_openai_compat_server(
+            [sys.executable, str(script), "--mode", "env", "--host", "127.0.0.1", "--port", "8000"],
+            env={"FAKE_SMOKE_TOKEN": "ready"},
+        )
+
+        assert first_line == "hello from fake server"

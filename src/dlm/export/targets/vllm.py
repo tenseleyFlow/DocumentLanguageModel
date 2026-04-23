@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import platform
 import shlex
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from dlm.base_models import BaseModelSpec
 from dlm.export.errors import ExportError, TargetSmokeError
 from dlm.export.manifest import ExportManifest, build_artifact, save_export_manifest, utc_now
+from dlm.export.ollama.modelfile_shared import resolve_num_ctx
 from dlm.export.record import append_export_summary
 from dlm.export.smoke import smoke_openai_compat_server
 from dlm.export.targets.base import ExportTarget, SmokeResult, TargetResult
@@ -46,7 +49,10 @@ class VllmTarget:
 
     def smoke_test(self, prepared: TargetResult) -> SmokeResult:
         try:
-            first_line = smoke_openai_compat_server(_build_command(prepared, use_script_dir=False))
+            first_line = smoke_openai_compat_server(
+                _build_command(prepared, use_script_dir=False),
+                env=_runtime_env(prepared),
+            )
         except (OSError, TargetSmokeError, ExportError) as exc:
             return SmokeResult(attempted=True, ok=False, detail=str(exc))
         return SmokeResult(attempted=True, ok=True, detail=first_line)
@@ -57,6 +63,7 @@ def prepare_vllm_export(
     store: StorePath,
     spec: BaseModelSpec,
     served_model_name: str,
+    training_sequence_len: int | None,
     adapter_name: str | None,
     adapter_path_override: Path | None,
     declared_adapter_names: tuple[str, ...] | None,
@@ -81,6 +88,8 @@ def prepare_vllm_export(
     if not modules:
         raise ExportError("vllm export needs at least one adapter module")
 
+    context_length = resolve_num_ctx(training_sequence_len, spec.context_length)
+    runtime_env = _default_runtime_env()
     config_path = export_dir / VLLM_CONFIG_FILENAME
     launch_script_path = export_dir / LAUNCH_SCRIPT_FILENAME
     draft = TargetResult(
@@ -96,10 +105,15 @@ def prepare_vllm_export(
             "served_model_name": served_model_name,
             "module_specs": tuple(modules),
             "adapter_version": max(module.adapter_version for module in modules),
+            "context_length": context_length,
+            "runtime_env": runtime_env,
         },
     )
     write_text(config_path, _render_config(draft))
-    write_text(launch_script_path, _render_launch_script(VLLM_TARGET.launch_command(draft)))
+    write_text(
+        launch_script_path,
+        _render_launch_script(VLLM_TARGET.launch_command(draft), _runtime_env(draft)),
+    )
     launch_script_path.chmod(0o755)
     return TargetResult(
         name=draft.name,
@@ -262,6 +276,7 @@ def _build_command(prepared: TargetResult, *, use_script_dir: bool) -> list[str]
     revision = _require_prepared_str(prepared, "revision")
     served_model_name = _require_prepared_str(prepared, "served_model_name")
     modules = _require_module_specs(prepared)
+    context_length = _optional_prepared_int(prepared, "context_length")
 
     command = [
         "vllm",
@@ -278,6 +293,8 @@ def _build_command(prepared: TargetResult, *, use_script_dir: bool) -> list[str]
         "--served-model-name",
         served_model_name,
     ]
+    if context_length is not None:
+        command.extend(["--max-model-len", str(context_length)])
     if modules:
         command.extend(["--enable-lora", "--lora-modules"])
         for module in modules:
@@ -300,6 +317,8 @@ def _render_config(prepared: TargetResult) -> str:
         "dtype": "auto",
         "host": "127.0.0.1",
         "port": 8000,
+        "max_model_len": _optional_prepared_int(prepared, "context_length"),
+        "environment": _runtime_env(prepared),
         "lora_modules": [
             {
                 "name": module.name,
@@ -312,12 +331,16 @@ def _render_config(prepared: TargetResult) -> str:
     return json.dumps(payload, sort_keys=True, indent=2) + "\n"
 
 
-def _render_launch_script(command: list[str]) -> str:
+def _render_launch_script(command: list[str], runtime_env: dict[str, str]) -> str:
     rendered = " ".join(_quote_script_arg(arg) for arg in command)
+    env_lines = "".join(
+        f"export {name}={shlex.quote(value)}\n" for name, value in runtime_env.items()
+    )
     return (
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         'SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"\n'
+        f"{env_lines}"
         f'exec {rendered} "$@"\n'
     )
 
@@ -331,6 +354,42 @@ def _quote_script_arg(arg: str) -> str:
     return shlex.quote(arg)
 
 
+def _default_runtime_env() -> dict[str, str]:
+    if not _is_darwin_arm64():
+        return {}
+    # vllm-metal's MLX KV path is the documented low-risk mode on
+    # Apple Silicon. The paged-attention path is still experimental
+    # and `auto` can expand to a 0.9 memory fraction there, which
+    # proved aggressive enough to destabilize local smoke runs.
+    return {
+        "VLLM_METAL_USE_PAGED_ATTENTION": "0",
+        "VLLM_METAL_MEMORY_FRACTION": "auto",
+    }
+
+
+def _runtime_env(prepared: TargetResult) -> dict[str, str]:
+    value = prepared.extras.get("runtime_env")
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or not all(
+        isinstance(key, str) and isinstance(item, str) for key, item in value.items()
+    ):
+        raise ExportError("vllm prepared target extra 'runtime_env' must be dict[str, str]")
+    return dict(value)
+
+
+def _is_darwin_arm64() -> bool:
+    return _sys_platform() == "darwin" and _machine() == "arm64"
+
+
+def _sys_platform() -> str:
+    return sys.platform
+
+
+def _machine() -> str:
+    return platform.machine()
+
+
 def _require_prepared_str(prepared: TargetResult, key: str) -> str:
     value = prepared.extras.get(key)
     if not isinstance(value, str) or not value:
@@ -342,6 +401,15 @@ def _require_prepared_int(prepared: TargetResult, key: str) -> int:
     value = prepared.extras.get(key)
     if not isinstance(value, int):
         raise ExportError(f"vllm prepared target missing int extra {key!r}")
+    return value
+
+
+def _optional_prepared_int(prepared: TargetResult, key: str) -> int | None:
+    value = prepared.extras.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int):
+        raise ExportError(f"vllm prepared target extra {key!r} must be an int")
     return value
 
 

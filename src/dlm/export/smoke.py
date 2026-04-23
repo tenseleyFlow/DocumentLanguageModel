@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess  # nosec B404
 import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TextIO
 
 from dlm.export.errors import TargetSmokeError
@@ -33,6 +34,7 @@ def smoke_openai_compat_server(
     *,
     host: str = _DEFAULT_HOST,
     port: int | None = None,
+    env: Mapping[str, str] | None = None,
     startup_timeout: float = _DEFAULT_STARTUP_TIMEOUT_SECONDS,
     request_timeout: float = _DEFAULT_REQUEST_TIMEOUT_SECONDS,
     poll_interval: float = _DEFAULT_POLL_INTERVAL_SECONDS,
@@ -50,6 +52,7 @@ def smoke_openai_compat_server(
             stdout=log,
             stderr=subprocess.STDOUT,
             text=True,
+            env=_merged_env(env),
         )
         try:
             model_id = _wait_for_models(
@@ -226,3 +229,11 @@ def _log_tail(log: TextIO, *, lines: int = 20) -> str:
         return ""
     tail = "\n".join(text.splitlines()[-lines:])
     return f"\n--- server log tail ---\n{tail}"
+
+
+def _merged_env(env: Mapping[str, str] | None) -> dict[str, str]:
+    if env is None:
+        return dict(os.environ)
+    merged = dict(os.environ)
+    merged.update(env)
+    return merged

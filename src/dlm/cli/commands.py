@@ -1921,6 +1921,7 @@ def export_cmd(
                 store=store,
                 spec=spec,
                 served_model_name=name or f"dlm-{parsed.frontmatter.dlm_id.lower()}",
+                training_sequence_len=parsed.frontmatter.training.sequence_len,
                 adapter_name=adapter,
                 adapter_path_override=adapter_path_override,
                 declared_adapter_names=declared_adapter_names,
