@@ -1,4 +1,4 @@
-# Multi-modal training (images + PaliGemma)
+# Multi-modal training (images + VL bases)
 
 Sprint 35 v1 adds image sections to `.dlm` files. This recipe walks a
 paper-figure corpus end-to-end: scaffold → drop images → train →
@@ -28,7 +28,7 @@ drop real images into that path before the first train).
 
 ### Picking a different VL base
 
-Three VL bases ship in the registry as of Sprint 35.3:
+Four VL bases ship in the registry today:
 
 ```bash
 # Permissive + Apache-2.0 + strong general-purpose VL (pinned 672²):
@@ -36,6 +36,9 @@ dlm init my-diagrams.dlm --multimodal --base qwen2-vl-2b-instruct
 
 # MIT-licensed, smallest per-image footprint (448²):
 dlm init my-diagrams.dlm --multimodal --base internvl2-2b
+
+# Largest-capability VL row, CUDA-first (pinned 1540²):
+dlm init my-diagrams.dlm --multimodal --base mistral-small-3.1-24b-instruct
 
 # Default — Gemma license gate, cleanest PEFT path (224²):
 dlm init my-diagrams.dlm --multimodal --i-accept-license
@@ -46,8 +49,11 @@ VRAM table (inference / LoRA bs=1 / LoRA bs=4 per base) and the
 base-selection matrix. **Heads-up on InternVL2**: its HF class
 lives in the model repo (`modeling_internvl_chat.py`), so picking
 that base activates `trust_remote_code=True` at load time. The
-other two VL bases don't. Pick InternVL2 intentionally if you've
-read the repo's code.
+other three VL bases don't. Pick InternVL2 intentionally if you've
+read the repo's code. **Heads-up on Mistral Small 3.1**: it is a real
+VL registry row now, but it is intentionally treated as a large-CUDA-
+first base. `dlm doctor` refuses it on Apple Silicon by default unless
+you explicitly pass `--force` on a large-memory host.
 
 ## Step 2 — Author image sections
 
@@ -129,8 +135,9 @@ coverage of the base's arch class and routes to one of three paths:
   GGUF + an Ollama-compatible Modelfile once the single-file VL
   emission hook lands in dlm. Today the dispatcher falls through to
   HF-snapshot with a banner noting the status. Of the three
-  registered VL bases, only **qwen2-vl-2b-instruct** is SUPPORTED at
-  the current vendored tag.
+  registered VL bases, **qwen2-vl-2b-instruct** and
+  **mistral-small-3.1-24b-instruct** are SUPPORTED at the current
+  vendored tag.
 - **PARTIAL** — the arch is registered only on an `MmprojModel`
   subclass; the vision tower converts but no single-file GGUF covers
   the full VL model. Falls back to HF-snapshot with a PARTIAL banner.
@@ -201,6 +208,10 @@ text content needs an image to anchor the placeholder.
 PaliGemma + batch=1 fits on 16 GB but leaves little headroom for
 background processes. Close your browser, VS Code, etc. For
 persistent OOM, swap to CUDA (VL QLoRA is a planned follow-up).
+
+If you're trying `mistral-small-3.1-24b-instruct`, this is expected to
+be much stricter: the current planner refuses that base on Apple
+Silicon by default unless you pass `--force` on a large-memory host.
 
 ## Known limitations
 

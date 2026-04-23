@@ -1,10 +1,12 @@
 # Vision-language memory budget
 
-Three VL bases ship after Sprint 35.3: **PaliGemma-3B-mix-224**,
-**Qwen2-VL-2B-Instruct**, and **InternVL2-2B**. Each is pinned at a
-fixed preprocessing resolution; dynamic-resolution support (Qwen2-VL's
-native capability) is deferred to a follow-up so the
-`VlPreprocessorPlan` cache key stays stable.
+Four VL bases now ship in the registry: **PaliGemma-3B-mix-224**,
+**Qwen2-VL-2B-Instruct**, **InternVL2-2B**, and
+**Mistral-Small-3.1-24B-Instruct-2503**. Each is pinned at a fixed
+preprocessing resolution; dynamic-resolution support (Qwen2-VL's
+native capability, and Mistral Small 3.1's longer-edge policy) is
+deferred to a follow-up so the `VlPreprocessorPlan` cache key stays
+stable.
 
 ## Base-selection guidance
 
@@ -13,6 +15,7 @@ native capability) is deferred to a follow-up so the
 | paligemma-3b-mix-224      | Gemma (gated) | The cleanest PEFT path + proven chart/doc QA; accept the Gemma license first. |
 | qwen2-vl-2b-instruct      | Apache-2.0 | Permissive licensing + strong general-purpose VL; dynamic-res is capped to 672² in v1 but native runtime supports more. |
 | internvl2-2b              | MIT        | Most permissive license + competitive 2B-scale quality; **loader caveat** (InternVLChatModel uses trust_remote_code). |
+| mistral-small-3.1-24b-instruct | Apache-2.0 | Highest-capability VL row in the registry today; targets large CUDA boxes first and is refused on MPS by default unless you explicitly force it. |
 
 ## PaliGemma-3B-mix-224 (224×224, fp16)
 
@@ -84,6 +87,26 @@ base in a `.dlm` frontmatter is the user's informed acknowledgment:
 the other two VL bases ship their class in transformers itself and
 do NOT set `trust_remote_code`.
 
+## Mistral Small 3.1 24B Instruct (pinned 1540×1540, fp16)
+
+Mistral Small 3.1 is the heavyweight VL row: Apache-2.0, 24B
+parameters, and a pinned 1540×1540 preprocessing plan that expands to
+3025 image tokens per image. The registry records it honestly as a
+vision-language base rather than the older text-only sprint draft.
+
+**Floor.** Treat this as a large-CUDA-first base. A 48 GB fp16 weight
+copy leaves very little slack for training-time activations, so the
+default path is:
+
+- **CUDA 48 GB+** for serious LoRA work.
+- **Apple Silicon** only on very large unified-memory hosts, and even
+  there `dlm doctor` now refuses it by default unless you pass
+  `--force`.
+
+This is a deliberate policy refusal, not a tokenizer/export mismatch:
+the base is supported in the registry and on the VL GGUF path, but it
+is too large to present as a routine MPS training target.
+
 ## llama.cpp GGUF support matrix (sprint 35.4)
 
 `dlm.export.arch_probe` scans the vendored `convert_hf_to_gguf.py`
@@ -93,6 +116,7 @@ by `scripts/bump-llama-cpp.sh bump <tag>`):
 
 | Base                      | Arch class                          | GGUF support |
 |---------------------------|-------------------------------------|:-------------|
+| mistral-small-3.1-24b-instruct | Mistral3ForConditionalGeneration | SUPPORTED    |
 | paligemma-3b-mix-224      | PaliGemmaForConditionalGeneration   | UNSUPPORTED  |
 | qwen2-vl-2b-instruct      | Qwen2VLForConditionalGeneration     | SUPPORTED    |
 | internvl2-2b              | InternVLChatModel                   | UNSUPPORTED  |
@@ -102,11 +126,8 @@ with an actionable banner. **SUPPORTED** means single-file VL GGUF
 emission runs: `dlm export --merged --quant Q4_K_M` orchestrates merge
 → `convert_hf_to_gguf.py` → `llama-quantize` → render a Modelfile with
 `FROM ./base.<quant>.gguf` (no `ADAPTER` line — merged-only at this
-upstream tag). Qwen2-VL's vision tower is dropped by the converter
-and runs through Ollama's preprocessor path instead of an mmproj
-sidecar, so `mmproj_path` is `null` in the export manifest; a future
-tag that changes this would add a sidecar without breaking the
-single-file contract. Emission is refused (with fallback to
+upstream tag). At the pinned vendored tag, both Qwen2-VL and Mistral
+Small 3.1 fall into this path. Emission is refused (with fallback to
 HF-snapshot) when `--merged` is absent or `--imatrix` is not `off` —
 the replay corpus is text-only and would mis-weight vision-adjacent
 quant stats. **PARTIAL** (not yet seen for any registered base) would
@@ -125,6 +146,11 @@ rewrites the support JSON in the same commit.
 - **CUDA hosts with < 12 GB VRAM.** Even LoRA batch=1 OOMs below that
   threshold.
 - **MPS hosts with < 16 GB unified memory.** Same reasoning.
+- **Oversized MPS bases.** Large VL rows like
+  `mistral-small-3.1-24b-instruct` are refused by default on Apple
+  Silicon even on high-memory hosts when the fp16 base alone would
+  consume most unified memory. `--force` is the explicit opt-in for
+  that path.
 
 Override the last two with `--force` if you want to try anyway; the
 first refusal stands.
@@ -141,6 +167,7 @@ with the preprocessing plan:
 | paligemma-3b-mix-224      |     224×224 |        ~0.5 MB  |
 | internvl2-2b              |     448×448 |        ~2.0 MB  |
 | qwen2-vl-2b-instruct      |     672×672 |        ~4.5 MB  |
+| mistral-small-3.1-24b-instruct | 1540×1540 |       ~23.5 MB  |
 
 A 100-image corpus on PaliGemma caches ~50 MB; the same corpus on
 Qwen2-VL caches ~450 MB. Budget accordingly when running many
@@ -154,4 +181,4 @@ changes normalization constants).
 ## Related
 
 - [Multi-modal training cookbook](../cookbook/multimodal-training.md)
-- [Section format reference](../format/sections.md#image-image-path--alt--)
+- [Section format reference](../format/sections.md)

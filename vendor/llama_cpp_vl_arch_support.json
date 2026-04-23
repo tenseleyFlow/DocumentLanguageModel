@@ -1,6 +1,12 @@
 {
   "schema": 1,
   "bases": {
+    "mistral-small-3.1-24b-instruct": {
+      "architecture": "Mistral3ForConditionalGeneration",
+      "support": "SUPPORTED",
+      "llama_cpp_tag": "b8816",
+      "reason": "'Mistral3ForConditionalGeneration' registered on Mistral3Model in llama.cpp tag=b8816; LM converts cleanly via convert_hf_to_gguf.py."
+    },
     "paligemma-3b-mix-224": {
       "architecture": "PaliGemmaForConditionalGeneration",
       "support": "UNSUPPORTED",
