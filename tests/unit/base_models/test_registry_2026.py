@@ -210,3 +210,27 @@ class TestMixtralRegistryEntry:
         assert spec.size_gb_fp16 == pytest.approx(93.4)
         assert spec.context_length == 32_768
         assert spec.recommended_seq_len == 2048
+
+
+class TestStaleSprintDraftRows:
+    def test_qwen3_thinking_is_not_a_separate_registry_row(self) -> None:
+        """Upstream Qwen3-1.7B ships hybrid thinking in one model.
+
+        Sprint 40's draft listed a separate `qwen3-1.7b-thinking`
+        entry, but the live upstream contract exposes thinking mode as
+        a switch on `Qwen/Qwen3-1.7B` itself. Keep the registry honest:
+        reasoning defaults belong on the real base row, not a fake key.
+        """
+        assert "qwen3-1.7b-thinking" not in BASE_MODELS
+
+    def test_internvl3_not_shipped_until_remote_code_contract_is_pinned(self) -> None:
+        """Guard against copying the stale sprint draft into the registry.
+
+        The live `OpenGVLab/InternVL3-2B` model card still documents
+        `trust_remote_code=True`, and its processor path uses dynamic
+        448-pixel tiling rather than the simpler fixed-shape contract we
+        already ship for InternVL2. Adding it later is fine, but it
+        needs an honest row instead of assuming the old "cleaner than
+        InternVL2" sprint note is still true.
+        """
+        assert "internvl3-2b" not in BASE_MODELS
