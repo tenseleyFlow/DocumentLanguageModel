@@ -81,6 +81,10 @@ class UnknownExportTargetError(ExportError):
         self.available = available
 
 
+class TargetSmokeError(ExportError):
+    """A runtime-target smoke check failed to start or answer correctly."""
+
+
 class ProcessorLoadError(ExportError):
     """HF-snapshot export couldn't load the processor for a VL/audio base.
 

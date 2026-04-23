@@ -72,7 +72,7 @@ class TestExportTargetFlag:
         assert result.exit_code == 2
         assert "mutually exclusive" in _joined(result)
 
-    def test_llama_server_requires_no_smoke_for_now(self, tmp_path: Path) -> None:
+    def test_llama_server_target_reaches_existing_mutex_validation(self, tmp_path: Path) -> None:
         runner = CliRunner()
         result = runner.invoke(
             app,
@@ -83,7 +83,12 @@ class TestExportTargetFlag:
                 str(tmp_path / "ghost.dlm"),
                 "--target",
                 "llama-server",
+                "--draft",
+                "qwen2.5:0.5b",
+                "--no-draft",
             ],
         )
         assert result.exit_code == 2
-        assert "--no-smoke" in _joined(result)
+        text = _joined(result)
+        assert "mutually exclusive" in text
+        assert "--no-smoke" not in text

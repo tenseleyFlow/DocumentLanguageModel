@@ -20,8 +20,7 @@ Ollama and `llama-server`.
 **Status:** pre-v1.0, but far beyond the original MVP framing. The core
 author/train/prompt/export/pack/share loop is real, and newer runtime-target
 work is landing incrementally. Current export targets are `ollama` and
-`llama-server` (`llama-server` currently requires `--no-smoke` while the HTTP
-smoke harness lands).
+`llama-server`.
 
 ## What A `.dlm` Actually Is
 

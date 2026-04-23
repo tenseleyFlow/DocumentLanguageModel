@@ -1696,14 +1696,6 @@ def export_cmd(
     except UnknownExportTargetError as exc:
         console.print(f"[red]export:[/red] {exc}")
         raise typer.Exit(code=2) from exc
-    if resolved_target.name == "llama-server" and not no_smoke:
-        console.print(
-            "[red]export:[/red] --target llama-server currently requires "
-            "`--no-smoke`; the HTTP smoke harness lands in a follow-up "
-            "Sprint 41 slice."
-        )
-        raise typer.Exit(code=2)
-
     parsed = parse_file(path)
     adapters_declared = parsed.frontmatter.training.adapters
     if adapter is not None:
@@ -1970,6 +1962,13 @@ def export_cmd(
         except ExportError as exc:
             console.print(f"[red]export:[/red] {exc}")
             raise typer.Exit(code=1) from exc
+        llama_server_smoke = None if no_smoke else resolved_target.smoke_test(llama_server_result)
+        if llama_server_smoke is not None and not llama_server_smoke.ok:
+            console.print(
+                f"[red]smoke:[/red] {llama_server_smoke.detail}\n"
+                "  re-run with `--no-smoke` to skip the smoke test."
+            )
+            raise typer.Exit(code=1)
 
     cached_tag = " [dim](cached base)[/dim]" if result.cached else ""
     console.print(f"[green]exported:[/green] {result.export_dir}{cached_tag}")
@@ -1981,6 +1980,8 @@ def export_cmd(
         console.print(f"target:  {result.target}")
         console.print(f"launch:  {llama_server_result.launch_script_path.name}")
         console.print(f"template: {llama_server_result.config_path.name}")
+        if llama_server_smoke is not None and llama_server_smoke.detail:
+            console.print(f"smoke:   {llama_server_smoke.detail}")
         return
     if result.ollama_name:
         console.print(f"ollama:  {result.ollama_name} (v{result.ollama_version})")

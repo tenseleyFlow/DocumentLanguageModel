@@ -5,19 +5,16 @@ from __future__ import annotations
 import json
 import shlex
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from dlm.base_models import BaseModelSpec
 from dlm.export.dispatch import DispatchResult
-from dlm.export.errors import ExportError
+from dlm.export.errors import ExportError, TargetSmokeError
 from dlm.export.manifest import build_artifact, load_export_manifest, save_export_manifest
 from dlm.export.ollama.modelfile_shared import resolve_num_ctx
+from dlm.export.smoke import smoke_openai_compat_server
 from dlm.export.targets.base import ExportTarget, SmokeResult, TargetResult
 from dlm.export.vendoring import llama_server_bin
 from dlm.io.atomic import write_text
-
-if TYPE_CHECKING:
-    from dlm.base_models import BaseModelSpec
-
 
 CHAT_TEMPLATE_FILENAME = "chat-template.jinja"
 LAUNCH_SCRIPT_FILENAME = "llama-server_launch.sh"
@@ -29,11 +26,13 @@ class LlamaServerTarget:
     name = "llama-server"
 
     def prepare(self, ctx: DispatchResult) -> TargetResult:
-        model_path = _require_path_extra(ctx, "model_path")
         adapter_dir = _require_path_extra(ctx, "adapter_dir")
-        context_length = _require_int_extra(ctx, "context_length")
-        adapter_gguf_path = _optional_path_extra(ctx, "adapter_gguf_path")
+        training_sequence_len = _optional_int_extra(ctx, "training_sequence_len")
+        spec = _require_spec_extra(ctx, "spec")
         vendor_override = _optional_path_extra(ctx, "vendor_override")
+        model_path = _find_artifact(ctx.artifacts, prefix="base.")
+        adapter_gguf_path = _find_optional_artifact(ctx.artifacts, exact_name="adapter.gguf")
+        context_length = resolve_num_ctx(training_sequence_len, spec.context_length)
 
         template_path = ctx.export_dir / CHAT_TEMPLATE_FILENAME
         write_text(template_path, _read_chat_template(adapter_dir))
@@ -84,12 +83,36 @@ class LlamaServerTarget:
         return command
 
     def smoke_test(self, prepared: TargetResult) -> SmokeResult:
-        _ = prepared
-        return SmokeResult(
-            attempted=False,
-            ok=True,
-            detail="llama-server HTTP smoke lands in a follow-up Sprint 41 slice",
-        )
+        try:
+            first_line = smoke_openai_compat_server(self._runtime_command(prepared))
+        except (OSError, TargetSmokeError, ExportError) as exc:
+            return SmokeResult(attempted=True, ok=False, detail=str(exc))
+        return SmokeResult(attempted=True, ok=True, detail=first_line)
+
+    def _runtime_command(self, prepared: TargetResult) -> list[str]:
+        model_path = _require_prepared_path(prepared, "model_path")
+        adapter_gguf_path = _optional_prepared_path(prepared, "adapter_gguf_path")
+        context_length = _require_prepared_int(prepared, "context_length")
+        vendor_override = _optional_prepared_path(prepared, "vendor_override")
+
+        command = [
+            str(llama_server_bin(vendor_override)),
+            "--model",
+            str(model_path),
+            "--api-key",
+            "disabled",
+            "--ctx-size",
+            str(context_length),
+            "--chat-template-file",
+            str(prepared.config_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8000",
+        ]
+        if adapter_gguf_path is not None:
+            command.extend(["--lora", str(adapter_gguf_path)])
+        return command
 
 
 def prepare_llama_server_export(
@@ -104,19 +127,15 @@ def prepare_llama_server_export(
 ) -> TargetResult:
     """Build launch artifacts for a text GGUF export."""
 
-    model_path = _find_artifact(artifacts, prefix="base.")
-    adapter_gguf_path = _find_optional_artifact(artifacts, exact_name="adapter.gguf")
-    context_length = resolve_num_ctx(training_sequence_len, spec.context_length)
     ctx = DispatchResult(
         export_dir=export_dir,
         manifest_path=manifest_path,
         artifacts=list(artifacts),
         banner_lines=[],
         extras={
-            "model_path": model_path,
             "adapter_dir": adapter_dir,
-            "adapter_gguf_path": adapter_gguf_path,
-            "context_length": context_length,
+            "training_sequence_len": training_sequence_len,
+            "spec": spec,
             "vendor_override": vendor_override,
         },
     )
@@ -203,10 +222,19 @@ def _optional_path_extra(ctx: DispatchResult, key: str) -> Path | None:
     return value
 
 
-def _require_int_extra(ctx: DispatchResult, key: str) -> int:
+def _optional_int_extra(ctx: DispatchResult, key: str) -> int | None:
     value = ctx.extras.get(key)
+    if value is None:
+        return None
     if not isinstance(value, int):
-        raise ExportError(f"llama-server target missing int extra {key!r}")
+        raise ExportError(f"llama-server target extra {key!r} must be an int")
+    return value
+
+
+def _require_spec_extra(ctx: DispatchResult, key: str) -> BaseModelSpec:
+    value = ctx.extras.get(key)
+    if not isinstance(value, BaseModelSpec):
+        raise ExportError(f"llama-server target missing BaseModelSpec extra {key!r}")
     return value
 
 
