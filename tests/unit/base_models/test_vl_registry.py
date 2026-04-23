@@ -143,6 +143,7 @@ _VL_BASE_KEYS: tuple[str, ...] = (
     "paligemma-3b-mix-224",
     "qwen2-vl-2b-instruct",
     "internvl2-2b",
+    "internvl3-2b",
     "mistral-small-3.1-24b-instruct",
 )
 
@@ -160,7 +161,7 @@ class TestAllVlBasesShipModalityInvariants:
         assert spec.vl_preprocessor_plan is not None
         # Pinned identity fields — each one is part of the cache key,
         # so a silent default would silently invalidate caches.
-        assert spec.vl_preprocessor_plan.resize_policy == "fixed"
+        assert spec.vl_preprocessor_plan.resize_policy in {"fixed", "dynamic"}
         assert spec.vl_preprocessor_plan.num_image_tokens > 0
 
     @pytest.mark.parametrize("key", _VL_BASE_KEYS)
@@ -241,28 +242,56 @@ class TestInternVL2RegistryEntry:
         assert BASE_MODELS["internvl2-2b"].template == "internvl2"
 
 
+class TestInternVL3RegistryEntry:
+    """Sprint 40 refresh: InternVL3 lands with an explicit runtime caveat."""
+
+    def test_entry_present(self) -> None:
+        assert "internvl3-2b" in BASE_MODELS
+
+    def test_apache_permissive(self) -> None:
+        spec = BASE_MODELS["internvl3-2b"]
+        assert spec.license_spdx == "Apache-2.0"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+
+    def test_dynamic_preprocessing_plan_is_pinned(self) -> None:
+        spec = BASE_MODELS["internvl3-2b"]
+        plan = spec.vl_preprocessor_plan
+        assert plan is not None
+        assert plan.target_size == (448, 448)
+        assert plan.resize_policy == "dynamic"
+        assert plan.image_token == "<image>"
+        assert plan.num_image_tokens == 256
+
+    def test_architecture_and_template(self) -> None:
+        spec = BASE_MODELS["internvl3-2b"]
+        assert spec.architecture == "InternVLChatModel"
+        assert spec.template == "internvl2"
+        assert spec.trust_remote_code is True
+
+
 class TestDistinctVlBases:
     """The VL bases occupy distinct rows with no silent duplicates."""
 
     def test_all_keys_unique(self) -> None:
-        assert len(set(_VL_BASE_KEYS)) == 4
+        assert len(set(_VL_BASE_KEYS)) == 5
 
     def test_hf_ids_distinct(self) -> None:
         hf_ids = {BASE_MODELS[k].hf_id for k in _VL_BASE_KEYS}
-        assert len(hf_ids) == 4
+        assert len(hf_ids) == 5
 
     def test_image_tokens_distinct_per_base(self) -> None:
-        """Each VL base uses its native image-token string.
+        """VL rows pin their native placeholder tokens explicitly.
 
-        Silently sharing a placeholder across bases would break the
-        cache-key invariant in vl_cache.py (cache key includes the
-        token via processor_sha256).
+        Some families legitimately reuse the same surface token
+        (`<image>`), so this checks the concrete set rather than
+        forcing uniqueness for uniqueness' sake.
         """
         tokens = {
             BASE_MODELS[k].vl_preprocessor_plan.image_token  # type: ignore[union-attr]
             for k in _VL_BASE_KEYS
         }
-        assert len(tokens) == 4
+        assert tokens == {"<image>", "<|image_pad|>", "<IMG_CONTEXT>", "[IMG]"}
 
 
 class TestCountVlRegistryEntries:
@@ -270,7 +299,7 @@ class TestCountVlRegistryEntries:
 
     def test_at_least_four_vl_bases_registered(self) -> None:
         vl_count = sum(1 for s in BASE_MODELS.values() if s.modality == "vision-language")
-        assert vl_count >= 4
+        assert vl_count >= 5
 
 
 class TestTrustRemoteCodeOptIn:
@@ -291,6 +320,9 @@ class TestTrustRemoteCodeOptIn:
         """InternVL2 requires trust_remote_code because InternVLChatModel
         is defined in the model repo, not in transformers."""
         assert BASE_MODELS["internvl2-2b"].trust_remote_code is True
+
+    def test_internvl3_opts_in(self) -> None:
+        assert BASE_MODELS["internvl3-2b"].trust_remote_code is True
 
     def test_text_bases_default_false(self) -> None:
         """None of the text bases opt into trust_remote_code."""

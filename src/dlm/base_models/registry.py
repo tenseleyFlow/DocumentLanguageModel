@@ -107,10 +107,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="qwen3-1.7b",
         hf_id="Qwen/Qwen3-1.7B",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # drift and prints the live value for manual review.
-        revision="1a2b3c4d5e6f7890abcdeffedcba0987654321ab",
+        revision="70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
         architecture="Qwen3ForCausalLM",
         params=1_700_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -127,9 +124,28 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         reasoning_tuned=True,
     ),
     BaseModelSpec(
+        key="qwen3-1.7b-thinking",
+        hf_id="Qwen/Qwen3-1.7B",
+        revision="70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+        architecture="Qwen3ForCausalLM",
+        params=1_700_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="qwen3thinking",
+        gguf_arch="qwen3",
+        tokenizer_pre="qwen2",
+        license_spdx="Apache-2.0",
+        license_url="https://huggingface.co/Qwen/Qwen3-1.7B/blob/main/LICENSE",
+        requires_acceptance=False,
+        redistributable=True,
+        size_gb_fp16=3.4,
+        context_length=32_768,
+        recommended_seq_len=2048,
+        reasoning_tuned=True,
+    ),
+    BaseModelSpec(
         key="qwen3-4b",
         hf_id="Qwen/Qwen3-4B",
-        revision="2b3c4d5e6f7890abcdeffedcba0987654321abc2",
+        revision="1cfa9a7208912126459214e8b04321603b3df60c",
         architecture="Qwen3ForCausalLM",
         params=4_000_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -148,7 +164,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="qwen3-8b",
         hf_id="Qwen/Qwen3-8B",
-        revision="3c4d5e6f7890abcdeffedcba0987654321abc2d3",
+        revision="b968826d9c46dd6066d109eabc6255188de91218",
         architecture="Qwen3ForCausalLM",
         params=8_000_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -225,10 +241,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="smollm3-3b",
         hf_id="HuggingFaceTB/SmolLM3-3B",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # drift and prints the live value for manual review.
-        revision="5e6f7890abcdeffedcba0987654321abc2d3e4f5",
+        revision="a07cc9a04f16550a088caea529712d1d335b0ac1",
         architecture="SmolLM3ForCausalLM",
         params=3_000_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -247,10 +260,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="olmo-2-7b-instruct",
         hf_id="allenai/OLMo-2-1124-7B-Instruct",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # drift and prints the live value for manual review.
-        revision="6f7890abcdeffedcba0987654321abc2d3e4f5a6",
+        revision="470b1fba1ae01581f270116362ee4aa1b97f4c84",
         architecture="Olmo2ForCausalLM",
         params=7_000_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -268,10 +278,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="gemma-2-2b-it",
         hf_id="google/gemma-2-2b-it",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # drift and prints the live value for manual review.
-        revision="7a890abcdeffedcba0987654321abc2d3e4f5a6b",
+        revision="299a8560bedf22ed1c72a8a11e7dce4a7f9f51f8",
         architecture="Gemma2ForCausalLM",
         params=2_600_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -289,10 +296,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="gemma-2-9b-it",
         hf_id="google/gemma-2-9b-it",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # drift and prints the live value for manual review.
-        revision="8f90abcdeffedcba0987654321abc2d3e4f5a6b7",
+        revision="11c9b309abf73637e4b6f9a3fa1e92e615547819",
         architecture="Gemma2ForCausalLM",
         params=9_000_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -382,10 +386,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="phi-4-mini-reasoning",
         hf_id="microsoft/Phi-4-mini-reasoning",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # drift and prints the live value for manual review.
-        revision="9a0bcdeffedcba0987654321abc2d3e4f5a6b7c8",
+        revision="0e3b1e2d02ee478a3743abe3f629e9c0cb722e0a",
         architecture="Phi3ForCausalLM",
         params=3_800_000_000,
         target_modules=["qkv_proj", "o_proj", "gate_up_proj", "down_proj"],
@@ -411,10 +412,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="mixtral-8x7b-instruct",
         hf_id="mistralai/Mixtral-8x7B-Instruct-v0.1",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # drift and prints the live value for manual review.
-        revision="bc0deffedcba0987654321abc2d3e4f5a6b7c8d9",
+        revision="eba92302a2861cdc0098cc54bc9f17cb2c47eb61",
         architecture="MixtralForCausalLM",
         params=46_700_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -443,10 +441,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="mistral-small-3.1-24b-instruct",
         hf_id="mistralai/Mistral-Small-3.1-24B-Instruct-2503",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # drift and prints the live value for manual review.
-        revision="ab0cdeffedcba0987654321abc2d3e4f5a6b7c8d",
+        revision="68faf511d618ef198fef186659617cfd2eb8e33a",
         architecture="Mistral3ForConditionalGeneration",
         params=24_000_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -484,14 +479,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="paligemma-3b-mix-224",
         hf_id="google/paligemma-3b-mix-224",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # it as drift; a maintainer pastes in the observed SHA from
-        # the script's output. Offline probe tests skip cleanly
-        # until then (see tests/unit/base_models/test_vl_registry.py).
-        # To verify, run:
-        #     uv run python scripts/refresh-registry.py --check
-        revision="8d2f7bc9c15d71a00c14f9eb7e4c7b99c79e0a11",
+        revision="d1d8734c9c3ad0ccfeea4afc270faa356c2ba515",
         architecture="PaliGemmaForConditionalGeneration",
         params=2_900_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -529,10 +517,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="qwen2-vl-2b-instruct",
         hf_id="Qwen/Qwen2-VL-2B-Instruct",
-        # Placeholder SHA (format-valid, not a real commit). See the
-        # paligemma entry for the self-healing workflow via
-        # `scripts/refresh-registry.py --check`.
-        revision="c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9",
+        revision="895c3a49bc3fa70a340399125c650a463535e71c",
         architecture="Qwen2VLForConditionalGeneration",
         params=2_200_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -570,8 +555,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="internvl2-2b",
         hf_id="OpenGVLab/InternVL2-2B",
-        # Placeholder SHA (format-valid, not a real commit).
-        revision="d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0",
+        revision="e4f6747bd20f139e637642c6a058c6bd00b36919",
         architecture="InternVLChatModel",
         params=2_200_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -594,14 +578,37 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
             num_image_tokens=256,
         ),
     ),
+    BaseModelSpec(
+        key="internvl3-2b",
+        hf_id="OpenGVLab/InternVL3-2B",
+        revision="899155015275a9b7338c7f4677e19c784e0e5a21",
+        architecture="InternVLChatModel",
+        params=2_000_000_000,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        template="internvl2",
+        gguf_arch="internvl3",
+        tokenizer_pre="internvl3",
+        license_spdx="Apache-2.0",
+        license_url="https://huggingface.co/OpenGVLab/InternVL3-2B",
+        requires_acceptance=False,
+        redistributable=True,
+        trust_remote_code=True,
+        size_gb_fp16=4.0,
+        context_length=32_768,
+        recommended_seq_len=2048,
+        modality="vision-language",
+        vl_preprocessor_plan=VlPreprocessorPlan(
+            target_size=(448, 448),
+            resize_policy="dynamic",
+            image_token="<image>",
+            num_image_tokens=256,
+        ),
+    ),
     # --- Audio-language bases -----------------------------------------------
     # Qwen2-Audio-7B-Instruct — Alibaba's open audio-text model. Uses
     # the Qwen2 LLM backbone + a dedicated audio encoder. Apache-2.0
-    # but the 7B checkpoint is gated on HF via license acceptance, so
-    # `requires_acceptance=True` flows through the same pattern the
-    # Llama-3.2 / PaliGemma entries use. Redistributable under
-    # Apache-2.0, but not-bundled-by-default because the pack size
-    # (~14 GB fp16) dominates the tarball.
+    # and currently ungated on HF, so the registry keeps it open and
+    # redistributable like the other permissive Qwen rows.
     #
     # The 16 kHz pin + 30 s max-length match the training-time
     # defaults documented in the Qwen2-Audio card. Resampling support
@@ -614,10 +621,7 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     BaseModelSpec(
         key="qwen2-audio-7b-instruct",
         hf_id="Qwen/Qwen2-Audio-7B-Instruct",
-        # Placeholder SHA (format-valid, not a real commit). See the
-        # paligemma entry for the self-healing workflow via
-        # `scripts/refresh-registry.py --check`.
-        revision="a1b2c3d4e5f678901234567890abcdef01234567",
+        revision="0a095220c30b7b31434169c3086508ef3ea5bf0a",
         architecture="Qwen2AudioForConditionalGeneration",
         params=8_400_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -626,8 +630,8 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         tokenizer_pre="qwen2",
         license_spdx="Apache-2.0",
         license_url="https://huggingface.co/Qwen/Qwen2-Audio-7B-Instruct",
-        requires_acceptance=True,
-        redistributable=False,
+        requires_acceptance=False,
+        redistributable=True,
         size_gb_fp16=15.5,
         context_length=8_192,
         recommended_seq_len=2048,

@@ -19,10 +19,11 @@ you to run a 70B model you can't afford. DLM sits in the gap:
   control is both the prose you're training on and the configuration
   for how the training runs. Edit, retrain, share.
 - **Real pretrained bases.** SmolLM2-135M for fast iteration; newer
-  registry rows like Qwen3, Llama 3.3, Gemma 2, SmolLM3, Phi-4-mini-
-  reasoning, OLMo-2, Mixtral, and Mistral Small 3.1 cover current
-  text, sparse-MoE, and multimodal use cases. No from-scratch
-  transformers, no toy experiments.
+  registry rows like Qwen3 (including a reasoning-profile key),
+  Llama 3.3, Gemma 2, SmolLM3, Phi-4-mini-reasoning, OLMo-2, Mixtral,
+  Mistral Small 3.1, and InternVL3 cover current text, sparse-MoE,
+  and multimodal planning use cases. No from-scratch transformers,
+  no toy experiments.
 - **Deterministic by contract.** Same document + same hardware tier +
   pinned versions produce bit-identical adapters. [Determinism](determinism.md)
   is a first-class feature.

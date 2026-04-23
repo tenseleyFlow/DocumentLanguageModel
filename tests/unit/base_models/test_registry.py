@@ -73,11 +73,13 @@ class TestLicenseFields:
             "qwen2.5-1.5b",
             "qwen2.5-coder-1.5b",
             "qwen3-1.7b",
+            "qwen3-1.7b-thinking",
             "qwen3-4b",
             "qwen3-8b",
             "mixtral-8x7b-instruct",
             "smollm3-3b",
             "olmo-2-7b-instruct",
+            "qwen2-audio-7b-instruct",
             "smollm2-135m",
             "smollm2-360m",
             "smollm2-1.7b",
@@ -137,7 +139,10 @@ class TestArchitectureShapes:
             BASE_MODELS[k].size_gb_fp16 for k in ("qwen2.5-0.5b", "qwen2.5-1.5b", "qwen2.5-3b")
         ]
         assert qwen_sizes == sorted(qwen_sizes)
-        qwen3_sizes = [BASE_MODELS[k].size_gb_fp16 for k in ("qwen3-1.7b", "qwen3-4b", "qwen3-8b")]
+        qwen3_sizes = [
+            BASE_MODELS[k].size_gb_fp16
+            for k in ("qwen3-1.7b", "qwen3-1.7b-thinking", "qwen3-4b", "qwen3-8b")
+        ]
         assert qwen3_sizes == sorted(qwen3_sizes)
         smol_sizes = [
             BASE_MODELS[k].size_gb_fp16 for k in ("smollm2-135m", "smollm2-360m", "smollm2-1.7b")

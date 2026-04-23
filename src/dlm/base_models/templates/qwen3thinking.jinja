@@ -1,0 +1,14 @@
+{#
+Qwen3 reasoning-profile reference template.
+
+Upstream keeps ChatML framing for request construction; the profile
+delta is the reasoning-first sampling/runtime behavior rather than a
+different turn wrapper.
+#}
+{%- for message in messages -%}
+<|im_start|>{{ message['role'] }}
+{{ message['content'] }}<|im_end|>
+{% endfor -%}
+{%- if add_generation_prompt -%}
+<|im_start|>assistant
+{%- endif -%}

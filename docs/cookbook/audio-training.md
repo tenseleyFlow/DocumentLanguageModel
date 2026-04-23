@@ -10,9 +10,6 @@ spoken-corpus workflow end-to-end: scaffold → drop clips + transcripts
   24 GB VRAM. Qwen2-Audio-7B-Instruct fp16 weighs ~15 GB; the 16 GB
   consumer GPUs don't fit this base without quantization (4-bit audio
   training is deferred).
-- A Hugging Face account with the [Qwen2-Audio-7B-Instruct terms
-  accepted](https://huggingface.co/Qwen/Qwen2-Audio-7B-Instruct) and
-  `HF_TOKEN` exported.
 - Qwen2-Audio cached locally (`huggingface-cli download
   Qwen/Qwen2-Audio-7B-Instruct`). First train without this triggers
   the download automatically.
@@ -22,7 +19,7 @@ spoken-corpus workflow end-to-end: scaffold → drop clips + transcripts
 ## Step 1 — Scaffold an audio `.dlm`
 
 ```bash
-dlm init my-audio.dlm --audio --i-accept-license
+dlm init my-audio.dlm --audio
 ```
 
 `--audio` pins the base to `qwen2-audio-7b-instruct` and emits a

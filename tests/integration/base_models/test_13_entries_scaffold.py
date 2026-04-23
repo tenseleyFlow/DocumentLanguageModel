@@ -1,35 +1,20 @@
-"""Scaffold coverage for every Sprint 40 registry-refresh entry."""
+"""Sprint 40 closeout mirror for the named 13-entry scaffold deliverable."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
+from tests.integration.cli.test_registry_refresh_init import SPRINT40_INIT_CASES
 from typer.testing import CliRunner
 
 from dlm.cli.app import app
 from dlm.doc.parser import parse_file
 from dlm.doc.sections import SectionType
 
-SPRINT40_INIT_CASES: tuple[tuple[str, list[str], bool], ...] = (
-    ("qwen3-1.7b", [], False),
-    ("qwen3-1.7b-thinking", [], False),
-    ("qwen3-4b", [], False),
-    ("qwen3-8b", [], False),
-    ("llama-3.3-8b-instruct", ["--i-accept-license"], False),
-    ("phi-4-mini-reasoning", [], False),
-    ("gemma-2-2b-it", ["--i-accept-license"], False),
-    ("gemma-2-9b-it", ["--i-accept-license"], False),
-    ("mistral-small-3.1-24b-instruct", ["--multimodal"], True),
-    ("smollm3-3b", [], False),
-    ("olmo-2-7b-instruct", [], False),
-    ("mixtral-8x7b-instruct", [], False),
-    ("internvl3-2b", ["--multimodal"], True),
-)
-
 
 @pytest.mark.parametrize(("base_key", "extra_flags", "expect_image_section"), SPRINT40_INIT_CASES)
-def test_init_scaffolds_for_every_registry_refresh_entry(
+def test_init_scaffolds_for_all_thirteen_registry_refresh_entries(
     tmp_path: Path,
     base_key: str,
     extra_flags: list[str],
@@ -52,10 +37,7 @@ def test_init_scaffolds_for_every_registry_refresh_entry(
         ],
     )
     assert result.exit_code == 0, result.output
-    assert doc.exists()
-
     parsed = parse_file(doc)
-    assert parsed.frontmatter.base_model == base_key
     section_types = {section.type for section in parsed.sections}
     if expect_image_section:
         assert SectionType.IMAGE in section_types

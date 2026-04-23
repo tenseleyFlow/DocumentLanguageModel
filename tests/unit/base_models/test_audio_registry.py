@@ -4,8 +4,8 @@ Mirrors `test_vl_registry.py` for the audio-language modality. Covers:
 
 - `qwen2-audio-7b-instruct` is present and has `modality="audio-language"`.
 - Its `AudioPreprocessorPlan` is pinned (16 kHz, 30 s, `<|AUDIO|>`, 750).
-- License is Apache-2.0 but the 7B weights are gated behind HF acceptance
-  and flagged non-redistributable (pack tarball size).
+- License is Apache-2.0 and the current HF row is no longer gated, so
+  the spec stays redistributable.
 - `modality="audio-language"` without a plan rejects at validate time;
   text bases cannot carry an audio plan; VL bases cannot carry an audio
   plan; audio bases cannot carry a VL plan.
@@ -48,10 +48,10 @@ class TestQwen2AudioRegistryEntry:
         spec = BASE_MODELS["qwen2-audio-7b-instruct"]
         assert spec.vl_preprocessor_plan is None
 
-    def test_license_gated_not_redistributable(self) -> None:
+    def test_license_open_and_redistributable(self) -> None:
         spec = BASE_MODELS["qwen2-audio-7b-instruct"]
-        assert spec.requires_acceptance is True
-        assert spec.redistributable is False
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
 
     def test_architecture_is_audio_conditional_generation(self) -> None:
         spec = BASE_MODELS["qwen2-audio-7b-instruct"]

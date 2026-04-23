@@ -13,9 +13,10 @@ from dlm.export.ollama.template_registry import (
 
 
 class TestRegistryCoverage:
-    def test_all_eight_dialects_registered(self) -> None:
+    def test_all_nine_dialects_registered(self) -> None:
         assert set(registered_dialects()) == {
             "chatml",
+            "qwen3thinking",
             "gemma2",
             "smollm3",
             "olmo2",
@@ -27,7 +28,17 @@ class TestRegistryCoverage:
 
     @pytest.mark.parametrize(
         "dialect",
-        ["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "phi4mini", "mistral"],
+        [
+            "chatml",
+            "qwen3thinking",
+            "gemma2",
+            "smollm3",
+            "olmo2",
+            "llama3",
+            "phi3",
+            "phi4mini",
+            "mistral",
+        ],
     )
     def test_each_template_file_exists(self, dialect: str) -> None:
         row = get_template(dialect)
@@ -37,7 +48,17 @@ class TestRegistryCoverage:
 
     @pytest.mark.parametrize(
         "dialect",
-        ["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "phi4mini", "mistral"],
+        [
+            "chatml",
+            "qwen3thinking",
+            "gemma2",
+            "smollm3",
+            "olmo2",
+            "llama3",
+            "phi3",
+            "phi4mini",
+            "mistral",
+        ],
     )
     def test_each_has_default_stops(self, dialect: str) -> None:
         row = get_template(dialect)
@@ -47,6 +68,7 @@ class TestRegistryCoverage:
         ("dialect", "required"),
         [
             ("chatml", {"<|im_end|>", "<|im_start|>"}),
+            ("qwen3thinking", {"<|im_end|>", "<|im_start|>"}),
             ("gemma2", {"<end_of_turn>", "<start_of_turn>"}),
             ("smollm3", {"<|im_end|>", "<|im_start|>"}),
             ("olmo2", {"<|endoftext|>", "<|user|>", "<|assistant|>"}),
@@ -88,6 +110,14 @@ class TestDialectShapes:
         assert "<start_of_turn>" in text
         assert "<end_of_turn>" in text
         assert "model" in text
+
+    def test_qwen3thinking_keeps_chatml_markers_with_reasoning_defaults(self) -> None:
+        text = load_template_text("qwen3thinking")
+        assert "<|im_start|>" in text
+        assert "<|im_end|>" in text
+        row = get_template("qwen3thinking")
+        assert row.default_temperature == pytest.approx(0.6)
+        assert row.default_top_p == pytest.approx(0.95)
 
     def test_smollm3_has_reasoning_system_prompt(self) -> None:
         text = load_template_text("smollm3")

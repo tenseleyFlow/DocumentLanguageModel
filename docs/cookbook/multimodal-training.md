@@ -28,7 +28,7 @@ drop real images into that path before the first train).
 
 ### Picking a different VL base
 
-Four VL bases ship in the registry today:
+Five VL bases ship in the registry today:
 
 ```bash
 # Permissive + Apache-2.0 + strong general-purpose VL (pinned 672²):
@@ -36,6 +36,9 @@ dlm init my-diagrams.dlm --multimodal --base qwen2-vl-2b-instruct
 
 # MIT-licensed, smallest per-image footprint (448²):
 dlm init my-diagrams.dlm --multimodal --base internvl2-2b
+
+# Newer InternVL planning row (dynamic 448-tiling, still runtime-deferred):
+dlm init my-diagrams.dlm --multimodal --base internvl3-2b
 
 # Largest-capability VL row, CUDA-first (pinned 1540²):
 dlm init my-diagrams.dlm --multimodal --base mistral-small-3.1-24b-instruct
@@ -50,8 +53,10 @@ base-selection matrix. **Heads-up on InternVL2**: the row is visible in
 the registry, but on the current stack DLM now refuses it for actual
 prompt/train/HF-snapshot-export work. The upstream family still needs a
 custom processor/collator path for its tokenizer-only `AutoProcessor`,
-`<image>` expansion, and `image_flags` forward contract. That same
-family gap is the reason `internvl3-2b` has not been added yet.
+`<image>` expansion, and `image_flags` forward contract. The same
+family gap applies to `internvl3-2b` as well: it is now registry-
+visible and scaffoldable, but the generic runtime still refuses the
+whole InternVL family until DLM owns that custom contract.
 **Heads-up on Mistral Small 3.1**: it is a real VL registry row now,
 but it is intentionally treated as a large-CUDA-first base. `dlm
 doctor` refuses it on Apple Silicon by default unless you explicitly
@@ -147,8 +152,9 @@ coverage of the base's arch class and routes to one of three paths:
   None of the registered bases hit this verdict at the pinned tag.
 - **UNSUPPORTED** — llama.cpp doesn't know the arch at all. Falls
   back to HF-snapshot with an actionable banner naming the arch
-  class and the vendored tag. **paligemma-3b-mix-224** and
-  **internvl2-2b** are UNSUPPORTED at the pinned tag.
+  class and the vendored tag. **paligemma-3b-mix-224**,
+  **internvl2-2b**, and **internvl3-2b** are UNSUPPORTED at the
+  pinned tag.
 
 See [docs/hardware/vl-memory.md](../hardware/vl-memory.md#llamacpp-gguf-support-matrix-sprint-354)
 for the current support verdicts; bump the vendored tag with

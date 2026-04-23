@@ -1,7 +1,7 @@
 # Vision-language memory budget
 
-Four VL rows now ship in the registry: **PaliGemma-3B-mix-224**,
-**Qwen2-VL-2B-Instruct**, **InternVL2-2B**, and
+Five VL rows now ship in the registry: **PaliGemma-3B-mix-224**,
+**Qwen2-VL-2B-Instruct**, **InternVL2-2B**, **InternVL3-2B**, and
 **Mistral-Small-3.1-24B-Instruct-2503**. Each row carries a pinned
 preprocessing plan; dynamic-resolution support (Qwen2-VL's native
 capability, Mistral Small 3.1's longer-edge policy, and the broader
@@ -10,9 +10,10 @@ work so the current `VlPreprocessorPlan` cache key stays stable.
 
 **Reality check.** The generic VL train/prompt path is complete today
 for PaliGemma, Qwen2-VL, and Mistral Small 3.1. InternVL2 remains
-registry-visible for planning and future support, but on the current
-transformers stack its HF path still exposes a tokenizer-only
-`AutoProcessor` and needs a custom collator/runtime contract. DLM now
+registry-visible for planning and future support, and InternVL3 now
+joins it under the same honest caveat: on the current transformers
+stack the InternVL family still exposes a tokenizer-only
+`AutoProcessor` and needs a custom collator/runtime contract. DLM
 refuses that family with a clear error instead of pretending the
 generic VL path is enough.
 
@@ -23,6 +24,7 @@ generic VL path is enough.
 | paligemma-3b-mix-224      | Gemma (gated) | The cleanest PEFT path + proven chart/doc QA; accept the Gemma license first. |
 | qwen2-vl-2b-instruct      | Apache-2.0 | Permissive licensing + strong general-purpose VL; dynamic-res is capped to 672² in v1 but native runtime supports more. |
 | internvl2-2b              | MIT        | Registry-visible planning target for a future custom InternVL path; current train/prompt/export-snapshot flows refuse it on this stack. |
+| internvl3-2b              | Apache-2.0 | Newer InternVL planning target with dynamic 448-tiling and `trust_remote_code`; currently registry-visible but still refused by the generic runtime. |
 | mistral-small-3.1-24b-instruct | Apache-2.0 | Highest-capability VL row in the registry today; targets large CUDA boxes first and is refused on MPS by default unless you explicitly force it. |
 
 ## PaliGemma-3B-mix-224 (224×224, fp16)
@@ -70,11 +72,14 @@ between vision + text tokens. Gradient checkpointing on the tower
 trims ~30% of peak; `training.gradient_checkpointing: true` in
 frontmatter enables it.
 
-## InternVL2-2B (448×448, fp16)
+## InternVL2-2B / InternVL3-2B (448×448, fp16)
 
 InternVL2 uses ViT-L/14 + pixel-shuffle 2×2 so 448² input yields 256
 image tokens per 448-tile — the smallest InternVL-family budget and
-the cheapest of the four rows on paper.
+the cheapest of the registry rows on paper. InternVL3 keeps the same
+448 target size but switches the registry row to `resize_policy:
+dynamic` and a user-visible `<image>` placeholder while still
+expanding into the same hidden InternVL context window at runtime.
 
 | Config          | Base weights | Adapter | Activations | Total (peak) |
 |-----------------|-------------:|--------:|------------:|-------------:|
@@ -86,15 +91,15 @@ the cheapest of the four rows on paper.
 memory alone. 12 GB CUDA would handle batch=1; 16 GB CUDA would handle
 batch=4.
 
-**Current runtime status.** This row is not trainable/promptable via
-the generic VL path today. InternVL2 ships as `InternVLChatModel`, a
-custom remote-code family whose upstream runtime expands `<image>` into
-repeated `<IMG_CONTEXT>` spans and threads `image_flags` through the
-forward pass. On the current stack, `AutoProcessor.from_pretrained(...)`
-resolves to a tokenizer-only object, so DLM refuses the family early
-instead of failing later inside the model. Keep the budget numbers here
-for planning, but use PaliGemma, Qwen2-VL, or Mistral Small 3.1 for
-actual runs today.
+**Current runtime status.** These rows are not trainable/promptable via
+the generic VL path today. InternVL2 and InternVL3 both ship as
+`InternVLChatModel`, a custom remote-code family whose upstream runtime
+expands `<image>` into repeated `<IMG_CONTEXT>` spans and threads
+`image_flags` through the forward pass. On the current stack,
+`AutoProcessor.from_pretrained(...)` resolves to a tokenizer-only
+object, so DLM refuses the family early instead of failing later inside
+the model. Keep the budget numbers here for planning, but use
+PaliGemma, Qwen2-VL, or Mistral Small 3.1 for actual runs today.
 
 ## Mistral Small 3.1 24B Instruct (pinned 1540×1540, fp16)
 
@@ -129,6 +134,7 @@ by `scripts/bump-llama-cpp.sh bump <tag>`):
 | paligemma-3b-mix-224      | PaliGemmaForConditionalGeneration   | UNSUPPORTED  |
 | qwen2-vl-2b-instruct      | Qwen2VLForConditionalGeneration     | SUPPORTED    |
 | internvl2-2b              | InternVLChatModel                   | UNSUPPORTED  |
+| internvl3-2b              | InternVLChatModel                   | UNSUPPORTED  |
 
 **UNSUPPORTED** means `dlm export` falls back to the HF-snapshot path
 with an actionable banner. **SUPPORTED** means single-file VL GGUF
@@ -175,6 +181,7 @@ with the preprocessing plan:
 |---------------------------|------------:|----------------:|
 | paligemma-3b-mix-224      |     224×224 |        ~0.5 MB  |
 | internvl2-2b              |     448×448 |        ~2.0 MB  |
+| internvl3-2b              |     448×448 |        ~2.0 MB  |
 | qwen2-vl-2b-instruct      |     672×672 |        ~4.5 MB  |
 | mistral-small-3.1-24b-instruct | 1540×1540 |       ~23.5 MB  |
 

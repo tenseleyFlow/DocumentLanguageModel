@@ -30,6 +30,7 @@ from dlm.base_models.schema import BaseModelSpec
 
 TemplateDialect = Literal[
     "chatml",
+    "qwen3thinking",
     "gemma2",
     "smollm3",
     "olmo2",

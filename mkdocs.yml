@@ -62,6 +62,7 @@ nav:
       - .dlm/ignore: format/dlm-ignore.md
   - CLI reference: cli/reference.md
   - Cookbook:
+      - Choosing a base: cookbook/choosing-a-base.md
       - Coding tutor: cookbook/coding-tutor.md
       - Domain knowledge base: cookbook/domain-kb.md
       - Writing partner: cookbook/writing-partner.md
@@ -82,5 +83,7 @@ nav:
   - Architecture: architecture.md
   - Determinism: determinism.md
   - Hardware:
+      - Memory estimates: hardware/memory-estimates.md
+      - Vision-language memory: hardware/vl-memory.md
       - AMD ROCm: hardware/rocm.md
   - Troubleshooting: troubleshooting.md

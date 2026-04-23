@@ -37,6 +37,27 @@ class TestQwen3RegistryEntries:
         assert spec.size_gb_fp16 == pytest.approx(16.0)
 
 
+class TestQwen3ThinkingRegistryEntry:
+    def test_entry_present(self) -> None:
+        assert "qwen3-1.7b-thinking" in BASE_MODELS
+
+    def test_reuses_live_qwen3_weights_with_reasoning_profile(self) -> None:
+        spec = BASE_MODELS["qwen3-1.7b-thinking"]
+        assert spec.hf_id == "Qwen/Qwen3-1.7B"
+        assert spec.architecture == "Qwen3ForCausalLM"
+        assert spec.template == "qwen3thinking"
+        assert spec.gguf_arch == "qwen3"
+        assert spec.tokenizer_pre == "qwen2"
+
+    def test_reasoning_profile_keeps_open_license_and_cooler_default(self) -> None:
+        spec = BASE_MODELS["qwen3-1.7b-thinking"]
+        assert spec.license_spdx == "Apache-2.0"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+        assert spec.reasoning_tuned is True
+        assert spec.suggested_prompt_temperature == pytest.approx(0.6)
+
+
 class TestLlama33RegistryEntry:
     def test_entry_present(self) -> None:
         assert "llama-3.3-8b-instruct" in BASE_MODELS
@@ -212,28 +233,23 @@ class TestMixtralRegistryEntry:
         assert spec.recommended_seq_len == 2048
 
 
-class TestStaleSprintDraftRows:
-    def test_qwen3_thinking_is_not_a_separate_registry_row(self) -> None:
-        """Upstream Qwen3-1.7B ships hybrid thinking in one model.
+class TestInternVL3RegistryEntry:
+    def test_entry_present(self) -> None:
+        assert "internvl3-2b" in BASE_MODELS
 
-        Sprint 40's draft listed a separate `qwen3-1.7b-thinking`
-        entry, but the live upstream contract exposes thinking mode as
-        a switch on `Qwen/Qwen3-1.7B` itself. Keep the registry honest:
-        reasoning defaults belong on the real base row, not a fake key.
-        """
-        assert "qwen3-1.7b-thinking" not in BASE_MODELS
+    def test_entry_keeps_remote_code_contract_explicit(self) -> None:
+        spec = BASE_MODELS["internvl3-2b"]
+        assert spec.hf_id == "OpenGVLab/InternVL3-2B"
+        assert spec.architecture == "InternVLChatModel"
+        assert spec.template == "internvl2"
+        assert spec.trust_remote_code is True
 
-    def test_internvl3_not_shipped_until_remote_code_contract_is_pinned(self) -> None:
-        """Guard against copying the stale sprint draft into the registry.
-
-        The live `OpenGVLab/InternVL3-2B` model card still documents
-        `trust_remote_code=True`, and on the current stack the whole
-        InternVL family still exposes a tokenizer-only `AutoProcessor`
-        rather than a complete image processor. Upstream also expands
-        `<image>` into repeated `<IMG_CONTEXT>` spans and threads
-        `image_flags` through the forward pass. Adding InternVL3 later
-        is fine, but it needs an honest runtime contract instead of
-        assuming the old "cleaner than InternVL2" sprint note is still
-        true.
-        """
-        assert "internvl3-2b" not in BASE_MODELS
+    def test_entry_is_registry_visible_but_not_pretending_runtime_is_generic(self) -> None:
+        spec = BASE_MODELS["internvl3-2b"]
+        assert spec.license_spdx == "Apache-2.0"
+        assert spec.requires_acceptance is False
+        assert spec.redistributable is True
+        assert spec.modality == "vision-language"
+        assert spec.vl_preprocessor_plan is not None
+        assert spec.vl_preprocessor_plan.resize_policy == "dynamic"
+        assert spec.vl_preprocessor_plan.image_token == "<image>"

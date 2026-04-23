@@ -23,7 +23,17 @@ from typing import Final, Literal
 
 from dlm.export.ollama.errors import TemplateRegistryError
 
-Dialect = Literal["chatml", "gemma2", "smollm3", "olmo2", "llama3", "phi3", "phi4mini", "mistral"]
+Dialect = Literal[
+    "chatml",
+    "qwen3thinking",
+    "gemma2",
+    "smollm3",
+    "olmo2",
+    "llama3",
+    "phi3",
+    "phi4mini",
+    "mistral",
+]
 
 _TEMPLATES_DIR: Final[Path] = Path(__file__).resolve().parent / "templates"
 
@@ -61,6 +71,16 @@ _REGISTRY: Final[dict[Dialect, DialectTemplate]] = {
         # prevents runaway prompt-continuation when the model tries to
         # synthesize a new turn instead of yielding.
         default_stops=("<|im_end|>", "<|endoftext|>", "<|im_start|>"),
+    ),
+    "qwen3thinking": DialectTemplate(
+        dialect="qwen3thinking",
+        template_path=_TEMPLATES_DIR / "qwen3thinking.gotmpl",
+        # Qwen3's reasoning profile still uses ChatML turn framing, but
+        # the upstream defaults run slightly broader sampling than the
+        # legacy ChatML family.
+        default_stops=("<|im_end|>", "<|endoftext|>", "<|im_start|>"),
+        default_temperature=0.6,
+        default_top_p=0.95,
     ),
     "gemma2": DialectTemplate(
         dialect="gemma2",
