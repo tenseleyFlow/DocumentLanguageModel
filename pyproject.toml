@@ -1,7 +1,7 @@
 [project]
 name = "dlm"
 version = "0.10.0"
-description = "A text file with a .dlm extension becomes a local, trainable LLM."
+description = "Directive-driven local LLM training, retraining, and export from .dlm documents, codebases, and multimodal sources."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

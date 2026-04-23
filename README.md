@@ -1,102 +1,156 @@
 # DocumentLanguageModel
 
-> A text file becomes your personal, locally-trained LLM.
+> `.dlm` is a trainable local AI document format: typed sections, directives,
+> replay-backed retraining, and export.
 
-Edit a `.dlm` file, train a LoRA adapter on it, export to Ollama — all
-on your machine. No telemetry, no uploads, no cloud. Built on PyTorch
-+ HuggingFace with a hardware-aware planner that picks precision,
-attention, and batching for your box.
+DocumentLanguageModel (DLM) is a local-first training, inference, and export
+toolchain built around authored documents instead of hosted dashboards.
 
-**Status:** pre-1.0 — the Phase 3 CLI surface (`init`, `train`,
-`prompt`, `export`, `pack`, `unpack`, `doctor`, `show`, `migrate`) is
-wired end-to-end but hasn't been battle-tested by a human running a
-full train-export-ollama-run cycle. Ship target is `v0.9.0` via the
-Homebrew tap below; `v1.0` waits on a real end-to-end train.
+A `.dlm` can be:
 
-## Why
+- a hand-written training document with prose, instruction, and preference data
+- a directive-driven entrypoint into a codebase or notes tree
+- a multi-adapter project with learned routing
+- a selected multimodal or audio-language document
 
-Most "personal AI" tooling either wants your data in their cloud or
-asks you to run a 70B model you can't afford. DLM sits in the gap:
-plain-text input, real pretrained bases (SmolLM2 for iteration, Qwen
-or Llama for production), deterministic retraining, Ollama export.
+DLM trains LoRA / QLoRA / DoRA adapters on real pretrained bases, keeps a replay
+history so retrains do not silently forget, and exports local runtimes such as
+Ollama and `llama-server`.
 
-- **Edit a document, get a model.** A `.dlm` is plain UTF-8 with a
-  YAML frontmatter and section fences (`::instruction::`,
-  `::preference::`, default-prose). Prose trains via continued
-  pretraining; instruction blocks train via SFT; preference blocks via
-  DPO/ORPO (Phase 4).
-- **LoRA / QLoRA on a real base.** Curated registry of SmolLM2 135M–1.7B,
-  Qwen 2.5 0.5B–3B, Llama-3.2 1B/3B, Phi-3.5-mini. Any HuggingFace
-  model via an `hf:org/name` escape hatch.
-- **Retrain, don't forget.** Prior document versions stay in a
-  zstd-compressed replay corpus and get sampled into each training
-  run. Edits are additive by default.
-- **Deterministic by contract.** Same doc + same hardware tier +
-  pinned versions → bit-identical adapter. `dlm.lock` records the
-  tuple; `--strict-lock` upgrades every warn to an error. See
-  [the determinism guide](./docs/determinism.md).
-- **Explicit Ollama export.** `dlm export` emits a base GGUF +
-  adapter GGUF + Modelfile with a pinned Go `text/template` (no
-  fuzzy matching), then registers it via `ollama create`.
-- **Hardware-aware.** `dlm doctor` probes the GPU, picks precision
-  (bf16 on Ampere+, fp16 on MPS), attention (FlashAttention when
-  available, SDPA otherwise), batching, and gradient checkpointing.
+**Status:** pre-v1.0, but far beyond the original MVP framing. The core
+author/train/prompt/export/pack/share loop is real, and newer runtime-target
+work is landing incrementally. Current export targets are `ollama` and
+`llama-server` (`llama-server` currently requires `--no-smoke` while the HTTP
+smoke harness lands).
 
-## Supported platforms
+## What A `.dlm` Actually Is
 
-| Tier | Training | Inference |
+A `.dlm` is not just “a text file with a special extension.”
+
+It is a trainable project surface with:
+
+- **frontmatter** for base-model choice, training config, export defaults,
+  sources, cache policy, and multi-adapter gate settings
+- **typed body sections** such as prose, `::instruction::`,
+  `::preference::`, `::image::`, and `::audio::`
+- **adapter routing** via fences like `::instruction#knowledge::`
+- **directive-driven ingestion** from files and directories through
+  `training.sources`
+- **repo-local subtree control** through `.dlm/training.yaml` and `.dlm/ignore`
+- a stable **`dlm_id`** that binds the document to a local store under
+  `~/.dlm/store/<dlm_id>/`
+
+That combination is what makes DLM more like a local AI authoring format than a
+single prompt file.
+
+## Why DLM
+
+Most “personal AI” tooling still pushes you toward one of two bad choices:
+
+- upload your data to someone else’s cloud
+- run an oversized model with weak authoring and retraining ergonomics
+
+DLM sits in the gap:
+
+- **The document is the interface.** You author the thing you care about instead
+  of wiring together a hidden dataset pipeline.
+- **Training is real.** LoRA / QLoRA / DoRA on pretrained bases, not a toy
+  from-scratch transformer.
+- **Retraining is additive.** Previous document versions flow into a replay
+  corpus so the model does not forget last week’s state by default.
+- **Everything stays local.** Training, inference, store state, exports, and
+  packs all live on your machine unless you explicitly push them somewhere.
+- **Determinism is a contract.** Locks, pinned versions, and golden checks are
+  first-class design constraints, not “best effort.”
+
+## Core Capabilities
+
+- **Author structured training data in one place.** Mix prose, SFT examples,
+  preferences, image sections, and audio sections in one document.
+- **Ingest whole trees, not just one file.** `training.sources` can walk a
+  repo, and subtree-local `.dlm/training.yaml` / `.dlm/ignore` let the corpus
+  carry its own curation rules.
+- **Train on modern base families.** Text, reasoning-tuned, sparse-MoE,
+  vision-language, and audio-language registry rows ship today, plus `hf:org/name`
+  escape hatches.
+- **Compose multiple adapters in one document.** Named adapters, weighted export
+  mixes, and learned adapter gates let one `.dlm` separate knowledge, tone, or
+  persona lanes.
+- **Stay in a local iteration loop.** `dlm prompt`, `dlm repl`,
+  `dlm train --watch`, `dlm metrics`, and `dlm doctor` are all part of the
+  normal workflow now.
+- **Export beyond the original Ollama-only story.** DLM still does explicit
+  Ollama exports with pinned templates, and now also emits `llama-server`
+  launch artifacts against the same GGUF path.
+- **Close the eval loop.** `dlm harvest` can pull failing `sway`-style probe
+  reports back into the document as new training examples.
+- **Pack and share reproducibly.** `.dlm.pack`, verification, push/pull, and
+  local serve flows are all built around the same store contracts.
+
+## Supported Platforms
+
+| Tier | Training | Inference / export |
 |---|---|---|
-| NVIDIA CUDA (SM ≥ 8.0) | bf16 + QLoRA 4-bit + FlashAttention | Ollama (GGUF CUDA) |
-| NVIDIA CUDA (SM < 8.0) | fp16 LoRA | Ollama (GGUF CUDA) |
-| Apple Silicon (MPS) | fp16 LoRA | Ollama (GGUF Metal) |
-| CPU | inference-only by default (training refused above 200M params) | Ollama (GGUF CPU) |
-| AMD ROCm | experimental (Phase 5) | llama.cpp ROCm |
+| NVIDIA CUDA (SM ≥ 8.0) | bf16 + QLoRA 4-bit + FlashAttention | Ollama, GGUF export, `llama-server` launch artifacts |
+| NVIDIA CUDA (SM < 8.0) | fp16 LoRA | Ollama, GGUF export, `llama-server` launch artifacts |
+| Apple Silicon (MPS) | fp16 or fp32 LoRA depending on doctor plan | Ollama, selected MLX inference paths, GGUF export |
+| CPU | inference-first; training refused above small bases unless forced | GGUF export, Ollama, `llama-server` launch artifacts |
+| AMD ROCm | experimental | ROCm-oriented llama.cpp flows |
+
+See [docs/hardware](./docs/hardware/memory-estimates.md) and
+[docs/hardware/vl-memory.md](./docs/hardware/vl-memory.md) for the real support
+matrix and current caveats.
 
 ## Install
 
-### From the Homebrew tap (recommended)
+### From the Homebrew tap
 
 ```sh
 brew tap tenseleyFlow/tap
 brew install dlm
 
-# Ollama is required for `dlm export` smoke runs:
+# Optional, only if you want `--target ollama` registration/smoke:
 brew install ollama
 ```
 
-`brew install dlm` pulls in a vendored `llama.cpp` source tree for
-GGUF conversion and declares `depends_on "llama.cpp"` for the
-compiled `llama-quantize` / `llama-imatrix` binaries. On NVIDIA
-hardware, unlock QLoRA 4-bit after install:
+`brew install dlm` pulls in the Python environment and the vendored
+`llama.cpp` source tree DLM uses for GGUF conversion. CUDA users unlock QLoRA
+after install:
 
 ```sh
 $(brew --prefix dlm)/libexec/venv/bin/pip install 'dlm[cuda]'
 ```
 
-### From source (contributors)
+### From source
 
 ```sh
-# Python 3.11+ and uv (https://github.com/astral-sh/uv).
 git clone https://github.com/tenseleyFlow/DocumentLanguageModel.git
 cd DocumentLanguageModel
 uv sync
-# One-time: build the vendored llama.cpp binaries for `dlm export`.
+
+# Build GGUF tooling:
 scripts/bump-llama-cpp.sh build
+
+# If you want the llama.cpp HTTP target too:
+scripts/bump-llama-cpp.sh build --with-server
+
 uv run dlm --help
 ```
 
-We deliberately don't publish to PyPI — too easy to ship unfinished
-work to a permanent-file-archive with 5 GB of transitive deps. See
+We deliberately do not publish to PyPI yet. See
 [CONTRIBUTING.md](./CONTRIBUTING.md) for the release flow.
 
-## First run
+## 30-Second Start
 
 ```sh
-$ uv run dlm init tutor.dlm --base smollm2-135m
-init: wrote tutor.dlm
+uv run dlm init tutor.dlm --base smollm2-135m
+$EDITOR tutor.dlm
+uv run dlm train tutor.dlm
+uv run dlm prompt tutor.dlm "What is a Python decorator?"
+uv run dlm export tutor.dlm --target ollama --name my-tutor
 ```
 
-The scaffold:
+A minimal `.dlm` still works:
 
 ```dlm
 ---
@@ -107,151 +161,189 @@ base_model: smollm2-135m
 
 # Your document title
 
-Write prose here. It will train via continued pretraining (CPT) loss.
+Write prose here.
 
 ::instruction::
-
 ### Q
-Your example question.
+What is a decorator?
 
 ### A
-Your example answer.
+A function that takes a function and returns a wrapped function.
 ```
 
-Open `tutor.dlm` in your editor, replace the placeholder content with
-real prose + Q/A pairs, then:
+That path is still important. It is just no longer the whole story.
+
+## Authoring Beyond The Toy Example
+
+A more representative `.dlm` can mix directives, named adapters, and export
+defaults in one place:
+
+```dlm
+---
+dlm_id: 01KTESTEXAMPLE000000000000
+dlm_version: 1
+base_model: qwen3-1.7b
+system_prompt: |
+  You are a concise engineering assistant.
+training:
+  adapter: lora
+  sequence_len: 4096
+  sources_policy: strict
+  sources:
+    - path: ./src
+      include: ["**/*.py", "**/*.md"]
+      exclude: ["tests/**", "**/__pycache__/**"]
+  adapters:
+    knowledge:
+      adapter: lora
+      lora_r: 8
+    tone:
+      adapter: lora
+      lora_r: 4
+  gate:
+    enabled: true
+export:
+  default_quant: Q4_K_M
+---
+
+# Project notes
+
+Shared prose trains all declared adapters by default.
+
+::instruction#knowledge::
+### Q
+What does the cache layer do?
+
+### A
+It avoids re-tokenizing unchanged directive-sourced files.
+
+::preference#tone::
+### Prompt
+Explain a failure mode.
+
+### Chosen
+Explain it directly, then give the fix.
+
+### Rejected
+Over-explain the background before naming the problem.
+```
+
+Two important upgrades over the older README story:
+
+- `training.sources` can turn a repo or notes tree into synthetic training
+  sections.
+- `training.adapters` + `training.gate` let one document route prompts across
+  multiple adapters instead of pretending one flat adapter is the only mode.
+
+If you need deeper subtree-specific curation, drop `.dlm/training.yaml` and
+`.dlm/ignore` into nested directories and let the corpus carry its own rules.
+
+## Common Workflows
+
+### 1. Hand-authored document
 
 ```sh
-$ uv run dlm train tutor.dlm
-trained: v0001 (20 steps, seed=42, determinism=best-effort)
-adapter: ~/.dlm/store/01KPM5…/adapter/versions/v0001
-log:     ~/.dlm/store/01KPM5…/logs/train-000001-…jsonl
-
-$ uv run dlm prompt tutor.dlm "What is a Python decorator?"
-A decorator is a function that takes another function…
-
-$ uv run dlm show tutor.dlm
-/tmp/dlm-readme-demo/tutor.dlm
-  dlm_id:         01KPM5CXB51GRX86Q25AKERN6E
-  base_model:     smollm2-135m (revision 12fd25f)
-  store:          ~/.dlm/store/01KPM5CXB51GRX86Q25AKERN6E  (537 B)
-  adapter:        v0001
-  training runs:  1
-  exports:        0
-
-$ uv run dlm export tutor.dlm --name my-tutor --quant Q4_K_M
-export: base.Q4_K_M.gguf (47 MiB)
-export: adapter.gguf (3 MiB)
-export: Modelfile written; ollama create my-tutor:latest
-export: smoke: "hello" → "Hi! How can I help?"
-
-$ ollama run my-tutor "When should I use functools.wraps?"
-Always, inside decorators. …
+uv run dlm init tutor.dlm --base smollm2-135m
+uv run dlm train tutor.dlm
+uv run dlm prompt tutor.dlm "Explain decorators"
 ```
 
-The [cookbook](./docs/cookbook/coding-tutor.md) has the walkthrough
-for five starter scenarios (coding tutor, domain KB, writing partner,
-personal assistant, changelog).
+### 2. Train across a codebase
 
-## Commands
+```sh
+uv run dlm train ./my-repo --base qwen3-1.7b --include '**/*.py' --name corpus
+```
 
-Every command has `--help` for the full flag surface. Global flags
-(`--home`, `-v`, `-q`, `--version`) apply to all subcommands.
+That auto-scaffolds a `.dlm` under `./my-repo/.dlm/` and lets the repo become
+its own training surface.
 
-| Command | Purpose | Key flags |
+### 3. Multi-adapter composition
+
+```sh
+uv run dlm prompt mydoc.dlm "Explain the runbook" --adapter knowledge
+uv run dlm export mydoc.dlm --adapter-mix knowledge:1.0,tone:0.5
+```
+
+### 4. Local iteration loop
+
+```sh
+uv run dlm train mydoc.dlm --watch
+uv run dlm repl mydoc.dlm
+uv run dlm metrics mydoc.dlm
+```
+
+### 5. Export and ship
+
+```sh
+uv run dlm export mydoc.dlm --target ollama --name mydoc
+uv run dlm export mydoc.dlm --target llama-server --no-smoke
+uv run dlm pack mydoc.dlm --include-exports
+uv run dlm verify mydoc.dlm.pack
+```
+
+### 6. Pull eval failures back into training
+
+```sh
+uv run dlm harvest mydoc.dlm --sway-json sway-report.json --apply
+```
+
+That is the probe-driven loop: evaluation finds a miss, DLM turns it into
+document-level training data, and the next train closes the gap.
+
+## Command Surface
+
+The CLI is broader than the original MVP now. A useful mental map:
+
+| Area | Commands | What they cover |
 |---|---|---|
-| `dlm init <path>` | Scaffold a new `.dlm` + create the store + record license acceptance. | `--base`, `--force`, `--i-accept-license` |
-| `dlm train <path>` | Train / retrain the adapter. Replay-weighted by default. | `--resume`, `--fresh`, `--seed`, `--max-steps`, `--strict-lock`, `--update-lock`, `--ignore-lock` |
-| `dlm prompt <path>` | Inference via HF (bypasses Ollama). Great for `--temp 0` determinism checks. | `--temp`, `--top-p`, `--max-tokens`, `--verbose` |
-| `dlm export <path>` | Convert to GGUF, emit Modelfile, register with Ollama, smoke-run. | `--quant`, `--merged`, `--dequantize`, `--skip-ollama`, `--no-smoke`, `--no-imatrix`, `--draft` |
-| `dlm pack <path>` | Bundle a `.dlm` + store into a portable `.dlm.pack`. | `--out`, `--include-exports`, `--include-base`, `--include-logs`, `--i-am-the-licensee` |
-| `dlm unpack <pack>` | Restore a `.dlm.pack` into the local store. | `--force`, `--out` |
-| `dlm doctor` | Probe hardware, print the resolved training plan. | `--json` |
-| `dlm show <path>` | Training history + exports + adapter state. | `--json` |
-| `dlm migrate <path>` | Upgrade a `.dlm` frontmatter to the current schema version. | `--dry-run`, `--no-backup` |
+| Author | `init`, `templates`, `show`, `migrate`, `cache` | Create docs, inspect them, migrate schema, manage cache state |
+| Train | `train`, `doctor`, `metrics`, `harvest` | Run training, inspect plans, observe runs, pull eval misses back in |
+| Infer | `prompt`, `repl` | Local interactive and one-shot inference |
+| Ship | `export`, `pack`, `unpack`, `verify`, `push`, `pull`, `serve` | Export to runtimes, bundle, verify, and move artifacts |
 
-See the [CLI reference](./docs/cli/reference.md) for every flag + the
-exit-code policy.
-
-### Typical workflows
-
-**Iterate on one document.** Edit, train, prompt, repeat:
-
-```sh
-$EDITOR tutor.dlm
-uv run dlm train tutor.dlm          # additive retrain
-uv run dlm prompt tutor.dlm "…"     # smoke
-```
-
-**Ship to Ollama.** Export, quant-level choice documented in the
-[cookbook](./docs/cookbook/quantization-tradeoffs.md):
-
-```sh
-uv run dlm export tutor.dlm --quant Q4_K_M --name my-tutor
-ollama run my-tutor
-```
-
-**Archive or share.** One-file bundle:
-
-```sh
-uv run dlm pack tutor.dlm --out tutor.dlm.pack           # ~100 MB (minimal)
-uv run dlm pack tutor.dlm --include-exports --out tutor-full.dlm.pack
-# …elsewhere:
-uv run dlm unpack tutor-full.dlm.pack
-```
-
-**Start fresh.** Discard optimizer state + replay corpus:
-
-```sh
-uv run dlm train tutor.dlm --fresh
-```
-
-**Audit reproducibility.** Fail on any lock drift:
-
-```sh
-uv run dlm train tutor.dlm --strict-lock
-```
+See the [CLI reference](./docs/cli/reference.md) for the full flag surface.
 
 ## Documentation
 
-- [Getting started](./docs/getting-started/install.md) — install →
-  first train → first prompt → first export
-- [The `.dlm` format](./docs/format/frontmatter.md) — frontmatter
-  reference + section grammar
-- [CLI reference](./docs/cli/reference.md) — every command, every flag
-- [Cookbook](./docs/cookbook/coding-tutor.md) — 6 end-to-end recipes
-- [Architecture](./docs/architecture.md) — module map + storage layout
-  + contract boundaries
-- [Determinism](./docs/determinism.md) — the reproducibility contract,
-  severity table, regen-golden flow
-- [Troubleshooting](./docs/troubleshooting.md) — symptom → cause →
-  fix, seeded from the pitfall inventory
+- [Getting started](./docs/getting-started/install.md)
+- [Frontmatter reference](./docs/format/frontmatter.md)
+- [Section grammar](./docs/format/sections.md)
+- [Training across codebases](./docs/cookbook/training-across-codebases.md)
+- [Multi-adapter composition](./docs/cookbook/multi-adapter.md)
+- [Learned adapter gate](./docs/cookbook/learned-adapter-gate.md)
+- [Multimodal training](./docs/cookbook/multimodal-training.md)
+- [Audio training](./docs/cookbook/audio-training.md)
+- [Probe-driven training / sway harvest](./docs/cookbook/probe-driven-training.md)
+- [CLI reference](./docs/cli/reference.md)
+- [Architecture](./docs/architecture.md)
+- [Determinism](./docs/determinism.md)
 
 ## Principles
 
-1. **The document is the interface.** Not a config file. Not a
-   framework. Plain text with a special extension.
-2. **Training is real.** LoRA / QLoRA on a pretrained base, not a toy
-   from-scratch transformer.
-3. **Retrain is additive.** Replay prior versions; never silently
-   forget.
-4. **Local-first, always.** Training, inference, and store all live
-   on your disk. No network calls outside of model download.
-5. **Deterministic by default.** Reproducibility is a contract, not a
-   wish. `dlm.lock` records the version tuple; drift fails loud.
+1. **The document is the interface.**
+   But the document is structured: frontmatter, typed sections, directives, and
+   store contracts all matter.
+2. **Training is real.**
+   LoRA / QLoRA / DoRA on pretrained bases, not a toy transformer.
+3. **Retraining should not silently forget.**
+   Replay-backed accumulation is part of the product.
+4. **Local-first is load-bearing.**
+   Your training data, adapters, exports, and packs stay on your machine unless
+   you explicitly move them.
+5. **Determinism is a contract.**
+   If a change breaks the reproducibility story, that is a product regression.
 
-## Tech stack
+## Tech Stack
 
 Python 3.11+ · PyTorch · HuggingFace `transformers` / `peft` / `trl` /
-`accelerate` / `datasets` · `safetensors` · `bitsandbytes` (CUDA
-extra) · vendored `llama.cpp` for GGUF export · Ollama (user-installed) ·
-Typer · Pydantic · `packaging` · `uv`.
+`accelerate` / `datasets` · `watchfiles` · `prompt-toolkit` · `safetensors` ·
+vendored `llama.cpp` for GGUF export · Ollama (optional runtime target) ·
+Typer · Pydantic · `uv`
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Testing conventions live at
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Testing conventions live in
 [docs-internal/README-testing.md](./docs-internal/README-testing.md).
-Install the pre-commit hooks to match CI:
 
 ```sh
 uv run pre-commit install
@@ -259,6 +351,6 @@ uv run pre-commit install
 
 ## License
 
-MIT. Base-model licenses are separate and enforced at `dlm init` /
-`dlm pack` time; Llama-family bases require explicit acceptance (see
-`--i-accept-license`).
+MIT. Base-model licenses are separate and enforced where DLM needs them:
+`dlm init`, `dlm train`, `dlm export`, and `dlm pack` all keep the gated-base
+acceptance path explicit.

@@ -1,68 +1,59 @@
 # DocumentLanguageModel
 
-> A text file becomes your personal, locally-trained LLM.
+> `.dlm` is a trainable local AI document format: typed sections, directives,
+> replay-backed retraining, and export.
 
-Edit a `.dlm` file, train a LoRA on it, export to Ollama — all on your
-machine. No telemetry, no uploads, no cloud.
+DocumentLanguageModel (DLM) is a local-first training and inference toolkit
+built around authored documents instead of hosted dashboards.
 
-DocumentLanguageModel (DLM) is built on PyTorch + HuggingFace with a
-hardware-aware planner that picks precision, attention, and batching
-for your box. Retraining is additive: prior document versions stay in a
-replay corpus so the model doesn't forget what you taught it last week.
+A `.dlm` can be a hand-authored training doc, a directive-driven entrypoint
+into a codebase, a multi-adapter project with learned routing, or a selected
+multimodal / audio-language document. DLM trains LoRA / QLoRA / DoRA adapters
+on real pretrained bases, keeps replay history, and exports local runtimes such
+as Ollama and `llama-server`.
 
-## Why
+## What DLM Ships Today
 
-Most "personal AI" tools either want your data in their cloud or ask
-you to run a 70B model you can't afford. DLM sits in the gap:
+- **Structured `.dlm` authoring** with frontmatter plus typed body sections
+  like prose, `::instruction::`, `::preference::`, `::image::`, and
+  `::audio::`
+- **Directive-driven corpus building** via `training.sources`, plus nested
+  `.dlm/training.yaml` / `.dlm/ignore` for repo-local curation
+- **Modern base-model registry** across text, reasoning, sparse-MoE,
+  vision-language, and audio-language rows
+- **Replay-backed retraining** so edits accumulate instead of silently wiping
+  prior state
+- **Multi-adapter docs + learned gating** for separating knowledge, tone, or
+  persona lanes inside one project
+- **Local iteration UX** with `prompt`, `repl`, `train --watch`, `metrics`,
+  and `doctor`
+- **Runtime export** to `ollama` and `llama-server`
+- **Probe-driven improvement** through `sway`-style harvest flows
 
-- **Your document is the dataset.** The `.dlm` file under version
-  control is both the prose you're training on and the configuration
-  for how the training runs. Edit, retrain, share.
-- **Real pretrained bases.** SmolLM2-135M for fast iteration; newer
-  registry rows like Qwen3 (including a reasoning-profile key),
-  Llama 3.3, Gemma 2, SmolLM3, Phi-4-mini-reasoning, OLMo-2, Mixtral,
-  Mistral Small 3.1, and InternVL3 cover current text, sparse-MoE,
-  and multimodal planning use cases. No from-scratch transformers,
-  no toy experiments.
-- **Deterministic by contract.** Same document + same hardware tier +
-  pinned versions produce bit-identical adapters. [Determinism](determinism.md)
-  is a first-class feature.
-- **Exports to Ollama.** `dlm export` emits a quantized GGUF, an
-  explicit Go-template `Modelfile` (no fuzzy matching), and registers
-  the model locally. Share the adapter or pack the whole training
-  history into one `.dlm.pack` file.
-
-## 30-second demo
+## 30-Second Demo
 
 ```sh
 $ uv run dlm init tutor.dlm --base smollm2-135m
-created: tutor.dlm
-
-$ $EDITOR tutor.dlm     # write some Q&A under ::instruction::
-
+$ $EDITOR tutor.dlm
 $ uv run dlm train tutor.dlm
-trained: v0001 (20 steps, seed=42, determinism=best-effort)
-
 $ uv run dlm prompt tutor.dlm "Explain Python decorators"
-A decorator is a function that takes a function and returns …
-
-$ uv run dlm export tutor.dlm --name my-tutor
-ollama: registered my-tutor:latest
+$ uv run dlm export tutor.dlm --target ollama --name my-tutor
 ```
 
-## Where to next
+## Where To Start
 
 | If you want to… | Start here |
 |---|---|
 | Install DLM and run the first cycle | [Getting started → Install](getting-started/install.md) |
-| Understand the `.dlm` file format | [The `.dlm` format](format/frontmatter.md) |
-| See every CLI command | [CLI reference](cli/reference.md) |
-| Copy a working recipe | [Cookbook](cookbook/coding-tutor.md) |
-| Debug a confusing failure | [Troubleshooting](troubleshooting.md) |
+| Understand the `.dlm` file format | [Frontmatter](format/frontmatter.md) and [Section grammar](format/sections.md) |
+| Train across a real repo | [Training across codebases](cookbook/training-across-codebases.md) |
+| Use named adapters and routing | [Multi-adapter](cookbook/multi-adapter.md) and [Learned adapter gate](cookbook/learned-adapter-gate.md) |
+| Work with images or audio | [Multimodal training](cookbook/multimodal-training.md) and [Audio training](cookbook/audio-training.md) |
+| Export or ship a model | [CLI reference](cli/reference.md) and [Determinism](determinism.md) |
+| Pull eval failures back into training | [Probe-driven training](cookbook/probe-driven-training.md) |
 
 ## Status
 
-DLM is pre-v1.0 as of 2026-04-19. Phase 3 (MVP release) sprints are
-complete through **Sprint 15 — Reproducibility lock**; Sprint 16
-(this documentation, plus the release workflow) is in progress. See
-[Architecture](architecture.md) for the full sprint map.
+DLM is pre-v1.0 but substantially broader than the original MVP framing.
+Core author/train/prompt/export/pack/share flows are in place, and current
+runtime-target work is extending export beyond the original Ollama-only path.
