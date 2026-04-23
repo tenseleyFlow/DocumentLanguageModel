@@ -101,11 +101,13 @@ def load_processor(spec: BaseModelSpec) -> Any:  # pragma: no cover
             "processors are only loaded for media bases (vision-language / audio-language)"
         )
     from dlm.base_models._typed_shims import load_auto_processor
+    from dlm.modality import validate_loaded_vl_processor
 
     kwargs: dict[str, Any] = {"revision": spec.revision}
     if spec.trust_remote_code:
         kwargs["trust_remote_code"] = True
-    return load_auto_processor(spec.hf_id, **kwargs)
+    processor = load_auto_processor(spec.hf_id, **kwargs)
+    return validate_loaded_vl_processor(spec, processor)
 
 
 _AUDIO_MODEL_CLASSES: dict[str, str] = {

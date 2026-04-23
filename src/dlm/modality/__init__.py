@@ -20,9 +20,10 @@ the same dispatcher.
 from __future__ import annotations
 
 from dlm.modality.audio import AudioLanguageModality
-from dlm.modality.errors import ModalityError, UnknownModalityError
+from dlm.modality.errors import ModalityError, ProcessorContractError, UnknownModalityError
 from dlm.modality.registry import ModalityDispatch, TextModality, modality_for
 from dlm.modality.vl import VisionLanguageModality
+from dlm.modality.vl_contract import ensure_supported_vl_runtime, validate_loaded_vl_processor
 
 MODALITIES: dict[str, ModalityDispatch] = {
     "text": TextModality(),
@@ -40,8 +41,11 @@ __all__ = [
     "AudioLanguageModality",
     "ModalityDispatch",
     "ModalityError",
+    "ProcessorContractError",
     "TextModality",
     "UnknownModalityError",
     "VisionLanguageModality",
+    "ensure_supported_vl_runtime",
     "modality_for",
+    "validate_loaded_vl_processor",
 ]

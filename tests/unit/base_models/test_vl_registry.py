@@ -210,8 +210,10 @@ class TestInternVL2RegistryEntry:
     """Sprint 35.3: InternVL2-2B landed with MIT license + 448×448 plan.
 
     Loader caveat (documented on the registry entry): InternVL2's HF
-    integration uses `InternVLChatModel` via remote code — this test
-    verifies only the metadata contract, not the runtime load.
+    integration uses `InternVLChatModel` via remote code, and the
+    current generic VL path still lacks the custom InternVL
+    processor/collator contract. This test verifies only the metadata
+    contract, not the runtime load.
     """
 
     def test_entry_present(self) -> None:

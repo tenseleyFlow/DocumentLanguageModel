@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dlm.base_models.schema import BaseModelSpec, VlPreprocessorPlan
+from dlm.modality import ProcessorContractError
 from dlm.train import loader
 
 
@@ -64,6 +65,33 @@ def _vl_spec() -> BaseModelSpec:
             target_size=(224, 224),
             image_token="<image>",
             num_image_tokens=256,
+        ),
+    )
+
+
+def _internvl_spec() -> BaseModelSpec:
+    return BaseModelSpec(
+        key="internvl-test",
+        hf_id="test/internvl",
+        revision="c" * 40,
+        architecture="InternVLChatModel",
+        params=2_200_000_000,
+        target_modules=["q_proj"],
+        template="internvl2",
+        gguf_arch="internvl2",
+        tokenizer_pre="internvl2",
+        license_spdx="Apache-2.0",
+        redistributable=True,
+        trust_remote_code=True,
+        size_gb_fp16=4.4,
+        context_length=8192,
+        recommended_seq_len=2048,
+        modality="vision-language",
+        vl_preprocessor_plan=VlPreprocessorPlan(
+            target_size=(448, 448),
+            image_token="<image>",
+            num_image_tokens=256,
+            resize_policy="dynamic",
         ),
     )
 
@@ -135,3 +163,18 @@ class TestLoadProcessor:
             result = loader.load_processor(_vl_spec())
         assert result is sentinel
         from_pretrained.assert_called_once_with("test/vl", revision="b" * 40)
+
+    def test_internvl_family_rejected_when_auto_processor_is_tokenizer_only(self) -> None:
+        import transformers  # type: ignore[import-not-found]
+
+        _ = transformers.AutoProcessor  # noqa: B018 — materializes the attr
+        tokenizer_only = MagicMock(name="tokenizer_only_processor")
+        tokenizer_only.image_processor = None
+        tokenizer_only.tokenizer = MagicMock(name="internvl_tokenizer")
+        with patch.object(
+            transformers.AutoProcessor,
+            "from_pretrained",
+            return_value=tokenizer_only,
+        ):
+            with pytest.raises(ProcessorContractError, match="InternVL-family VL model"):
+                loader.load_processor(_internvl_spec())

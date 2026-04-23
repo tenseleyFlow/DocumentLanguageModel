@@ -9,3 +9,7 @@ class ModalityError(Exception):
 
 class UnknownModalityError(ModalityError):
     """Spec declares a modality string the registry doesn't know."""
+
+
+class ProcessorContractError(ModalityError):
+    """The resolved media processor can't satisfy DLM's runtime contract."""

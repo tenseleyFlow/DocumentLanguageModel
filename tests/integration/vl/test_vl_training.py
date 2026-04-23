@@ -1,6 +1,6 @@
 """End-to-end VL training cycle on PaliGemma-3B-mix-224 (Sprint 35 v1, T12).
 
-Exercises the live VL path end-to-end:
+Exercises the live generic-VL path end-to-end:
 
 1. `dlm init --multimodal` scaffolds a schema-v10 doc + the `.dlm` store.
 2. A 2x2 RGB PNG is dropped into the scaffolded directory under the
@@ -14,6 +14,11 @@ Exercises the live VL path end-to-end:
      - SFTTrainer runs 1 step and commits the adapter
 4. Asserts the adapter directory exists, manifest records the run,
    and the blob store has the ingested image sha'd under `blobs/`.
+
+InternVL-family rows remain intentionally skipped here on the current
+stack: their upstream runtime needs custom `<image>` expansion +
+`image_flags` rather than the generic `AutoProcessor` + TRL VL collator
+path exercised by this test.
 
 Markers: `slow` + `vl`. Skipped by default (`-m "not slow and not vl"`
 in `pyproject.toml`). Run explicitly via `pytest -m "slow and vl" -k vl_training`
@@ -92,6 +97,8 @@ def _host_has_vl_prerequisites_for(base_key: str) -> tuple[bool, str]:
     from dlm.base_models import BASE_MODELS
 
     spec = BASE_MODELS[base_key]
+    if spec.architecture == "InternVLChatModel":
+        return False, "InternVL-family runtime still needs a custom collator path"
     try:
         AutoProcessor.from_pretrained(
             spec.hf_id,
@@ -102,9 +109,10 @@ def _host_has_vl_prerequisites_for(base_key: str) -> tuple[bool, str]:
     return True, ""
 
 
-# Parametrized across the 3 registered VL bases. Each one skips
-# independently when its weights aren't cached, so `pytest -m "slow and
-# vl"` runs whatever subset the host supports.
+# Parametrized across the registry rows that use the generic
+# AutoProcessor + TRL VL collator path. InternVL-family rows are
+# skipped independently by `_host_has_vl_prerequisites_for` until the
+# custom processor/collator contract lands.
 _VL_BASE_KEYS: tuple[str, ...] = (
     "paligemma-3b-mix-224",
     "qwen2-vl-2b-instruct",
@@ -127,10 +135,10 @@ def test_vl_one_cycle_end_to_end(  # pragma: no cover — slow + vl
 ) -> None:
     """Full VL cycle: init → ingest image → train 1 step → verify adapter.
 
-    Parametrized across all 3 VL bases in the registry
-    (paligemma-3b-mix-224, qwen2-vl-2b-instruct, internvl2-2b).
-    Each parametrization is independently skipped when its weights
-    aren't locally cached.
+    Parametrized across the currently registered VL rows. Each
+    parametrization is independently skipped when its weights aren't
+    locally cached, and the InternVL-family row is also skipped until
+    its custom processor/collator path lands.
     """
     import dlm.train as dlm_train
     from dlm.base_models import resolve as resolve_base_model

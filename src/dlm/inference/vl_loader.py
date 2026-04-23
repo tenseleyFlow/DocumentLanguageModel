@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from dlm.inference.loader import resolve_adapter_path
 from dlm.inference.plan import InferencePlan
+from dlm.modality import ensure_supported_vl_runtime
 
 if TYPE_CHECKING:
     from dlm.base_models import BaseModelSpec
@@ -51,23 +52,30 @@ def load_for_vl_inference(  # pragma: no cover
             f"load_for_vl_inference: {spec.key!r} is modality={spec.modality!r}; "
             "use load_for_inference for text bases"
         )
+    ensure_supported_vl_runtime(spec)
 
     adapter_path = resolve_adapter_path(store, adapter_name=adapter_name)
 
-    from transformers import AutoModelForImageTextToText
+    from transformers import AutoModel, AutoModelForImageTextToText
 
-    from dlm.base_models._typed_shims import load_auto_processor
     from dlm.inference.plan import resolve_inference
+    from dlm.train.loader import load_processor
 
     plan = resolve_inference(adapter_path, caps)
     dtype = _torch_dtype_for(plan.precision)
 
-    base = AutoModelForImageTextToText.from_pretrained(
-        spec.hf_id,
-        revision=spec.revision,
-        torch_dtype=dtype,
-        attn_implementation=plan.attn_implementation,
-    )
+    model_kwargs: dict[str, Any] = {
+        "revision": spec.revision,
+        "torch_dtype": dtype,
+        "attn_implementation": plan.attn_implementation,
+    }
+    if spec.trust_remote_code:
+        model_kwargs["trust_remote_code"] = True
+
+    if spec.trust_remote_code:
+        base = AutoModel.from_pretrained(spec.hf_id, **model_kwargs)
+    else:
+        base = AutoModelForImageTextToText.from_pretrained(spec.hf_id, **model_kwargs)
 
     from peft import PeftModel
 
@@ -77,7 +85,7 @@ def load_for_vl_inference(  # pragma: no cover
     # Processor comes from the pinned base (not the adapter dir) because
     # VL adapters don't snapshot the processor — pixel-path config is
     # deterministic per base revision.
-    processor = load_auto_processor(spec.hf_id, revision=spec.revision)
+    processor = load_processor(spec)
 
     return LoadedVlInference(
         model=model,

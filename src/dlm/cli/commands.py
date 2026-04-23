@@ -892,6 +892,8 @@ def train_cmd(
             ),
         )
 
+    from dlm.modality import ModalityError
+
     try:
         phase_results = run_phases(
             store,
@@ -943,6 +945,9 @@ def train_cmd(
         console.print(f"[red]dpo:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     except TrainingError as exc:
+        console.print(f"[red]training:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except ModalityError as exc:
         console.print(f"[red]training:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
@@ -1408,6 +1413,7 @@ def _dispatch_vl_prompt(  # pragma: no cover
         load_for_vl_inference,
         load_images,
     )
+    from dlm.modality import ProcessorContractError
 
     if verbose:
         console.print("[dim]vl-backend:[/dim] pytorch (AutoModelForImageTextToText)")
@@ -1415,6 +1421,9 @@ def _dispatch_vl_prompt(  # pragma: no cover
     try:
         loaded = load_for_vl_inference(store, spec, caps, adapter_name=adapter_name)
     except AdapterNotFoundError as exc:
+        console.print(f"[red]prompt:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except ProcessorContractError as exc:
         console.print(f"[red]prompt:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 

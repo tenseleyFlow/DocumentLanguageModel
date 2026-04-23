@@ -227,10 +227,13 @@ class TestStaleSprintDraftRows:
         """Guard against copying the stale sprint draft into the registry.
 
         The live `OpenGVLab/InternVL3-2B` model card still documents
-        `trust_remote_code=True`, and its processor path uses dynamic
-        448-pixel tiling rather than the simpler fixed-shape contract we
-        already ship for InternVL2. Adding it later is fine, but it
-        needs an honest row instead of assuming the old "cleaner than
-        InternVL2" sprint note is still true.
+        `trust_remote_code=True`, and on the current stack the whole
+        InternVL family still exposes a tokenizer-only `AutoProcessor`
+        rather than a complete image processor. Upstream also expands
+        `<image>` into repeated `<IMG_CONTEXT>` spans and threads
+        `image_flags` through the forward pass. Adding InternVL3 later
+        is fine, but it needs an honest runtime contract instead of
+        assuming the old "cleaner than InternVL2" sprint note is still
+        true.
         """
         assert "internvl3-2b" not in BASE_MODELS
