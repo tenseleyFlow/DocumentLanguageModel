@@ -46,14 +46,16 @@ dlm init my-diagrams.dlm --multimodal --i-accept-license
 
 See [docs/hardware/vl-memory.md](../hardware/vl-memory.md) for the
 VRAM table (inference / LoRA bs=1 / LoRA bs=4 per base) and the
-base-selection matrix. **Heads-up on InternVL2**: its HF class
-lives in the model repo (`modeling_internvl_chat.py`), so picking
-that base activates `trust_remote_code=True` at load time. The
-other three VL bases don't. Pick InternVL2 intentionally if you've
-read the repo's code. **Heads-up on Mistral Small 3.1**: it is a real
-VL registry row now, but it is intentionally treated as a large-CUDA-
-first base. `dlm doctor` refuses it on Apple Silicon by default unless
-you explicitly pass `--force` on a large-memory host.
+base-selection matrix. **Heads-up on InternVL2**: the row is visible in
+the registry, but on the current stack DLM now refuses it for actual
+prompt/train/HF-snapshot-export work. The upstream family still needs a
+custom processor/collator path for its tokenizer-only `AutoProcessor`,
+`<image>` expansion, and `image_flags` forward contract. That same
+family gap is the reason `internvl3-2b` has not been added yet.
+**Heads-up on Mistral Small 3.1**: it is a real VL registry row now,
+but it is intentionally treated as a large-CUDA-first base. `dlm
+doctor` refuses it on Apple Silicon by default unless you explicitly
+pass `--force` on a large-memory host.
 
 ## Step 2 — Author image sections
 
@@ -98,7 +100,8 @@ dlm train my-diagrams.dlm
 The trainer:
 
 1. Loads PaliGemma via `AutoModelForImageTextToText` + a matching
-   `AutoProcessor`.
+   `AutoProcessor` (or the equivalent generic VL processor for Qwen2-VL
+   / Mistral Small 3.1).
 2. Walks `training.sources` directives, copies each image byte stream
    into the content-addressed blob store at
    `~/.dlm/store/<dlm_id>/blobs/`.
@@ -212,6 +215,15 @@ persistent OOM, swap to CUDA (VL QLoRA is a planned follow-up).
 If you're trying `mistral-small-3.1-24b-instruct`, this is expected to
 be much stricter: the current planner refuses that base on Apple
 Silicon by default unless you pass `--force` on a large-memory host.
+
+### "InternVL-family runtime still needs a custom collator path"
+
+That refusal is deliberate. The current generic VL stack assumes a real
+image processor + TRL's built-in vision collator. InternVL-family bases
+still expose a tokenizer-only `AutoProcessor` on this stack and rely on
+custom `<image>` expansion plus `image_flags`. The registry row stays
+visible for planning and future work, but use the other VL bases for
+actual runs today.
 
 ## Known limitations
 

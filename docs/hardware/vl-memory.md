@@ -1,12 +1,20 @@
 # Vision-language memory budget
 
-Four VL bases now ship in the registry: **PaliGemma-3B-mix-224**,
+Four VL rows now ship in the registry: **PaliGemma-3B-mix-224**,
 **Qwen2-VL-2B-Instruct**, **InternVL2-2B**, and
-**Mistral-Small-3.1-24B-Instruct-2503**. Each is pinned at a fixed
-preprocessing resolution; dynamic-resolution support (Qwen2-VL's
-native capability, and Mistral Small 3.1's longer-edge policy) is
-deferred to a follow-up so the `VlPreprocessorPlan` cache key stays
-stable.
+**Mistral-Small-3.1-24B-Instruct-2503**. Each row carries a pinned
+preprocessing plan; dynamic-resolution support (Qwen2-VL's native
+capability, Mistral Small 3.1's longer-edge policy, and the broader
+InternVL family contract) is still gated behind follow-up runtime
+work so the current `VlPreprocessorPlan` cache key stays stable.
+
+**Reality check.** The generic VL train/prompt path is complete today
+for PaliGemma, Qwen2-VL, and Mistral Small 3.1. InternVL2 remains
+registry-visible for planning and future support, but on the current
+transformers stack its HF path still exposes a tokenizer-only
+`AutoProcessor` and needs a custom collator/runtime contract. DLM now
+refuses that family with a clear error instead of pretending the
+generic VL path is enough.
 
 ## Base-selection guidance
 
@@ -14,7 +22,7 @@ stable.
 |---------------------------|------------|---------------------|
 | paligemma-3b-mix-224      | Gemma (gated) | The cleanest PEFT path + proven chart/doc QA; accept the Gemma license first. |
 | qwen2-vl-2b-instruct      | Apache-2.0 | Permissive licensing + strong general-purpose VL; dynamic-res is capped to 672² in v1 but native runtime supports more. |
-| internvl2-2b              | MIT        | Most permissive license + competitive 2B-scale quality; **loader caveat** (InternVLChatModel uses trust_remote_code). |
+| internvl2-2b              | MIT        | Registry-visible planning target for a future custom InternVL path; current train/prompt/export-snapshot flows refuse it on this stack. |
 | mistral-small-3.1-24b-instruct | Apache-2.0 | Highest-capability VL row in the registry today; targets large CUDA boxes first and is refused on MPS by default unless you explicitly force it. |
 
 ## PaliGemma-3B-mix-224 (224×224, fp16)
@@ -65,8 +73,8 @@ frontmatter enables it.
 ## InternVL2-2B (448×448, fp16)
 
 InternVL2 uses ViT-L/14 + pixel-shuffle 2×2 so 448² input yields 256
-image tokens — the smallest of the three bases and cheapest at
-training time.
+image tokens per 448-tile — the smallest InternVL-family budget and
+the cheapest of the four rows on paper.
 
 | Config          | Base weights | Adapter | Activations | Total (peak) |
 |-----------------|-------------:|--------:|------------:|-------------:|
@@ -74,18 +82,19 @@ training time.
 | LoRA + bs=1     |          4.4 |    0.03 |         1.5 |          6.0 |
 | LoRA + bs=4     |          4.4 |    0.03 |         6.0 |         10.5 |
 
-**Floor.** MPS with 16 GB comfortably handles batch=4. 12 GB CUDA
-handles batch=1; 16 GB CUDA handles batch=4.
+**Planning floor.** MPS with 16 GB would comfortably handle batch=4 on
+memory alone. 12 GB CUDA would handle batch=1; 16 GB CUDA would handle
+batch=4.
 
-**Security note: trust_remote_code.** InternVL2 ships as
-`InternVLChatModel`, a custom class defined in
-`modeling_internvl_chat.py` inside the HF model repo. Loading it
-requires executing that repo's code — the registry entry declares
-`trust_remote_code=True`, and the loader routes through
-`AutoModel.from_pretrained(trust_remote_code=True)`. Picking this
-base in a `.dlm` frontmatter is the user's informed acknowledgment:
-the other two VL bases ship their class in transformers itself and
-do NOT set `trust_remote_code`.
+**Current runtime status.** This row is not trainable/promptable via
+the generic VL path today. InternVL2 ships as `InternVLChatModel`, a
+custom remote-code family whose upstream runtime expands `<image>` into
+repeated `<IMG_CONTEXT>` spans and threads `image_flags` through the
+forward pass. On the current stack, `AutoProcessor.from_pretrained(...)`
+resolves to a tokenizer-only object, so DLM refuses the family early
+instead of failing later inside the model. Keep the budget numbers here
+for planning, but use PaliGemma, Qwen2-VL, or Mistral Small 3.1 for
+actual runs today.
 
 ## Mistral Small 3.1 24B Instruct (pinned 1540×1540, fp16)
 

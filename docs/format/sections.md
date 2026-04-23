@@ -71,8 +71,9 @@ lands in Sprint 17/18.
 
 ### Image (`::image path="..." alt="..."::`)
 
-Schema v10 adds image sections for vision-language bases (PaliGemma in
-v1; Qwen2-VL + InternVL2 land in the 35.x follow-ups). The fence uses
+Schema v10 adds image sections for vision-language bases. The initial
+launch covered PaliGemma; later follow-ups added Qwen2-VL,
+InternVL2, and Mistral Small 3.1 registry rows. The fence uses
 attribute syntax instead of the bare `::type::` form:
 
 ```dlm
@@ -107,6 +108,13 @@ training:
 
 Each discovered image becomes an `::image::` section with
 `alt=<filename-stem>` and flows through the same row-emission path.
+
+**Current InternVL caveat.** InternVL-family rows stay visible in the
+registry for planning and future work, but the current runtime still
+needs a custom processor/collator path for their `<image>` expansion
+and `image_flags` contract. See the [multi-modal training
+cookbook](../cookbook/multimodal-training.md) and [VL memory
+guide](../hardware/vl-memory.md) before picking `internvl2-2b`.
 
 **Base-model requirements.** Only vision-language bases accept image
 sections at training time. `dlm init --multimodal` scaffolds a VL
