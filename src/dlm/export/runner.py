@@ -34,6 +34,7 @@ from dlm.export.manifest import (
 from dlm.export.plan import ExportPlan
 from dlm.export.precision_safety import require_dequantize_or_refuse
 from dlm.export.quantize import run_checked
+from dlm.export.record import append_export_summary
 
 if TYPE_CHECKING:
     from dlm.base_models import BaseModelSpec
@@ -335,9 +336,10 @@ def run_export(
     manifest_path = save_export_manifest(export_dir, em)
 
     # 8. Append to store manifest.exports.
-    _append_export_summary(
+    append_export_summary(
         store=store,
-        plan=plan,
+        quant=plan.quant,
+        merged=plan.merged,
         llama_cpp_tag=em.llama_cpp_tag,
         artifacts=em.artifacts,
         ollama_name=em.ollama_name,
@@ -346,6 +348,7 @@ def run_export(
         target=resolved_target.name,
         adapter_name=adapter_name,
         adapter_mix=adapter_mix,
+        timeout=_APPEND_LOCK_TIMEOUT,
     )
 
     return ExportResult(
@@ -617,55 +620,3 @@ def _run_ollama_stage(
         smoke_first_line = first_line(stdout)
 
     return modelfile_path, name, ver_str, smoke_first_line
-
-
-def _append_export_summary(
-    *,
-    store: StorePath,
-    plan: ExportPlan,
-    llama_cpp_tag: str | None,
-    artifacts: list[Any],
-    ollama_name: str | None,
-    ollama_version_str: str | None,
-    smoke_first_line: str | None,
-    target: str,
-    adapter_name: str | None = None,
-    adapter_mix: list[tuple[str, float]] | None = None,
-) -> None:
-    """Update `manifest.exports` with a new `ExportSummary` row."""
-    from dlm.store.manifest import ExportSummary, load_manifest, save_manifest
-
-    base_sha = next((a.sha256 for a in artifacts if a.path.startswith("base.")), None)
-    adapter_sha = next((a.sha256 for a in artifacts if a.path.startswith("adapter.")), None)
-
-    summary = ExportSummary(
-        exported_at=utc_now(),
-        target=target,
-        quant=plan.quant,
-        merged=plan.merged,
-        ollama_name=ollama_name,
-        ollama_version=ollama_version_str,
-        llama_cpp_tag=llama_cpp_tag,
-        base_gguf_sha256=base_sha,
-        adapter_gguf_sha256=adapter_sha,
-        smoke_output_first_line=smoke_first_line,
-        adapter_name=adapter_name,
-        adapter_mix=adapter_mix,
-    )
-
-    # The manifest read-modify-write must be serialized: two concurrent
-    # `dlm export` invocations on the same store (different quants) would
-    # otherwise race and drop one summary. The per-store exclusive lock
-    # is the same one `dlm train` takes; holding it across load→save
-    # keeps `manifest.exports` append-atomic.
-    from dlm.store.lock import exclusive
-
-    with exclusive(store.lock, timeout=_APPEND_LOCK_TIMEOUT):
-        manifest = load_manifest(store.manifest)
-        updated = manifest.model_copy(
-            update={
-                "exports": [*manifest.exports, summary],
-                "updated_at": utc_now(),
-            }
-        )
-        save_manifest(store.manifest, updated)

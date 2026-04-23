@@ -1551,7 +1551,7 @@ def export_cmd(
         str,
         typer.Option(
             "--target",
-            help="Export destination. Currently supported: ollama, llama-server.",
+            help="Export destination. Currently supported: ollama, llama-server, vllm.",
         ),
     ] = "ollama",
     quant: Annotated[
@@ -1678,7 +1678,12 @@ def export_cmd(
         OllamaVersionError,
     )
     from dlm.export.quantize import run_checked
-    from dlm.export.targets import prepare_llama_server_export, resolve_target
+    from dlm.export.targets import (
+        finalize_vllm_export,
+        prepare_llama_server_export,
+        prepare_vllm_export,
+        resolve_target,
+    )
     from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
@@ -1774,6 +1779,12 @@ def export_cmd(
     from dlm.modality import modality_for
 
     export_dispatch = modality_for(spec)
+    if resolved_target.name == "vllm" and export_dispatch.accepts_audio:
+        console.print(
+            "[red]export:[/red] --target vllm is not wired for audio-language "
+            "documents yet; this Sprint 41 slice only supports text bases."
+        )
+        raise typer.Exit(code=2)
     if export_dispatch.accepts_audio:
         try:
             dispatch_result = export_dispatch.dispatch_export(
@@ -1813,6 +1824,12 @@ def export_cmd(
     # missing local base snapshot should not hard-fail the whole
     # export — the dispatcher can still emit the HF-snapshot path
     # without GGUF context.
+    if resolved_target.name == "vllm" and export_dispatch.accepts_images:
+        console.print(
+            "[red]export:[/red] --target vllm is not wired for vision-language "
+            "documents yet; this Sprint 41 slice only supports text bases."
+        )
+        raise typer.Exit(code=2)
     if export_dispatch.accepts_images:
         gguf_emission_context = None
         try:
@@ -1873,6 +1890,71 @@ def export_cmd(
             entries=entries_typed,
             combination_type=adapter_mix_method,  # type: ignore[arg-type]
         )
+
+    if resolved_target.name == "vllm":
+        ignored_flags: list[str] = []
+        if quant is not None:
+            ignored_flags.append("--quant")
+        if merged:
+            ignored_flags.append("--merged")
+        if dequantize:
+            ignored_flags.append("--dequantize")
+        if no_template:
+            ignored_flags.append("--no-template")
+        if skip_ollama:
+            ignored_flags.append("--skip-ollama")
+        if no_imatrix:
+            ignored_flags.append("--no-imatrix")
+        if draft is not None:
+            ignored_flags.append("--draft")
+        if no_draft:
+            ignored_flags.append("--no-draft")
+        if ignored_flags:
+            console.print(
+                "[yellow]export:[/yellow] ignoring flags not applicable to "
+                f"`--target vllm`: {', '.join(ignored_flags)}"
+            )
+
+        declared_adapter_names = tuple(adapters_declared.keys()) if adapters_declared else None
+        try:
+            vllm_result = prepare_vllm_export(
+                store=store,
+                spec=spec,
+                served_model_name=name or f"dlm-{parsed.frontmatter.dlm_id.lower()}",
+                adapter_name=adapter,
+                adapter_path_override=adapter_path_override,
+                declared_adapter_names=declared_adapter_names,
+            )
+        except ExportError as exc:
+            console.print(f"[red]export:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
+
+        vllm_smoke = None if no_smoke else resolved_target.smoke_test(vllm_result)
+        if vllm_smoke is not None and not vllm_smoke.ok:
+            console.print(
+                f"[red]smoke:[/red] {vllm_smoke.detail}\n"
+                "  re-run with `--no-smoke` to skip the smoke test."
+            )
+            raise typer.Exit(code=1)
+
+        manifest_path = finalize_vllm_export(
+            store=store,
+            spec=spec,
+            prepared=vllm_result,
+            smoke_output_first_line=None if vllm_smoke is None else vllm_smoke.detail,
+            adapter_name=adapter,
+            adapter_mix=mix_entries,
+        )
+        console.print(f"[green]exported:[/green] {vllm_result.export_dir}")
+        console.print("target:  vllm")
+        assert vllm_result.launch_script_path is not None
+        assert vllm_result.config_path is not None
+        console.print(f"launch:  {vllm_result.launch_script_path.name}")
+        console.print(f"config:  {vllm_result.config_path.name}")
+        console.print(f"manifest: {manifest_path.name}")
+        if vllm_smoke is not None and vllm_smoke.detail:
+            console.print(f"smoke:   {vllm_smoke.detail}")
+        return
 
     try:
         result = run_export(

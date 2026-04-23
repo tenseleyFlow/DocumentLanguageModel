@@ -12,20 +12,21 @@ from dlm.export.targets import TARGETS, ExportTarget, available_targets, resolve
 
 
 class TestRegistry:
-    def test_ollama_target_is_registered(self) -> None:
+    def test_targets_are_registered(self) -> None:
         target = resolve_target("ollama")
         assert target.name == "ollama"
         assert isinstance(target, ExportTarget)
         assert TARGETS["ollama"] is target
         assert "llama-server" in TARGETS
-        assert available_targets() == ("ollama", "llama-server")
+        assert "vllm" in TARGETS
+        assert available_targets() == ("ollama", "llama-server", "vllm")
 
     def test_unknown_target_lists_available_targets(self) -> None:
         with pytest.raises(
             UnknownExportTargetError,
-            match="available targets: ollama, llama-server",
+            match="available targets: ollama, llama-server, vllm",
         ):
-            resolve_target("vllm")
+            resolve_target("sglang")
 
 
 class TestOllamaWrapper:

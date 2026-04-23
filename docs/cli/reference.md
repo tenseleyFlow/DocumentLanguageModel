@@ -203,7 +203,7 @@ dlm export <path> [--target NAME] [--quant Q] [--merged [--dequantize]]
 
 | Option | Default | Notes |
 |---|---|---|
-| `--target NAME` | `ollama` | Export destination. Sprint 41 currently supports `ollama` and `llama-server`. The `llama-server` path writes launch artifacts against the existing GGUF export and uses the shared OpenAI-compatible HTTP smoke harness when `--no-smoke` is not passed. |
+| `--target NAME` | `ollama` | Export destination. Sprint 41 currently supports `ollama`, `llama-server`, and `vllm`. The `llama-server` path writes launch artifacts against the existing GGUF export and uses the shared OpenAI-compatible HTTP smoke harness; the `vllm` path writes `vllm_launch.sh` + `vllm_config.json` against the local adapter layout and ignores GGUF-only flags. |
 | `--quant Q` | frontmatter.export.default_quant | `Q4_K_M` / `Q5_K_M` / `Q6_K` / `Q8_0` / `F16`. |
 | `--merged` | false | Merge LoRA into base before quantizing. |
 | `--dequantize` | false | Required with `--merged` on a QLoRA adapter (pitfall #3). |

@@ -6,10 +6,12 @@ from dlm.export.errors import UnknownExportTargetError
 from dlm.export.targets.base import ExportTarget, SmokeResult, TargetResult
 from dlm.export.targets.llama_server import LLAMA_SERVER_TARGET, prepare_llama_server_export
 from dlm.export.targets.ollama import OLLAMA_TARGET
+from dlm.export.targets.vllm import VLLM_TARGET, finalize_vllm_export, prepare_vllm_export
 
 TARGETS: dict[str, ExportTarget] = {
     OLLAMA_TARGET.name: OLLAMA_TARGET,
     LLAMA_SERVER_TARGET.name: LLAMA_SERVER_TARGET,
+    VLLM_TARGET.name: VLLM_TARGET,
 }
 
 
@@ -32,7 +34,10 @@ __all__ = [
     "SmokeResult",
     "TARGETS",
     "TargetResult",
+    "VLLM_TARGET",
     "available_targets",
+    "finalize_vllm_export",
     "prepare_llama_server_export",
+    "prepare_vllm_export",
     "resolve_target",
 ]
