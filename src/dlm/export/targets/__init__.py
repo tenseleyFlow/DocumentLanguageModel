@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dlm.export.errors import UnknownExportTargetError
 from dlm.export.targets.base import ExportTarget, SmokeResult, TargetResult
+from dlm.export.targets.llama_server import LLAMA_SERVER_TARGET, prepare_llama_server_export
 from dlm.export.targets.ollama import OLLAMA_TARGET
 
 TARGETS: dict[str, ExportTarget] = {
     OLLAMA_TARGET.name: OLLAMA_TARGET,
+    LLAMA_SERVER_TARGET.name: LLAMA_SERVER_TARGET,
 }
 
 
@@ -26,9 +28,11 @@ def resolve_target(name: str) -> ExportTarget:
 
 __all__ = [
     "ExportTarget",
+    "LLAMA_SERVER_TARGET",
     "SmokeResult",
     "TARGETS",
     "TargetResult",
     "available_targets",
+    "prepare_llama_server_export",
     "resolve_target",
 ]

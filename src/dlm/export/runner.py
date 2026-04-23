@@ -182,6 +182,7 @@ def run_export(
     from dlm.export.targets import resolve_target
 
     resolved_target = resolve_target(target)
+    skip_ollama = skip_ollama or resolved_target.name != "ollama"
     run = subprocess_runner if subprocess_runner is not None else run_checked
 
     adapter_path: Path

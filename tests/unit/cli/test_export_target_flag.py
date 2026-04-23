@@ -50,6 +50,7 @@ class TestExportTargetFlag:
         text = _joined(result)
         assert "unknown export target" in text
         assert "ollama" in text
+        assert "llama-server" in text
 
     def test_ollama_target_reaches_existing_mutex_validation(self, tmp_path: Path) -> None:
         doc = _scaffold_doc(tmp_path)
@@ -70,3 +71,19 @@ class TestExportTargetFlag:
         )
         assert result.exit_code == 2
         assert "mutually exclusive" in _joined(result)
+
+    def test_llama_server_requires_no_smoke_for_now(self, tmp_path: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "--home",
+                str(tmp_path / "home"),
+                "export",
+                str(tmp_path / "ghost.dlm"),
+                "--target",
+                "llama-server",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "--no-smoke" in _joined(result)

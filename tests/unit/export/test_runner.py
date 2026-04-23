@@ -151,6 +151,27 @@ class TestHappyPath:
         assert all(a.sha256 and a.size_bytes > 0 for a in em.artifacts)
         assert em.llama_cpp_tag == "b9999"
 
+    def test_non_ollama_target_still_records_manifest_target(self, tmp_path: Path) -> None:
+        cached_base, store, vendor = _setup_store(tmp_path)
+        plan = ExportPlan(quant="Q4_K_M")
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+
+        result = run_export(
+            store,
+            _SPEC,
+            plan,
+            target="llama-server",
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
+        )
+
+        em = load_export_manifest(result.export_dir)
+        assert result.target == "llama-server"
+        assert em.target == "llama-server"
+
 
 class TestCaching:
     def test_second_export_skips_base_conversion(self, tmp_path: Path) -> None:

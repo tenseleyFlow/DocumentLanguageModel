@@ -11,6 +11,8 @@ Three primary artifacts:
 - `convert_lora_to_gguf.py` — sibling script for PEFT adapters.
 - `llama-quantize` — compiled binary (built by cmake). Converts an
   fp16 GGUF into one of the quant levels.
+- `llama-server` — compiled binary for the OpenAI-compatible HTTP
+  server target added in Sprint 41.
 
 Lookup order for the llama.cpp source tree (convert scripts):
 
@@ -71,6 +73,15 @@ _LLAMA_IMATRIX_CANDIDATES: Final[tuple[str, ...]] = (
     "build/bin/imatrix",
     "bin/imatrix",
     "imatrix",
+)
+_LLAMA_SERVER_CANDIDATES: Final[tuple[str, ...]] = (
+    "build/bin/llama-server",
+    "bin/llama-server",
+    "llama-server",
+    # Legacy pre-rename binary.
+    "build/bin/server",
+    "bin/server",
+    "server",
 )
 
 
@@ -190,6 +201,19 @@ def llama_imatrix_bin(override: Path | None = None) -> Path:
     return _resolve_binary(
         name="llama-imatrix",
         candidates=_LLAMA_IMATRIX_CANDIDATES,
+        override=override,
+    )
+
+
+def llama_server_bin(override: Path | None = None) -> Path:
+    """Path to the `llama-server` binary.
+
+    Same resolver shape as `llama_quantize_bin` — vendored build
+    layouts first, then `$PATH`.
+    """
+    return _resolve_binary(
+        name="llama-server",
+        candidates=_LLAMA_SERVER_CANDIDATES,
         override=override,
     )
 

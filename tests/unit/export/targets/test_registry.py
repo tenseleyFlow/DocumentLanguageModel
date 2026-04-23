@@ -16,11 +16,15 @@ class TestRegistry:
         target = resolve_target("ollama")
         assert target.name == "ollama"
         assert isinstance(target, ExportTarget)
-        assert {"ollama": target} == TARGETS
-        assert available_targets() == ("ollama",)
+        assert TARGETS["ollama"] is target
+        assert "llama-server" in TARGETS
+        assert available_targets() == ("ollama", "llama-server")
 
     def test_unknown_target_lists_available_targets(self) -> None:
-        with pytest.raises(UnknownExportTargetError, match="available targets: ollama"):
+        with pytest.raises(
+            UnknownExportTargetError,
+            match="available targets: ollama, llama-server",
+        ):
             resolve_target("vllm")
 
 

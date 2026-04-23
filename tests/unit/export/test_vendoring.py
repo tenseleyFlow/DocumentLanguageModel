@@ -12,6 +12,7 @@ from dlm.export.vendoring import (
     convert_lora_to_gguf_py,
     llama_cpp_root,
     llama_quantize_bin,
+    llama_server_bin,
     pinned_tag,
 )
 
@@ -66,12 +67,22 @@ class TestScriptResolvers:
             convert_hf_to_gguf_py(override=root)
 
 
-class TestLlamaQuantizeBin:
+class TestLlamaBinaries:
     def test_resolves_build_bin_layout(self, tmp_path: Path) -> None:
         root = _populate_vendor(tmp_path / "llama.cpp")
         path = llama_quantize_bin(override=root)
         assert path.is_file()
         assert path.name == "llama-quantize"
+
+    def test_llama_server_resolves_build_bin_layout(self, tmp_path: Path) -> None:
+        root = _populate_vendor(tmp_path / "llama.cpp", with_binary=False)
+        server = root / "build" / "bin" / "llama-server"
+        server.parent.mkdir(parents=True, exist_ok=True)
+        server.write_text("# mock binary")
+        server.chmod(0o755)
+        path = llama_server_bin(override=root)
+        assert path.is_file()
+        assert path.name == "llama-server"
 
     def test_missing_binary_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Clear PATH so the `shutil.which` fallback can't find a
@@ -80,6 +91,14 @@ class TestLlamaQuantizeBin:
         root = _populate_vendor(tmp_path / "llama.cpp", with_binary=False)
         with pytest.raises(VendoringError, match="llama-quantize"):
             llama_quantize_bin(override=root)
+
+    def test_missing_server_binary_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+        root = _populate_vendor(tmp_path / "llama.cpp", with_binary=False)
+        with pytest.raises(VendoringError, match="llama-server"):
+            llama_server_bin(override=root)
 
     def test_dlm_llama_cpp_build_env_preferred(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -8,6 +8,8 @@
 #       stage changes.
 #   scripts/bump-llama-cpp.sh build
 #       Build `llama-quantize` (+ siblings) via cmake. Idempotent.
+#   scripts/bump-llama-cpp.sh build --with-server
+#       Also build `llama-server` for Sprint 41's local HTTP target.
 #   scripts/bump-llama-cpp.sh refresh-labels
 #       Regenerate vendor/llama_cpp_pretokenizer_hashes.json from the
 #       current submodule contents. Does not touch the submodule itself.
@@ -146,6 +148,18 @@ EOF
 }
 
 do_build() {
+  local with_server=0
+  case "${1:-}" in
+    "")
+      ;;
+    --with-server)
+      with_server=1
+      ;;
+    *)
+      echo "usage: scripts/bump-llama-cpp.sh build [--with-server]" >&2
+      exit 2
+      ;;
+  esac
   if [ ! -d "$VENDOR_DIR" ]; then
     echo "error: $VENDOR_DIR missing — run 'bump <tag>' first" >&2
     exit 1
@@ -157,7 +171,11 @@ do_build() {
   # calibration (Sprint 11.6). Both are required for the full export
   # pipeline; building them separately means a missing target fails the
   # build loudly rather than silently shipping a half-built toolchain.
-  for target in llama-quantize llama-imatrix; do
+  local targets=(llama-quantize llama-imatrix)
+  if [ "$with_server" -eq 1 ]; then
+    targets+=(llama-server)
+  fi
+  for target in "${targets[@]}"; do
     echo "--> building $target"
     cmake --build "$VENDOR_DIR/build" --target "$target" --config Release
     if [ ! -f "$VENDOR_DIR/build/bin/$target" ]; then
@@ -173,7 +191,7 @@ case "$cmd" in
     do_bump "${2:-}"
     ;;
   build)
-    do_build
+    do_build "${2:-}"
     ;;
   refresh-labels)
     refresh_labels

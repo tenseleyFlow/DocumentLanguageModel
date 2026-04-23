@@ -1551,7 +1551,7 @@ def export_cmd(
         str,
         typer.Option(
             "--target",
-            help="Export destination. Currently supported: ollama.",
+            help="Export destination. Currently supported: ollama, llama-server.",
         ),
     ] = "ollama",
     quant: Annotated[
@@ -1678,7 +1678,7 @@ def export_cmd(
         OllamaVersionError,
     )
     from dlm.export.quantize import run_checked
-    from dlm.export.targets import resolve_target
+    from dlm.export.targets import prepare_llama_server_export, resolve_target
     from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
@@ -1696,6 +1696,13 @@ def export_cmd(
     except UnknownExportTargetError as exc:
         console.print(f"[red]export:[/red] {exc}")
         raise typer.Exit(code=2) from exc
+    if resolved_target.name == "llama-server" and not no_smoke:
+        console.print(
+            "[red]export:[/red] --target llama-server currently requires "
+            "`--no-smoke`; the HTTP smoke harness lands in a follow-up "
+            "Sprint 41 slice."
+        )
+        raise typer.Exit(code=2)
 
     parsed = parse_file(path)
     adapters_declared = parsed.frontmatter.training.adapters
@@ -1883,7 +1890,7 @@ def export_cmd(
             target=resolved_target.name,
             cached_base_dir=cached.path,
             subprocess_runner=_verbose_runner if verbose else None,
-            skip_ollama=skip_ollama,
+            skip_ollama=skip_ollama or resolved_target.name != "ollama",
             skip_smoke=no_smoke,
             source_dlm_path=path.resolve(),
             training_sequence_len=parsed.frontmatter.training.sequence_len,
@@ -1936,10 +1943,45 @@ def export_cmd(
         console.print(f"[red]export:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
+    if resolved_target.name == "llama-server":
+        adapter_dir = adapter_path_override
+        if adapter_dir is None:
+            if adapter is None:
+                adapter_dir = store.resolve_current_adapter()
+            else:
+                adapter_dir = store.resolve_current_adapter_for(adapter)
+        assert adapter_dir is not None
+        try:
+            llama_server_result = prepare_llama_server_export(
+                export_dir=result.export_dir,
+                manifest_path=result.manifest_path,
+                artifacts=result.artifacts,
+                adapter_dir=adapter_dir,
+                spec=spec,
+                training_sequence_len=parsed.frontmatter.training.sequence_len,
+            )
+        except VendoringError as exc:
+            console.print(
+                f"[red]vendor:[/red] {exc}\n"
+                "  run `scripts/bump-llama-cpp.sh build --with-server` or "
+                "`git submodule update --init --recursive`."
+            )
+            raise typer.Exit(code=1) from exc
+        except ExportError as exc:
+            console.print(f"[red]export:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
+
     cached_tag = " [dim](cached base)[/dim]" if result.cached else ""
     console.print(f"[green]exported:[/green] {result.export_dir}{cached_tag}")
     for artifact in result.artifacts:
         console.print(f"  {artifact.name}")
+    if resolved_target.name == "llama-server":
+        assert llama_server_result.launch_script_path is not None
+        assert llama_server_result.config_path is not None
+        console.print(f"target:  {result.target}")
+        console.print(f"launch:  {llama_server_result.launch_script_path.name}")
+        console.print(f"template: {llama_server_result.config_path.name}")
+        return
     if result.ollama_name:
         console.print(f"ollama:  {result.ollama_name} (v{result.ollama_version})")
     if result.smoke_output_first_line:
