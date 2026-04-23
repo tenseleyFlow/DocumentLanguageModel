@@ -15,11 +15,12 @@ Notes on individual entries:
   plus a pack-time attestation checkbox would encode this properly —
   deferred follow-up work. Until then, users at the scale threshold
   must consult the license text themselves.
-- Llama-3.2 / 3.3 models are gated on HuggingFace
-  (`requires_acceptance=True`) and their license does NOT permit
-  bundling into a `.dlm.pack`
-  (`redistributable=False`) — enforced by the pack gate and
-  share-protocol refusal.
+- Llama-3.2 models are gated on HuggingFace. Llama-3.3 8B currently
+  needs a mirror-backed fetch path because Meta exposes it through the
+  Llama API but not a first-party HF repo. DLM still keeps the same
+  acceptance + non-redistribution policy surface for the whole Llama
+  family (`requires_acceptance=True`, `redistributable=False`) —
+  enforced by the pack gate and share-protocol refusal.
 - SmolLM2 / SmolLM3 and Phi-3.5-mini are permissive (Apache-2.0 / MIT).
 - `size_gb_fp16` is approximate; the hardware doctor uses it to seed
   VRAM estimates, which then get refined by runtime checks.
@@ -218,11 +219,14 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     ),
     BaseModelSpec(
         key="llama-3.3-8b-instruct",
-        hf_id="meta-llama/Llama-3.3-8B-Instruct",
-        # Placeholder SHA: format-valid, not a real HF commit. The
-        # weekly `scripts/refresh-registry.py --check` run surfaces
-        # drift and prints the live value for manual review.
-        revision="4d5e6f7890abcdeffedcba0987654321abc2d3e4",
+        # Meta's first-party LlamaCon announcement explicitly says the
+        # Llama API can fine-tune "o novo modelo Llama 3.3 8B", but
+        # there is still no first-party HF repo. DLM therefore fetches
+        # weights from the community mirror below while
+        # refresh-registry separately probes Meta's newsroom article
+        # for provenance.
+        hf_id="allura-forge/Llama-3.3-8B-Instruct",
+        revision="df95224cf87c32d9f4958dd284a07ded620aa4fc",
         architecture="LlamaForCausalLM",
         params=8_000_000_000,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -237,6 +241,11 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         context_length=131_072,
         context_length_effective=8_192,
         recommended_seq_len=4096,
+        refresh_check_hf_gating=False,
+        provenance_url=(
+            "https://about.fb.com/br/news/2025/04/tudo-o-que-anunciamos-no-nosso-primeiro-llamacon/"
+        ),
+        provenance_match_text="novo modelo Llama 3.3 8B",
     ),
     BaseModelSpec(
         key="smollm3-3b",

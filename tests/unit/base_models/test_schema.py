@@ -167,6 +167,28 @@ class TestSprint40Substrate:
         spec = _minimal(context_length=8192, context_length_effective=4096)
         assert spec.effective_context_length == 4096
 
+    def test_refresh_hf_gating_check_defaults_true(self) -> None:
+        assert _minimal().refresh_check_hf_gating is True
+
+    def test_provenance_probe_requires_url_and_marker_together(self) -> None:
+        with pytest.raises(ValidationError, match="must be set together"):
+            _minimal(provenance_url="https://example.com")
+        with pytest.raises(ValidationError, match="must be set together"):
+            _minimal(provenance_match_text="marker")
+
+    def test_disabling_hf_gating_check_requires_provenance_probe(self) -> None:
+        with pytest.raises(ValidationError, match="requires a first-party provenance_url"):
+            _minimal(refresh_check_hf_gating=False)
+
+    def test_disabling_hf_gating_check_with_provenance_is_valid(self) -> None:
+        spec = _minimal(
+            refresh_check_hf_gating=False,
+            provenance_url="https://example.com/provenance",
+            provenance_match_text="official marker",
+        )
+        assert spec.refresh_check_hf_gating is False
+        assert spec.provenance_match_text == "official marker"
+
 
 class TestImmutability:
     def test_spec_is_frozen(self) -> None:

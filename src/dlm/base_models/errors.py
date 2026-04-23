@@ -63,7 +63,7 @@ class ProbeFailedError(BaseModelError):
 
 
 class GatedModelError(BaseModelError):
-    """Model requires HuggingFace license acceptance and the user hasn't accepted.
+    """Model requires license acceptance and the user hasn't accepted.
 
     Lives here because registry probes catch it first; the acceptance
     record is written elsewhere, but the error shape is owned here.
@@ -74,7 +74,7 @@ class GatedModelError(BaseModelError):
         self.license_url = license_url
         where = f" License: {license_url}" if license_url else ""
         super().__init__(
-            f"{hf_id} is a gated HuggingFace model. Accept the license and "
+            f"{hf_id} requires license acceptance. Accept the license and "
             f"pass --i-accept-license (or via `dlm init`).{where}"
         )
 

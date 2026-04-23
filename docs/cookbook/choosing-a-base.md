@@ -23,7 +23,7 @@ The fastest way to pick a DLM base is to decide three things first:
 
 ## Notes on the sharp edges
 
-- `llama-3.3-8b-instruct` is still treated like the Llama family in DLM’s policy surface: acceptance required, not redistributable, and intended for users who already know they want the Llama line.
+- `llama-3.3-8b-instruct` is still treated like the Llama family in DLM’s policy surface: acceptance required, not redistributable, and intended for users who already know they want the Llama line. Today it resolves through a community HF mirror while DLM pins provenance against Meta’s official LlamaCon/newsroom announcement, because Meta has not published a first-party HF repo for this row.
 - `internvl2-2b` and `internvl3-2b` are registry-visible planning targets, but the current generic VL runtime still refuses the InternVL family until DLM owns its custom processor/collator contract.
 - `mistral-small-3.1-24b-instruct` is intentionally refused on MPS by default. It is a real shipped row, just not a casual laptop target.
 

@@ -54,6 +54,7 @@ class TestGatedModelError:
         assert "meta-llama/Llama-3.2-1B-Instruct" in msg
         assert "https://example.com/license" in msg
         assert "--i-accept-license" in msg
+        assert "requires license acceptance" in msg
 
     def test_no_license_url_still_renders(self) -> None:
         err = GatedModelError("org/gated", None)

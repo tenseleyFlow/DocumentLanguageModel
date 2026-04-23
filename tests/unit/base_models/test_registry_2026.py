@@ -62,14 +62,23 @@ class TestLlama33RegistryEntry:
     def test_entry_present(self) -> None:
         assert "llama-3.3-8b-instruct" in BASE_MODELS
 
-    def test_follows_existing_llama_gating_pattern(self) -> None:
+    def test_keeps_existing_llama_policy_surface(self) -> None:
         spec = BASE_MODELS["llama-3.3-8b-instruct"]
+        assert spec.hf_id == "allura-forge/Llama-3.3-8B-Instruct"
         assert spec.architecture == "LlamaForCausalLM"
         assert spec.template == "llama3"
         assert spec.gguf_arch == "llama"
         assert spec.requires_acceptance is True
         assert spec.redistributable is False
         assert spec.license_spdx == "Other"
+
+    def test_refreshes_against_mirror_plus_official_provenance_page(self) -> None:
+        spec = BASE_MODELS["llama-3.3-8b-instruct"]
+        assert spec.refresh_check_hf_gating is False
+        assert spec.provenance_url == (
+            "https://about.fb.com/br/news/2025/04/tudo-o-que-anunciamos-no-nosso-primeiro-llamacon/"
+        )
+        assert spec.provenance_match_text == "novo modelo Llama 3.3 8B"
 
     def test_effective_context_hint_is_lower_than_nominal(self) -> None:
         spec = BASE_MODELS["llama-3.3-8b-instruct"]

@@ -16,6 +16,10 @@ point:
 - `reasoning_tuned` / `context_length_effective`: additive registry
   hints for prompt defaults and realistic doctor estimates. The
   effective length defaults to the nominal context window when unset.
+- `refresh_check_hf_gating` / `provenance_url` /
+  `provenance_match_text`: live-registry refresh hints for entries
+  whose fetch mirror and first-party provenance page are not the same
+  system.
 - License / gating: separate fields for SPDX, acceptance gating, and
   re-distribution — each consumed by a different policy gate (license
   acceptance, pack `--include-base`, share-protocol refusal).
@@ -141,6 +145,9 @@ class BaseModelSpec(BaseModel):
     context_length_effective: int | None = Field(None, gt=0)
     recommended_seq_len: int = Field(..., gt=0)
     reasoning_tuned: bool = False
+    refresh_check_hf_gating: bool = True
+    provenance_url: str | None = None
+    provenance_match_text: str | None = None
 
     # Modality + multi-modal preprocessing (schema v10 + v11, plus
     # Sprint 40's additive `text-moe` discriminator).
@@ -199,6 +206,21 @@ class BaseModelSpec(BaseModel):
             raise ValueError(
                 f"base {self.key!r}: context_length_effective={self.context_length_effective} "
                 f"cannot exceed context_length={self.context_length}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _provenance_probe_is_complete(self) -> BaseModelSpec:
+        url_set = self.provenance_url is not None
+        text_set = self.provenance_match_text is not None
+        if url_set != text_set:
+            raise ValueError(
+                f"base {self.key!r}: provenance_url and provenance_match_text must be set together"
+            )
+        if not self.refresh_check_hf_gating and not url_set:
+            raise ValueError(
+                f"base {self.key!r}: refresh_check_hf_gating=False requires a "
+                "first-party provenance_url + provenance_match_text"
             )
         return self
 
