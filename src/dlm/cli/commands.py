@@ -1547,6 +1547,13 @@ def _dispatch_audio_prompt(  # pragma: no cover
 
 def export_cmd(
     path: Annotated[Path, typer.Argument(help=".dlm file to export.")],
+    target: Annotated[
+        str,
+        typer.Option(
+            "--target",
+            help="Export destination. Currently supported: ollama.",
+        ),
+    ] = "ollama",
     quant: Annotated[
         str | None,
         typer.Option("--quant", help="GGUF quant level (defaults to frontmatter)."),
@@ -1645,7 +1652,7 @@ def export_cmd(
         typer.Option("--verbose", help="Log each subprocess command as it launches."),
     ] = False,
 ) -> None:
-    """Export the adapter to an Ollama-registered model."""
+    """Export the adapter to a runtime target."""
     from collections.abc import Sequence
 
     from rich.console import Console
@@ -1657,6 +1664,7 @@ def export_cmd(
         ExportError,
         PreflightError,
         SubprocessError,
+        UnknownExportTargetError,
         UnsafeMergeError,
         VendoringError,
         resolve_export_plan,
@@ -1670,6 +1678,7 @@ def export_cmd(
         OllamaVersionError,
     )
     from dlm.export.quantize import run_checked
+    from dlm.export.targets import resolve_target
     from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
@@ -1682,6 +1691,11 @@ def export_cmd(
             "[red]export:[/red] --adapter and --adapter-mix are mutually exclusive; pick one."
         )
         raise typer.Exit(code=2)
+    try:
+        resolved_target = resolve_target(target)
+    except UnknownExportTargetError as exc:
+        console.print(f"[red]export:[/red] {exc}")
+        raise typer.Exit(code=2) from exc
 
     parsed = parse_file(path)
     adapters_declared = parsed.frontmatter.training.adapters
@@ -1866,6 +1880,7 @@ def export_cmd(
             store,
             spec,
             plan,
+            target=resolved_target.name,
             cached_base_dir=cached.path,
             subprocess_runner=_verbose_runner if verbose else None,
             skip_ollama=skip_ollama,

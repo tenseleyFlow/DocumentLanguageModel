@@ -82,6 +82,7 @@ class ExportSummary(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     exported_at: datetime
+    target: str = "ollama"
     quant: str
     merged: bool = False
     ollama_name: str | None = None

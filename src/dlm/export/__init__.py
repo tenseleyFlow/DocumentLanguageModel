@@ -12,6 +12,7 @@ from dlm.export.errors import (
     ExportManifestError,
     PreflightError,
     SubprocessError,
+    UnknownExportTargetError,
     UnsafeMergeError,
     VendoringError,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "QUANT_BYTES_PER_PARAM",
     "QuantLevel",
     "SubprocessError",
+    "UnknownExportTargetError",
     "UnsafeMergeError",
     "VendoringError",
     "load_export_manifest",

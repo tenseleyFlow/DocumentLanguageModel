@@ -191,10 +191,10 @@ for the full walkthrough and the `TemplateMeta` schema.
 
 ### `dlm export`
 
-Produce GGUF files + Modelfile + register with Ollama.
+Produce GGUF files + runtime-target metadata.
 
 ```
-dlm export <path> [--quant Q] [--merged [--dequantize]]
+dlm export <path> [--target NAME] [--quant Q] [--merged [--dequantize]]
                   [--name N] [--no-template] [--skip-ollama]
                   [--no-smoke] [--no-imatrix] [--verbose]
                   [--draft TAG | --no-draft]
@@ -203,6 +203,7 @@ dlm export <path> [--quant Q] [--merged [--dequantize]]
 
 | Option | Default | Notes |
 |---|---|---|
+| `--target NAME` | `ollama` | Export destination. Sprint 41 substrate currently registers only `ollama`; later targets will extend this without changing the CLI shape again. |
 | `--quant Q` | frontmatter.export.default_quant | `Q4_K_M` / `Q5_K_M` / `Q6_K` / `Q8_0` / `F16`. |
 | `--merged` | false | Merge LoRA into base before quantizing. |
 | `--dequantize` | false | Required with `--merged` on a QLoRA adapter (pitfall #3). |

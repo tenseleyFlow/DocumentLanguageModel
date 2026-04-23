@@ -31,6 +31,7 @@ def _normalized_help(*argv: str) -> str:
         (
             ("export",),
             (
+                "--target TEXT Export destination. Currently supported: ollama.",
                 "--merged Merge the adapter into the base before export.",
                 "--dequantize Dequantize a QLoRA base to fp16 before merging.",
                 "--no-smoke Register the export but skip the smoke prompt.",

@@ -71,6 +71,16 @@ class ExportManifestError(ExportError):
     """`export_manifest.json` is unreadable, mis-shaped, or checksum drift."""
 
 
+class UnknownExportTargetError(ExportError):
+    """Unknown `dlm export --target` value."""
+
+    def __init__(self, name: str, *, available: tuple[str, ...]) -> None:
+        listing = ", ".join(available)
+        super().__init__(f"unknown export target {name!r}; available targets: {listing}.")
+        self.name = name
+        self.available = available
+
+
 class ProcessorLoadError(ExportError):
     """HF-snapshot export couldn't load the processor for a VL/audio base.
 

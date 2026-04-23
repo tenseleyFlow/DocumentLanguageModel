@@ -66,3 +66,10 @@ def test_reference_doc_uses_actual_metrics_watch_order() -> None:
     section = _section("metrics")
     assert "dlm metrics <path> watch [--poll-seconds N]" in section
     assert "dlm metrics watch <path>" not in section
+
+
+def test_reference_doc_covers_export_target_surface() -> None:
+    section = _section("export")
+    help_text = _normalized_help("export")
+    assert "--target" in help_text
+    assert "--target" in section

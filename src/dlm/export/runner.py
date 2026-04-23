@@ -62,6 +62,7 @@ DEFAULT_IMATRIX_CHUNKS: int = 256
 class ExportResult:
     """Return value of `run_export` — what the CLI prints on success."""
 
+    target: str
     export_dir: Path
     manifest_path: Path
     modelfile_path: Path | None
@@ -134,6 +135,7 @@ def run_export(
     spec: BaseModelSpec,
     plan: ExportPlan,
     *,
+    target: str = "ollama",
     cached_base_dir: Path,
     subprocess_runner: SubprocessRunner | None = None,
     vendor_override: Path | None = None,
@@ -177,6 +179,9 @@ def run_export(
     `ollama_create_runner` / `ollama_run_runner` are test seams for
     substituting the real `ollama_create` / `ollama_run` functions.
     """
+    from dlm.export.targets import resolve_target
+
+    resolved_target = resolve_target(target)
     run = subprocess_runner if subprocess_runner is not None else run_checked
 
     adapter_path: Path
@@ -313,6 +318,7 @@ def run_export(
     from dlm.export.vendoring import pinned_tag
 
     em = ExportManifest(
+        target=resolved_target.name,
         quant=plan.quant,
         merged=plan.merged,
         dequantized=plan.dequantize_confirmed,
@@ -336,11 +342,13 @@ def run_export(
         ollama_name=em.ollama_name,
         ollama_version_str=ollama_ver_str,
         smoke_first_line=smoke_first_line,
+        target=resolved_target.name,
         adapter_name=adapter_name,
         adapter_mix=adapter_mix,
     )
 
     return ExportResult(
+        target=resolved_target.name,
         export_dir=export_dir,
         manifest_path=manifest_path,
         modelfile_path=modelfile_path,
@@ -619,6 +627,7 @@ def _append_export_summary(
     ollama_name: str | None,
     ollama_version_str: str | None,
     smoke_first_line: str | None,
+    target: str,
     adapter_name: str | None = None,
     adapter_mix: list[tuple[str, float]] | None = None,
 ) -> None:
@@ -630,6 +639,7 @@ def _append_export_summary(
 
     summary = ExportSummary(
         exported_at=utc_now(),
+        target=target,
         quant=plan.quant,
         merged=plan.merged,
         ollama_name=ollama_name,

@@ -2,6 +2,7 @@
 
 One file per `exports/<quant>/` directory. Records:
 
+- export target (`ollama` today; more runtimes in Sprint 41)
 - quant level
 - checksums of emitted GGUF artifacts
 - pinned llama.cpp tag (so a future upstream bump can detect drift)
@@ -43,6 +44,7 @@ class ExportManifest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    target: str = Field("ollama", min_length=1)
     quant: str = Field(..., min_length=1)
     merged: bool = False
     dequantized: bool = False

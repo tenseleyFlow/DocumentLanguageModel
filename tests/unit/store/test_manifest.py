@@ -80,6 +80,7 @@ class TestNestedTypes:
 
     def test_export_summary_accepts_valid_payload(self) -> None:
         summary = ExportSummary(exported_at=datetime(2026, 4, 18), quant="Q4_K_M")
+        assert summary.target == "ollama"
         assert summary.merged is False
 
 

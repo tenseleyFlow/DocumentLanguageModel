@@ -25,6 +25,7 @@ from dlm.export.manifest import (
 
 def _manifest(**overrides: object) -> ExportManifest:
     base: dict[str, object] = {
+        "target": "ollama",
         "quant": "Q4_K_M",
         "merged": False,
         "dequantized": False,
@@ -70,6 +71,7 @@ class TestBuildArtifact:
 class TestSchema:
     def test_minimal_valid(self) -> None:
         m = _manifest()
+        assert m.target == "ollama"
         assert m.quant == "Q4_K_M"
         assert m.llama_cpp_tag == "b1234"
 

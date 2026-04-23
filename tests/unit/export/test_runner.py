@@ -118,6 +118,7 @@ class TestHappyPath:
         )
 
         assert isinstance(result, ExportResult)
+        assert result.target == "ollama"
         assert (result.export_dir / f"base.{plan.quant}.gguf").exists()
         assert (result.export_dir / "adapter.gguf").exists()
         assert result.manifest_path.exists()
@@ -140,6 +141,7 @@ class TestHappyPath:
         )
 
         em = load_export_manifest(result.export_dir)
+        assert em.target == "ollama"
         assert em.quant == "Q5_K_M"
         assert em.ollama_name == "mydoc:latest"
         assert em.base_model_hf_id == _SPEC.hf_id
@@ -607,6 +609,7 @@ class TestManifestAppend:
         manifest = load_manifest(store.manifest)
         assert len(manifest.exports) == 1
         export = manifest.exports[0]
+        assert export.target == "ollama"
         assert export.quant == "Q4_K_M"
         assert export.ollama_name == "tag"
         assert export.merged is False
