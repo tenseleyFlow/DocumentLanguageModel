@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from dlm.watch.debounce import Debouncer
@@ -77,3 +79,8 @@ class TestDebouncerValidation:
             Debouncer(quiet_seconds=0)
         with pytest.raises(ValueError, match="quiet_seconds"):
             Debouncer(quiet_seconds=-0.1)
+
+    def test_default_clock_uses_time_monotonic(self) -> None:
+        d = Debouncer(quiet_seconds=0.4)
+        with patch("time.monotonic", return_value=12.5):
+            assert d._now() == 12.5

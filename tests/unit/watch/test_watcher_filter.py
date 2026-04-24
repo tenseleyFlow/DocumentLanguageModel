@@ -45,3 +45,34 @@ class TestFilterEvents:
         target = tmp_path / "gone.dlm"
         batch: set[tuple[object, str]] = {("added", str(target))}
         assert filter_events_for_path(batch, target) is True
+
+    def test_target_resolve_oserror_falls_back_to_plain_string(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        target = tmp_path / "doc.dlm"
+        target.write_text("x")
+        batch: set[tuple[object, str]] = {("modified", str(target))}
+
+        monkeypatch.setattr(Path, "resolve", lambda self: (_ for _ in ()).throw(OSError("boom")))
+
+        assert filter_events_for_path(batch, target) is True
+
+    def test_raw_path_resolve_oserror_falls_back_to_raw_path_string(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        target = tmp_path / "doc.dlm"
+        target.write_text("x")
+        batch: set[tuple[object, str]] = {("modified", str(target))}
+        real_path = Path
+
+        class BrokenPath(Path):
+            _flavour = real_path()._flavour  # type: ignore[attr-defined]
+
+            def resolve(self) -> Path:
+                raise OSError("boom")
+
+        monkeypatch.setattr("dlm.watch.watcher.Path", BrokenPath)
+
+        assert filter_events_for_path(batch, target) is True
