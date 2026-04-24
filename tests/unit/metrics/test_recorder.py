@@ -19,7 +19,7 @@ from dlm.metrics.events import (
     RunStart,
     StepEvent,
 )
-from dlm.metrics.recorder import MetricsRecorder
+from dlm.metrics.recorder import DlmTrainerCallback, MetricsRecorder
 
 
 def _select_all(db_path: Path, table: str) -> list[tuple]:
@@ -220,3 +220,19 @@ class TestAnchorWrites:
 
         with pytest.raises(sqlite3.OperationalError, match="database is locked"):
             rec.record_run_end(RunEnd(run_id=1, status="ok"))
+
+
+class TestTrainerCallbackCompatibility:
+    def test_unknown_hf_lifecycle_hooks_fall_back_to_noop(self, tmp_path: Path) -> None:
+        callback = DlmTrainerCallback(MetricsRecorder(tmp_path), run_id=7)
+
+        assert callable(callback.on_train_begin)
+        assert callable(callback.on_train_end)
+        assert callback.on_train_begin(None, None, None) is None
+        assert callback.on_train_end(None, None, None) is None
+
+    def test_non_callback_missing_attr_still_raises(self, tmp_path: Path) -> None:
+        callback = DlmTrainerCallback(MetricsRecorder(tmp_path), run_id=7)
+
+        with pytest.raises(AttributeError, match="not_a_callback"):
+            _ = callback.not_a_callback

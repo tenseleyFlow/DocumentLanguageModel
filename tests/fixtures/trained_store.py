@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING, Final
 import pytest
 
 if TYPE_CHECKING:
+    from dlm.hardware.capabilities import Capabilities
+    from dlm.hardware.plan import TrainingPlan
     from dlm.store.paths import StorePath
 
 # Small enough to keep wall-clock manageable on CPU (smollm2-135m: ~1s/step
@@ -49,6 +51,8 @@ class TrainedStoreHandle:
     home: Path
     dlm_id: str
     store: StorePath
+    plan: TrainingPlan
+    capabilities: Capabilities
 
 
 @pytest.fixture(scope="session")
@@ -87,10 +91,6 @@ def trained_store(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TrainedS
         from dlm.train import run as run_training
         from tests.fixtures.dlm_factory import make_dlm
 
-        plan = doctor().plan
-        if plan is None:
-            pytest.skip("doctor() returned no viable training plan on this host")
-
         home = tmp_path_factory.mktemp("dlm-trained-home")
         os.environ["DLM_HOME"] = str(home)
 
@@ -99,6 +99,14 @@ def trained_store(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TrainedS
 
         parsed = parse_file(doc)
         spec = resolve_base_model(parsed.frontmatter.base_model)
+        doctor_result = doctor(
+            training_config=parsed.frontmatter.training,
+            base_params=spec.params,
+            seq_len=min(parsed.frontmatter.training.sequence_len, spec.effective_context_length),
+        )
+        plan = doctor_result.plan
+        if plan is None:
+            pytest.skip("doctor() returned no viable training plan on this host")
         store = for_dlm(parsed.frontmatter.dlm_id)
         store.ensure_layout()
 
@@ -130,6 +138,8 @@ def trained_store(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TrainedS
             home=home,
             dlm_id=parsed.frontmatter.dlm_id,
             store=store,
+            plan=plan,
+            capabilities=doctor_result.capabilities,
         )
     finally:
         for key, value in saved_env.items():

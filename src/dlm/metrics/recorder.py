@@ -263,6 +263,23 @@ class DlmTrainerCallback:  # pragma: no cover - heavy trainer hook
         self._run_id = run_id
         self._step_logger = step_logger
 
+    def __getattr__(self, name: str) -> Callable[..., None]:
+        """Provide no-op HF callback hooks we don't care about explicitly.
+
+        Newer `transformers` releases call more lifecycle methods via
+        `getattr(callback, event)` and expect every callback object to
+        expose the requested `on_*` attribute. We only need `on_log`
+        and `on_evaluate` for DLM metrics, so any other hook becomes a
+        harmless no-op instead of crashing the training loop.
+        """
+        if not name.startswith("on_"):
+            raise AttributeError(name)
+
+        def _noop(*_args: Any, **_kwargs: Any) -> None:
+            return None
+
+        return _noop
+
     def on_log(
         self,
         _args: Any,
