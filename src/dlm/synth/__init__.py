@@ -13,6 +13,16 @@ from dlm.synth.prompts import (
     SynthStrategy,
     get_prompt_template,
 )
+from dlm.synth.run import (
+    PlannedSynthInstruction,
+    SkippedSynthSection,
+    SynthPair,
+    SynthRunPlan,
+    SynthSkipReason,
+    SynthSourceSection,
+    build_synth_plan,
+    render_synth_plan,
+)
 from dlm.synth.teachers import (
     AnthropicTeacher,
     HfTeacher,
@@ -33,9 +43,15 @@ __all__ = [
     "InvalidTeacherSpecError",
     "OpenAiTeacher",
     "PromptParserKind",
+    "PlannedSynthInstruction",
     "SelfTeacher",
+    "SkippedSynthSection",
     "SynthError",
+    "SynthPair",
     "SynthPromptTemplate",
+    "SynthRunPlan",
+    "SynthSkipReason",
+    "SynthSourceSection",
     "SynthTeacher",
     "SynthStrategy",
     "TeacherKind",
@@ -43,7 +59,9 @@ __all__ = [
     "TeacherRef",
     "TeacherUnavailableError",
     "VllmServerTeacher",
+    "build_synth_plan",
     "build_teacher",
     "get_prompt_template",
     "parse_teacher_ref",
+    "render_synth_plan",
 ]
