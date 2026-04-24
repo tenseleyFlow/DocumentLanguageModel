@@ -79,6 +79,20 @@ class TestValidatorRejectsMismatches:
         with pytest.raises(ValueError, match="target_key 'qwen2.5-3b' not in BASE_MODELS"):
             validate_registry(registry)
 
+    def test_missing_draft_registry_key_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import dlm.export.draft_registry as mod
+
+        bad_pair = DraftPair(
+            target_key="a",
+            draft_registry_key="missing",
+            upstream_ollama_tag="a:tiny",
+            notes="missing draft key",
+        )
+        monkeypatch.setattr(mod, "DRAFT_PAIRS", (bad_pair,))
+        registry = {"a": self._fake_spec()}
+        with pytest.raises(ValueError, match="draft_registry_key 'missing' not in BASE_MODELS"):
+            validate_registry(registry)
+
     def test_mismatched_template_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import dlm.export.draft_registry as mod
 

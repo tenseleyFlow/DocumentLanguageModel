@@ -16,12 +16,14 @@ from dlm.export.targets.vllm import (
     VLLM_TARGET,
     LoraModule,
     _default_runtime_env,
+    _machine,
     _optional_prepared_int,
     _render_launch_script,
     _require_module_specs,
     _require_prepared_int,
     _require_prepared_str,
     _runtime_env,
+    _sys_platform,
     finalize_vllm_export,
     prepare_vllm_export,
 )
@@ -127,6 +129,27 @@ class TestPrepareVllmExport:
         assert store_manifest.exports[-1].target == "vllm"
         assert store_manifest.exports[-1].quant == "hf"
         assert store_manifest.exports[-1].smoke_output_first_line == "hello from vllm"
+
+    def test_prepare_replaces_stale_adapters_dir(self, tmp_path: Path) -> None:
+        store = _setup_flat_store(tmp_path)
+        export_dir = store.exports / "vllm"
+        stale_dir = export_dir / "adapters"
+        stale_dir.mkdir(parents=True)
+        (stale_dir / "stale.txt").write_text("stale", encoding="utf-8")
+
+        prepared = prepare_vllm_export(
+            store=store,
+            spec=_SPEC,
+            served_model_name="dlm-flat",
+            training_sequence_len=2048,
+            adapter_name=None,
+            adapter_path_override=None,
+            declared_adapter_names=None,
+        )
+
+        assert prepared.launch_script_path is not None
+        assert not (prepared.export_dir / "adapters" / "stale.txt").exists()
+        assert (prepared.export_dir / "adapters" / "adapter" / "adapter_model.safetensors").exists()
 
     def test_multi_adapter_export_includes_all_named_modules(self, tmp_path: Path) -> None:
         store = _setup_named_store(tmp_path)
@@ -244,6 +267,26 @@ class TestPrepareVllmExport:
                 declared_adapter_names=None,
             )
 
+    def test_named_adapter_export_stages_only_named_module(self, tmp_path: Path) -> None:
+        store = _setup_named_store(tmp_path)
+
+        prepared = prepare_vllm_export(
+            store=store,
+            spec=_SPEC,
+            served_model_name="dlm-knowledge",
+            training_sequence_len=2048,
+            adapter_name="knowledge",
+            adapter_path_override=None,
+            declared_adapter_names=None,
+        )
+
+        config = json.loads(
+            (prepared.export_dir / VLLM_CONFIG_FILENAME).read_text(encoding="utf-8")
+        )
+        assert config["lora_modules"] == [
+            {"adapter_version": 2, "name": "knowledge", "path": "adapters/knowledge"}
+        ]
+
     def test_missing_default_adapter_raises(self, tmp_path: Path) -> None:
         store = for_dlm("01EMPTYVLLM", home=tmp_path)
         store.ensure_layout()
@@ -355,6 +398,10 @@ class TestVllmSmoke:
 
 
 class TestVllmHelpers:
+    def test_platform_helpers_return_strings(self) -> None:
+        assert isinstance(_sys_platform(), str)
+        assert isinstance(_machine(), str)
+
     def test_default_runtime_env_is_empty_off_apple_silicon(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

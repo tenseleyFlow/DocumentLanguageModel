@@ -197,6 +197,35 @@ class TestFenceGrammar:
             SectionType.PREFERENCE,
         ]
 
+    def test_whitespace_only_trailing_prose_is_elided(self) -> None:
+        text = (
+            f"---\ndlm_id: {VALID_ULID}\nbase_model: smollm2-135m\n---\n\n"
+            "::instruction::\n"
+            "### Q\n"
+            "q\n"
+            "### A\n"
+            "a\n"
+            "\n"
+            "   \n"
+            "\t\n"
+        )
+        parsed = parse_text(text)
+        assert [section.type for section in parsed.sections] == [SectionType.INSTRUCTION]
+
+    def test_whitespace_only_prose_before_first_fence_is_elided(self) -> None:
+        text = (
+            f"---\ndlm_id: {VALID_ULID}\nbase_model: smollm2-135m\n---\n\n"
+            "   \n"
+            "\t\n"
+            "::instruction::\n"
+            "### Q\n"
+            "q\n"
+            "### A\n"
+            "a\n"
+        )
+        parsed = parse_text(text)
+        assert [section.type for section in parsed.sections] == [SectionType.INSTRUCTION]
+
     def test_unknown_attribute_fence_raises(self) -> None:
         text = (
             f"---\ndlm_id: {VALID_ULID}\nbase_model: smollm2-135m\n---\n\n"

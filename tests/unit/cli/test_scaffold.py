@@ -121,6 +121,22 @@ def test_second_run_reuses_existing(tmp_path: Path) -> None:
     assert second.dlm_id == first.dlm_id
 
 
+def test_second_run_reuses_lone_existing_file_when_default_name_is_unmatched(
+    tmp_path: Path,
+) -> None:
+    kwargs = _default_kwargs()
+    kwargs["name"] = "notes"
+    first = scaffold_train_target(tmp_path, **kwargs)  # type: ignore[arg-type]
+
+    resume = _default_kwargs()
+    resume["base"] = None
+    resolved = scaffold_train_target(tmp_path, **resume)  # type: ignore[arg-type]
+
+    assert resolved.scaffolded is False
+    assert resolved.dlm_path == first.dlm_path
+    assert resolved.dlm_id == first.dlm_id
+
+
 # ---- Multi-file disambiguation ---------------------------------------------
 
 

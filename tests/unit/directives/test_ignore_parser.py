@@ -68,6 +68,13 @@ def test_parse_bare_slash_skipped(caplog: pytest.LogCaptureFixture) -> None:
     assert any("bare '/'" in rec.message for rec in caplog.records)
 
 
+def test_parse_pattern_reduced_to_empty_skipped(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.WARNING, logger="dlm.directives.ignore_parser")
+    rules = parse_ignore_file("//\n")
+    assert rules == ()
+    assert any("pattern reduced to empty" in rec.message for rec in caplog.records)
+
+
 # ---- matches ---------------------------------------------------------------
 
 

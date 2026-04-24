@@ -8,6 +8,10 @@ from dlm.train.distributed.gpus import GpuSpec, UnsupportedGpuSpecError, parse_g
 
 
 class TestParseGpus:
+    def test_none_raises_empty(self) -> None:
+        with pytest.raises(UnsupportedGpuSpecError, match="empty"):
+            parse_gpus(None)  # type: ignore[arg-type]
+
     def test_all_case_insensitive(self) -> None:
         for value in ("all", "ALL", "All"):
             spec = parse_gpus(value)
@@ -35,12 +39,20 @@ class TestParseGpus:
         with pytest.raises(UnsupportedGpuSpecError, match="non-integer"):
             parse_gpus("0,foo,1")
 
+    def test_empty_comma_list_rejected(self) -> None:
+        with pytest.raises(UnsupportedGpuSpecError, match="is empty"):
+            parse_gpus(", ,")
+
     def test_malformed_scalar_rejected(self) -> None:
         with pytest.raises(UnsupportedGpuSpecError, match="not `all`"):
             parse_gpus("xyz")
 
 
 class TestResolveGpuSpec:
+    def test_list_returns_requested_ids(self) -> None:
+        spec = GpuSpec(kind="list", value=(0, 2))
+        assert spec.resolve(device_count=4) == (0, 2)
+
     def test_all_returns_full_range(self) -> None:
         spec = GpuSpec(kind="all", value=None)
         assert spec.resolve(device_count=3) == (0, 1, 2)

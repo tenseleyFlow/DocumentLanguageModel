@@ -284,6 +284,16 @@ class TestTrainCommandCoverage:
         )
         assert _maybe_dispatch_multi_gpu("bogus", ["dlm", "train"], console) == 2
 
+        class _BadResolveGpuSpec:
+            def resolve(self, device_count: int) -> tuple[int, ...]:
+                raise UnsupportedGpuSpecError("gpu index 7 is unavailable")
+
+        monkeypatch.setattr(
+            "dlm.train.distributed.parse_gpus",
+            lambda raw: _BadResolveGpuSpec(),
+        )
+        assert _maybe_dispatch_multi_gpu("7", ["dlm", "train"], console) == 2
+
         monkeypatch.setattr("dlm.train.distributed.parse_gpus", lambda raw: _GpuSpec((0,)))
         import torch
 

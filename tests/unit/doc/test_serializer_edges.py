@@ -173,6 +173,18 @@ class TestSerializeTrailingNewline:
         assert out.endswith("\n")
         assert not out.endswith("\n\n")
 
+    def test_serializer_adds_newline_when_section_render_omits_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="smollm2-135m")
+        parsed = ParsedDlm(
+            frontmatter=fm,
+            sections=(Section(SectionType.PROSE, "content"),),
+        )
+        monkeypatch.setattr("dlm.doc.serializer._serialize_frontmatter", lambda _fm: "---\n---")
+        monkeypatch.setattr("dlm.doc.serializer._serialize_section", lambda _section: "body")
+        assert serialize(parsed).endswith("\n")
+
 
 class TestFrontmatterExplicitTargetModulesList:
     """Ensures the list branch in the nested-mapping emitter is exercised."""

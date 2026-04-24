@@ -90,6 +90,12 @@ class TestBlobStorePut:
         from_bytes = store.put_bytes(data, ext=".jpg")
         assert from_path == from_bytes
 
+    def test_put_bytes_writes_new_blob(self, store: BlobStore, store_root: Path) -> None:
+        data = b"raw bytes"
+        handle = store.put_bytes(data, ext="PNG")
+        blob_path = store_root / handle.sha[:2] / f"{handle.sha}.png"
+        assert blob_path.read_bytes() == data
+
 
 class TestBlobStoreGet:
     def test_get_returns_stored_path(self, store: BlobStore, tmp_path: Path) -> None:
@@ -144,6 +150,14 @@ class TestBlobStoreGC:
 
     def test_gc_noop_on_empty_store(self, store: BlobStore) -> None:
         assert list(store.gc({"a" * 64})) == []
+
+    def test_gc_ignores_concurrent_delete(self, store: BlobStore, tmp_path: Path) -> None:
+        src = tmp_path / "x.png"
+        src.write_bytes(b"x")
+        handle = store.put(src)
+        store.get(handle.sha).unlink()
+        store.iter_all = lambda: iter([handle])  # type: ignore[method-assign]
+        assert list(store.gc(set())) == []
 
 
 class TestBlobStoreExtensions:
@@ -208,6 +222,13 @@ class TestBlobStoreIteration:
         iterated = list(store.iter_all())
         assert sorted(h.sha for h in handles) == sorted(h.sha for h in iterated)
 
+    def test_iter_all_ignores_non_blob_entries(self, store: BlobStore, store_root: Path) -> None:
+        bucket = store_root / "aa"
+        bucket.mkdir(parents=True, exist_ok=True)
+        (store_root / "README.txt").write_text("ignore me", encoding="utf-8")
+        (bucket / "nested").mkdir()
+        assert list(store.iter_all()) == []
+
 
 class TestBlobStoreClear:
     def test_clear_removes_tree(self, store: BlobStore, store_root: Path, tmp_path: Path) -> None:
@@ -224,3 +245,8 @@ class TestBlobHandleValue:
         h = BlobHandle(sha="a" * 64, ext=".png", size=10)
         with pytest.raises(AttributeError):
             h.sha = "b" * 64  # type: ignore[misc]
+
+
+class TestBlobStoreMetadata:
+    def test_root_property(self, store: BlobStore, store_root: Path) -> None:
+        assert store.root == store_root

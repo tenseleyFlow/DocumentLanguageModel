@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import deque
 
+import pytest
+
 from dlm.doc.parser import parse_text
 from dlm.preference import (
     PreferenceMineSkipReason,
@@ -11,6 +13,7 @@ from dlm.preference import (
     render_mine_plan,
 )
 from dlm.preference.judge import PairScore
+from dlm.preference.mine import _best_pair, _first_line, _resolve_pair, _unique_nonempty
 
 _FRONTMATTER = """---
 dlm_id: 01KPQ9X1000000000000000000
@@ -44,6 +47,20 @@ def _parsed(body: str):
 
 
 class TestBuildMinePlan:
+    def test_validates_numeric_limits(self) -> None:
+        parsed = _parsed("::instruction::\n### Q\nquestion?\n### A\nreference\n")
+        backend = StubBackend({"question?": ["one", "two"]})
+        judge = StubJudge({("question?", "one", "two"): PairScore(score_a=1.0, score_b=0.0)})
+
+        with pytest.raises(ValueError, match="samples must be >= 2"):
+            build_mine_plan(parsed, backend, judge, mined_run_id=1, samples=1)
+        with pytest.raises(ValueError, match="max_pairs must be >= 1"):
+            build_mine_plan(parsed, backend, judge, mined_run_id=1, samples=2, max_pairs=0)
+        with pytest.raises(ValueError, match="threshold must be >= 0.0"):
+            build_mine_plan(parsed, backend, judge, mined_run_id=1, samples=2, threshold=-0.1)
+        with pytest.raises(ValueError, match="max_new_tokens must be >= 1"):
+            build_mine_plan(parsed, backend, judge, mined_run_id=1, samples=2, max_new_tokens=0)
+
     def test_materializes_auto_mined_preference_section(self) -> None:
         parsed = _parsed("::instruction::\n### Q\nquestion?\n### A\nreference\n")
         backend = StubBackend({"question?": ["bad answer", "good answer"]})
@@ -192,3 +209,55 @@ class TestBuildMinePlan:
         assert plan.additions == ()
         assert len(plan.skipped) == 1
         assert plan.skipped[0].reason is PreferenceMineSkipReason.MALFORMED_INSTRUCTION
+
+    def test_stops_collecting_once_max_pairs_is_reached(self) -> None:
+        parsed = _parsed(
+            "::instruction::\n### Q\nquestion one?\n### A\nreference\n\n"
+            "::instruction::\n### Q\nquestion two?\n### A\nreference\n"
+        )
+        backend = StubBackend(
+            {
+                "question one?": ["bad one", "good one"],
+                "question two?": ["bad two", "good two"],
+            }
+        )
+        judge = StubJudge(
+            {
+                ("question one?", "bad one", "good one"): PairScore(score_a=0.1, score_b=0.9),
+                ("question two?", "bad two", "good two"): PairScore(score_a=0.1, score_b=0.9),
+            }
+        )
+
+        plan = build_mine_plan(parsed, backend, judge, mined_run_id=4, samples=2, max_pairs=1)
+
+        assert len(plan.additions) == 1
+        assert plan.additions[0].source.prompt == "question one?"
+
+    def test_insufficient_variety_is_reported(self) -> None:
+        parsed = _parsed("::instruction::\n### Q\nquestion?\n### A\nreference\n")
+        backend = StubBackend({"question?": [" same ", "", "same", "   "]})
+        judge = StubJudge({})
+
+        plan = build_mine_plan(parsed, backend, judge, mined_run_id=6, samples=4)
+
+        assert plan.additions == ()
+        assert len(plan.skipped) == 1
+        assert plan.skipped[0].reason is PreferenceMineSkipReason.INSUFFICIENT_VARIETY
+        assert "need at least 2 unique non-empty candidates" in plan.skipped[0].detail
+
+
+class TestMineHelpers:
+    def test_unique_nonempty_strips_blanks_and_duplicates(self) -> None:
+        assert _unique_nonempty(["", " alpha ", "alpha", "beta", "   "]) == ["alpha", "beta"]
+
+    def test_best_pair_skips_ties(self) -> None:
+        judge = StubJudge({("prompt", "a", "b"): PairScore(score_a=0.4, score_b=0.4)})
+
+        assert _best_pair("prompt", ["a", "b"], judge=judge) is None
+
+    def test_resolve_pair_returns_none_for_ties(self) -> None:
+        assert _resolve_pair("a", "b", PairScore(score_a=0.2, score_b=0.2)) is None
+
+    def test_first_line_truncates_long_text(self) -> None:
+        rendered = _first_line("x" * 90, max_chars=20)
+        assert rendered == ("x" * 19) + "…"

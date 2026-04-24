@@ -152,6 +152,12 @@ class TestProbeChatTemplate:
         ):
             probe_chat_template(_spec())
 
+    def test_load_error_returns_failed_probe(self) -> None:
+        with patch("transformers.AutoTokenizer.from_pretrained", side_effect=RuntimeError("boom")):
+            result = probe_chat_template(_spec())
+        assert result.passed is False
+        assert "load failed: RuntimeError: boom" in result.detail
+
 
 class TestProbeGgufArch:
     def test_skips_when_vendor_missing(self, tmp_path: Path) -> None:
@@ -477,6 +483,16 @@ class TestProbeAudioToken:
             pytest.raises(GatedModelError),
         ):
             probe_audio_token(_audio_spec())
+
+    def test_processor_load_generic_error_fails(self) -> None:
+        with patch(
+            "dlm.base_models._typed_shims.load_auto_processor",
+            side_effect=RuntimeError("connection reset"),
+        ):
+            result = probe_audio_token(_audio_spec())
+        assert result.passed is False
+        assert "processor load failed" in result.detail
+        assert "RuntimeError" in result.detail
 
     def test_missing_tokenizer_fails(self) -> None:
         with patch(

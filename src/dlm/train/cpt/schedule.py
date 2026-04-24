@@ -57,8 +57,6 @@ def cosine_with_floor_lr(
         raise ValueError(f"step must be non-negative, got {step}")
 
     if step < warmup_steps:
-        if warmup_steps == 0:
-            return 1.0
         return step / warmup_steps
 
     if step >= total_steps:

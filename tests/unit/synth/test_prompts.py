@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal, cast
+
 import pytest
 
 from dlm.synth import DEFAULT_PROMPT_TEMPLATES, SynthPromptTemplate, get_prompt_template
@@ -13,8 +15,9 @@ def test_shipped_prompt_templates_cover_both_strategies() -> None:
 
 @pytest.mark.parametrize("strategy", ["extraction", "expansion"])
 def test_get_prompt_template_returns_shipped_template(strategy: str) -> None:
-    template = get_prompt_template(strategy)  # type: ignore[arg-type]
-    assert template is DEFAULT_PROMPT_TEMPLATES[strategy]
+    typed_strategy = cast(Literal["extraction", "expansion"], strategy)
+    template = get_prompt_template(typed_strategy)
+    assert template is DEFAULT_PROMPT_TEMPLATES[typed_strategy]
     assert template.output_parser == "json_list"
 
 
@@ -25,9 +28,20 @@ def test_render_user_prompt_injects_required_values() -> None:
     assert "3" in rendered
 
 
-def test_user_template_must_reference_required_variables() -> None:
-    with pytest.raises(ValueError, match="required variable"):
+@pytest.mark.parametrize(
+    ("template", "missing"),
+    [
+        ("Missing one variable: {{ prose }}", "['n']"),
+        ("Missing one variable: {{ n }}", "['prose']"),
+        ("Missing both variables.", "['prose', 'n']"),
+    ],
+)
+def test_user_template_must_reference_required_variables(
+    template: str,
+    missing: str,
+) -> None:
+    with pytest.raises(ValueError, match=missing):
         SynthPromptTemplate(
             system_prompt="hi",
-            user_template="Missing one variable: {{ prose }}",
+            user_template=template,
         )

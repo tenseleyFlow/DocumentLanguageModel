@@ -53,6 +53,12 @@ class StubJudge:
 
 
 class TestFilterSynthPlan:
+    def test_negative_threshold_is_rejected(self) -> None:
+        raw = SynthRunPlan(additions=(_planned(),), skipped=())
+
+        with pytest.raises(ValueError, match="threshold must be >= 0.0"):
+            filter_synth_plan(raw, filter_kind="sway", judge=StubJudge({}), threshold=-0.1)
+
     def test_none_filter_keeps_deduped_additions(self) -> None:
         raw = SynthRunPlan(
             additions=(
@@ -94,6 +100,28 @@ class TestFilterSynthPlan:
         assert filtered.report.generated_count == 2
         assert filtered.report.dedup_count == 1
         assert filtered.report.accepted_count == 1
+
+    def test_dedup_only_removes_near_duplicates_by_similarity(self) -> None:
+        raw = SynthRunPlan(
+            additions=(
+                _planned(
+                    question="What does DGEMM compute?",
+                    answer="A dense matrix product.",
+                ),
+                _planned(
+                    source_section_id="bbbbbbbbbbbbbbbb",
+                    question="What does DGEMM compute",
+                    answer="A dense matrix product.",
+                ),
+            ),
+            skipped=(),
+        )
+
+        filtered = filter_synth_plan(raw, filter_kind="dedup-only")
+
+        assert len(filtered.additions) == 1
+        assert len(filtered.filtered_skipped) == 1
+        assert filtered.filtered_skipped[0].reason.value == "duplicate_pair"
 
     def test_sway_filter_uses_judge_and_threshold(self) -> None:
         first = _planned(question="Q1", answer="A1")
@@ -152,3 +180,23 @@ class TestFilterSynthPlan:
         rendered = render_filter_report(filtered)
 
         assert "generated 1, dedup 1, judge passed 1, threshold 1" in rendered
+
+    def test_render_filter_report_for_dedup_only_mentions_filtered_entries(self) -> None:
+        raw = SynthRunPlan(
+            additions=(
+                _planned(question="What is DGEMM?", answer="A matrix multiply routine."),
+                _planned(
+                    source_section_id="bbbbbbbbbbbbbbbb",
+                    question="What is DGEMM?",
+                    answer="A matrix multiply routine!",
+                ),
+            ),
+            skipped=(),
+        )
+
+        filtered = filter_synth_plan(raw, filter_kind="dedup-only")
+        rendered = render_filter_report(filtered)
+
+        assert "generated 2, dedup 1, accepted 1" in rendered
+        assert "=== filtered ===" in rendered
+        assert "duplicate_pair" in rendered

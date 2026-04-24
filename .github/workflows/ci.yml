@@ -63,133 +63,133 @@ jobs:
       - name: Pytest (unit + integration, non-slow)
         run: uv run pytest
 
-      - name: Coverage gate — src/dlm/doc ≥ 95% (audit 02 M4)
+      - name: Coverage gate — src/dlm/doc = 100% (audit 02 M4)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/doc \
             --cov=src/dlm/doc \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/store ≥ 95% (Sprint 04)
+      - name: Coverage gate — src/dlm/store = 100% (Sprint 04)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/store \
             --cov=src/dlm/store \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/hardware ≥ 95% (Sprint 05)
+      - name: Coverage gate — src/dlm/hardware = 100% (Sprint 05)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/hardware \
             --cov=src/dlm/hardware \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/base_models ≥ 95% (Sprint 06)
+      - name: Coverage gate — src/dlm/base_models = 100% (Sprint 06)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/base_models \
             --cov=src/dlm/base_models \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/data ≥ 95% (Sprint 07)
+      - name: Coverage gate — src/dlm/data = 100% (Sprint 07)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/data \
             --cov=src/dlm/data \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/replay ≥ 95% (Sprint 08)
+      - name: Coverage gate — src/dlm/replay = 100% (Sprint 08)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/replay \
             --cov=src/dlm/replay \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/train ≥ 95% (Sprint 09)
+      - name: Coverage gate — src/dlm/train = 100% (Sprint 09)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/train \
             --cov=src/dlm/train \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/train/preference ≥ 95%
+      - name: Coverage gate — src/dlm/train/preference = 100%
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/train/preference \
             --cov=src/dlm/train/preference \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/eval ≥ 95% (Sprint 10)
+      - name: Coverage gate — src/dlm/eval = 100% (Sprint 10)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/eval \
             --cov=src/dlm/eval \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/inference ≥ 95% (Sprint 10)
+      - name: Coverage gate — src/dlm/inference = 100% (Sprint 10)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/inference \
             --cov=src/dlm/inference \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/export ≥ 95% (Sprint 11)
+      - name: Coverage gate — src/dlm/export = 100% (Sprint 11)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/export \
             --cov=src/dlm/export \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/export/ollama ≥ 95% (Sprint 12)
+      - name: Coverage gate — src/dlm/export/ollama = 100% (Sprint 12)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/export/ollama \
             --cov=src/dlm/export/ollama \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/cli/reporter ≥ 95% (Sprint 13)
+      - name: Coverage gate — src/dlm/cli/reporter = 100% (Sprint 13)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/cli \
             --cov=dlm.cli.reporter \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/io/ulid ≥ 95% (Sprint 13)
+      - name: Coverage gate — src/dlm/io/ulid = 100% (Sprint 13)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/test_io_ulid.py \
             --cov=dlm.io.ulid \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/pack ≥ 95% (Sprint 14)
+      - name: Coverage gate — src/dlm/pack = 100% (Sprint 14)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/pack tests/integration/pack \
             --cov=src/dlm/pack \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
-      - name: Coverage gate — src/dlm/lock ≥ 95% (Sprint 15)
+      - name: Coverage gate — src/dlm/lock = 100% (Sprint 15)
         if: matrix.os == 'ubuntu-latest'
         run: |
           uv run pytest tests/unit/lock \
             --cov=src/dlm/lock \
             --cov-report=term-missing \
-            --cov-fail-under=95
+            --cov-fail-under=100
 
   no-network-sandbox:
     # audit F13: dlm init / doctor / show must work with zero outbound network.

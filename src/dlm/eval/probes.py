@@ -120,7 +120,6 @@ def _normalize_probe_markers(body: str) -> str:
             # Find the first non-blank body line and prefix it.
             i += 1
             while i < len(lines) and lines[i].strip() == "":
-                rewritten.append(lines[i])
                 i += 1
             if i < len(lines):
                 rewritten.append(f"{_PROBE_MARKER}:{lines[i]}")

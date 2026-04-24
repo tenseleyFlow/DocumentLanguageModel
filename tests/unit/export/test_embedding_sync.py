@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+import dlm.export.embedding_sync as embedding_sync
 from dlm.export.embedding_sync import assert_embedding_rows_match
 from dlm.export.errors import PreflightError
 from dlm.export.gguf_tensors import GGML_TYPE_F16
@@ -434,6 +437,37 @@ class TestRobustSkips:
         from dlm.export.embedding_sync import _added_special_token_ids
 
         assert _added_special_token_ids(adapter) == [3]
+
+    def test_non_dict_added_tokens_decoder_returns_empty(self, tmp_path: Path) -> None:
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "tokenizer_config.json").write_text(
+            json.dumps(
+                {
+                    "vocab_size": 5,
+                    "chat_template": "x",
+                    "added_tokens_decoder": ["not", "a", "dict"],
+                }
+            )
+        )
+        assert embedding_sync._added_special_token_ids(adapter) == []
+
+    def test_safe_open_oserror_raises_preflight(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "adapter_model.safetensors").write_bytes(b"placeholder")
+
+        def _boom(*_args: object, **_kwargs: object) -> object:
+            raise OSError("broken safetensors")
+
+        monkeypatch.setitem(sys.modules, "safetensors", SimpleNamespace(safe_open=_boom))
+        with pytest.raises(PreflightError, match="cannot read adapter safetensors"):
+            embedding_sync._load_adapter_safetensors(adapter)
+
+    def test_row_list_returns_empty_for_rank1_tensor(self) -> None:
+        assert embedding_sync._as_row_list(np.asarray([1.0, 2.0], dtype=np.float16)) == []
 
 
 class TestBoundsChecks:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,11 @@ from dlm.train.logger import Banner, StepLogger, log_path_for
 
 
 class TestContextManager:
+    def test_path_property_round_trips(self, tmp_path: Path) -> None:
+        path = tmp_path / "x.jsonl"
+        log = StepLogger(path)
+        assert log.path == path
+
     def test_outside_context_raises(self, tmp_path: Path) -> None:
         log = StepLogger(tmp_path / "x.jsonl")
         with pytest.raises(RuntimeError, match="not open"):
@@ -93,6 +99,18 @@ class TestEventLogging:
             log.log_event("eval", step=10, val_loss=1.5, val_ppl=4.5)
         parsed = json.loads(p.read_text().strip())
         assert parsed["val_ppl"] == 4.5
+
+    def test_dataclass_fields_are_sanitized(self, tmp_path: Path) -> None:
+        @dataclass
+        class _Payload:
+            step: int
+            note: str
+
+        p = tmp_path / "run.jsonl"
+        with StepLogger(p) as log:
+            log.log_event("custom", payload=_Payload(step=3, note="ok"))
+        parsed = json.loads(p.read_text().strip())
+        assert parsed["payload"] == {"step": 3, "note": "ok"}
 
 
 class TestLogPath:

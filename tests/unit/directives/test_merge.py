@@ -119,6 +119,19 @@ def test_training_yaml_exclude_blocks_file(tmp_path: Path) -> None:
     )
 
 
+def test_parent_directive_exclude_blocks_file(tmp_path: Path) -> None:
+    _write(tmp_path / "src" / "main.py", "x")
+    directive = _directive(tmp_path, exclude=("**/*.py",))
+    configs = discover_configs(tmp_path)
+    eff = effective_config_for(
+        tmp_path / "src" / "main.py",
+        source_root=tmp_path,
+        discovered=configs,
+        parent_directive=directive,
+    )
+    assert eff.included is False
+
+
 # ---- .dlm/ignore negation --------------------------------------------------
 
 
@@ -266,3 +279,13 @@ def test_metadata_empty_when_no_training_yaml(tmp_path: Path) -> None:
         parent_directive=directive,
     )
     assert dict(eff.tags) == {}
+
+
+def test_relpath_falls_back_to_filename_for_non_ancestor_anchor(tmp_path: Path) -> None:
+    from dlm.directives.merge import _relpath
+
+    file_path = tmp_path / "src" / "main.py"
+    _write(file_path, "x")
+    other_anchor = tmp_path / "elsewhere"
+    other_anchor.mkdir()
+    assert _relpath(file_path, other_anchor) == "main.py"

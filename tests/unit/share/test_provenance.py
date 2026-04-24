@@ -11,6 +11,7 @@ import pytest
 from dlm.share.provenance import (
     Provenance,
     ProvenanceChainBroken,
+    ProvenanceError,
     ProvenanceSchemaError,
     ProvenanceVerifyResult,
     UnknownSignerError,
@@ -178,6 +179,22 @@ class TestTrustedKeyRegistry:
         second = record_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path)
         assert first == second
 
+    def test_record_refuses_to_overwrite_different_key_contents(self, tmp_path: Path) -> None:
+        target = record_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path, label="alice")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                "dlm.share.provenance.pubkey_fingerprint",
+                lambda _key: target.stem.removeprefix("alice-"),
+            )
+            with pytest.raises(ProvenanceError, match="refusing to overwrite"):
+                record_trusted_key(
+                    _SAMPLE_PUBKEY + "\nDIFFERENT",
+                    trusted_keys_dir=tmp_path,
+                    label="alice",
+                )
+        assert target.is_file()
+
     def test_find_matching_returns_path(self, tmp_path: Path) -> None:
         record_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path)
         found = find_matching_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path)
@@ -192,6 +209,26 @@ class TestTrustedKeyRegistry:
             _SAMPLE_PUBKEY, trusted_keys_dir=tmp_path / "does-not-exist"
         )
         assert found is None
+
+    def test_find_matching_skips_unreadable_pubkey_files(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        good = record_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path)
+        bad = tmp_path / "000-bad.pub"
+        bad.write_text("broken", encoding="utf-8")
+        path_type = type(bad)
+        real_read_text = path_type.read_text
+
+        def _maybe_broken(self: Path, *args: object, **kwargs: object) -> str:
+            if self == bad:
+                raise OSError("boom")
+            return real_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(path_type, "read_text", _maybe_broken)
+
+        assert find_matching_trusted_key(_SAMPLE_PUBKEY, trusted_keys_dir=tmp_path) == good
 
 
 class TestVerifyProvenance:
@@ -268,3 +305,29 @@ class TestChainConsistency:
         prov = _sample_provenance(adapter_sha256="a" * 64)
         with pytest.raises(ProvenanceChainBroken, match="mismatch"):
             recompute_chain_consistency(prov, adapter_sha256="b" * 64)
+
+
+class TestDefaultSignatureVerifier:
+    def test_default_signature_verifier_writes_temp_files_and_calls_minisign(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        from dlm.share.provenance import _default_signature_verifier
+
+        seen: dict[str, object] = {}
+
+        def _fake_minisign_verify(payload: Path, sig: Path, pubkey: Path) -> None:
+            seen["payload"] = payload.read_bytes()
+            seen["signature"] = sig.read_text(encoding="utf-8")
+            seen["pubkey"] = pubkey
+
+        monkeypatch.setattr("dlm.share.signing._minisign_verify", _fake_minisign_verify)
+
+        pubkey = tmp_path / "key.pub"
+        pubkey.write_text("pub", encoding="utf-8")
+        _default_signature_verifier(b"chain-bytes", "signature-block", pubkey)
+
+        assert seen["payload"] == b"chain-bytes"
+        assert seen["signature"] == "signature-block"
+        assert seen["pubkey"] == pubkey

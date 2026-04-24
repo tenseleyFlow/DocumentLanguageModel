@@ -82,6 +82,10 @@ class TestNonceSuffix:
 
 
 class TestCleanupStaleTmp:
+    def test_cleanup_skips_directories(self, tmp_path: Path) -> None:
+        (tmp_path / "nested.tmp.999.deadbeef").mkdir()
+        assert atomic.cleanup_stale_tmp_files(tmp_path) == []
+
     def test_removes_only_dead_pid_tmp_files(self, tmp_path: Path) -> None:
         """Legacy nonce-less tmps still get cleaned up — back-compat for
         sweeps that span a pre-/post-upgrade writer on the same store."""
@@ -114,6 +118,41 @@ class TestCleanupStaleTmp:
         malformed.write_bytes(b"x")
         assert atomic.cleanup_stale_tmp_files(tmp_path) == []
         assert malformed.exists()
+
+    def test_cleanup_ignores_tmp_file_removed_between_list_and_unlink(self, tmp_path: Path) -> None:
+        doomed = tmp_path / "name.tmp.99999999.deadbeef"
+        doomed.write_bytes(b"x")
+
+        real_unlink = Path.unlink
+
+        def fake_unlink(self: Path, *args: object, **kwargs: object) -> None:
+            if self == doomed:
+                raise FileNotFoundError
+            real_unlink(self, *args, **kwargs)
+
+        with (
+            patch("dlm.io.atomic._is_alive", return_value=False),
+            patch("pathlib.Path.unlink", autospec=True, side_effect=fake_unlink),
+        ):
+            assert atomic.cleanup_stale_tmp_files(tmp_path) == []
+
+
+class TestTmpPid:
+    def test_invalid_regex_pid_falls_back_to_none(self, tmp_path: Path) -> None:
+        target = tmp_path / "file.bin.tmp.1234.deadbeef"
+
+        class FakeMatch:
+            @staticmethod
+            def group(name: str) -> str:
+                assert name == "pid"
+                return "not-a-pid"
+
+        fake_pattern = type(
+            "FakePattern", (), {"search": staticmethod(lambda _name: FakeMatch())}
+        )()
+
+        with patch("dlm.io.atomic._TMP_RE", fake_pattern):
+            assert atomic._tmp_pid(target) is None
 
 
 class TestIsAlive:

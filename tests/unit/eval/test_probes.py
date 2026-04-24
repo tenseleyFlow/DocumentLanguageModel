@@ -7,8 +7,9 @@ import logging
 
 import pytest
 
+from dlm.data.instruction_parser import QAPair
 from dlm.doc.sections import Section, SectionType
-from dlm.eval.probes import Probe, extract_probes
+from dlm.eval.probes import Probe, _auto_sample_probes, _normalize_probe_markers, extract_probes
 
 
 class TestExplicitProbes:
@@ -42,6 +43,15 @@ class TestExplicitProbes:
         # Auto-sampled fills the remainder.
         assert any(p.prompt == "not-probe" for p in probes)
 
+    def test_probe_header_preserves_blank_lines_before_prompt(self) -> None:
+        body = "### Q !probe\n\n\nWhat is Paris?\n### A\nCapital of France."
+        s = Section(type=SectionType.INSTRUCTION, content=body)
+
+        probes = extract_probes([s], k=1)
+
+        assert len(probes) == 1
+        assert probes[0].prompt == "What is Paris?"
+
 
 class TestAutoSample:
     def test_auto_sample_when_no_explicit(self) -> None:
@@ -74,6 +84,22 @@ class TestAutoSample:
         s = Section(type=SectionType.INSTRUCTION, content=body)
         assert extract_probes([s], k=0) == []
 
+    def test_auto_sample_internal_k_zero_returns_empty(self) -> None:
+        assert _auto_sample_probes([], k=0, seed=0, exclude=set(), parsed_pairs={}) == []
+
+    def test_auto_sample_exclude_skips_seen_prompts(self) -> None:
+        section = Section(type=SectionType.INSTRUCTION, content="### Q\nQ1?\n### A\nA1")
+
+        probes = _auto_sample_probes(
+            [section],
+            k=1,
+            seed=0,
+            exclude={"Q1?"},
+            parsed_pairs={section.section_id: [QAPair(question="Q1?", answer="A1")]},
+        )
+
+        assert probes == []
+
     def test_malformed_instruction_logs_warning_once(
         self,
         caplog: pytest.LogCaptureFixture,
@@ -91,3 +117,9 @@ class TestProbeDataclass:
         p = Probe(prompt="hi", reference="hello")
         with pytest.raises(dataclasses.FrozenInstanceError):
             p.prompt = "other"  # type: ignore[misc]
+
+
+def test_normalize_probe_markers_keeps_non_probe_body() -> None:
+    body = "### Q\nplain\n### A\nanswer"
+
+    assert _normalize_probe_markers(body) == body

@@ -101,6 +101,21 @@ def _setup_store(tmp_path: Path, *, use_qlora: bool = False) -> tuple[Path, Any,
     return cached_base, store, vendor
 
 
+def _setup_named_store(tmp_path: Path) -> tuple[Path, Any, Path]:
+    cached_base, store, vendor = _setup_store(tmp_path)
+    knowledge = store.adapter_version_for("knowledge", 2)
+    knowledge.mkdir(parents=True)
+    (knowledge / "adapter_config.json").write_text(
+        json.dumps({"base_model_name_or_path": _SPEC.hf_id, "peft_type": "LORA"})
+    )
+    (knowledge / "tokenizer_config.json").write_text(
+        json.dumps({"vocab_size": 32000, "chat_template": "{{messages}}"})
+    )
+    (knowledge / "training_run.json").write_text(json.dumps({"use_qlora": False}))
+    store.set_current_adapter_for("knowledge", knowledge)
+    return cached_base, store, vendor
+
+
 def _relative_file_bytes(root: Path) -> dict[str, bytes]:
     return {
         str(path.relative_to(root)): path.read_bytes()
@@ -110,6 +125,11 @@ def _relative_file_bytes(root: Path) -> dict[str, bytes]:
 
 
 class TestHappyPath:
+    def test_default_ollama_name_lowercases_dlm_id(self) -> None:
+        from dlm.export.runner import default_ollama_name
+
+        assert default_ollama_name("01ABCDEF", 7) == "dlm-01abcdef:v0007"
+
     def test_unmerged_export_emits_base_and_adapter(self, tmp_path: Path) -> None:
         cached_base, store, vendor = _setup_store(tmp_path)
         plan = ExportPlan(quant="Q4_K_M", merged=False)
@@ -331,6 +351,36 @@ class TestMergeGate:
             )
         # No subprocess should have launched on the safety-gate path.
         assert recorder.commands == []
+
+    def test_merged_export_delegates_to_merge_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cached_base, store, vendor = _setup_store(tmp_path, use_qlora=False)
+        plan = ExportPlan(merged=True, dequantize_confirmed=True)
+        recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
+        seen: list[dict[str, object]] = []
+
+        def _fake_merge_path(**kwargs: object) -> None:
+            seen.append(kwargs)
+
+        monkeypatch.setattr("dlm.export.runner._perform_merge_path", _fake_merge_path)
+
+        result = run_export(
+            store,
+            _SPEC,
+            plan,
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
+            embedding_checker=lambda _a, _g: None,
+        )
+
+        assert result.merged is True
+        assert len(seen) == 1
+        assert seen[0]["adapter_path"] == store.resolve_current_adapter()
+        assert seen[0]["was_qlora"] is False
 
 
 class TestDefaultVocabCheck:
@@ -691,6 +741,54 @@ class TestMissingAdapter:
                 subprocess_runner=lambda _cmd: None,
             )
 
+    def test_missing_adapter_override_raises(self, tmp_path: Path) -> None:
+        cached_base, store, vendor = _setup_store(tmp_path)
+
+        with pytest.raises(ExportError, match="adapter_path_override .* does not exist"):
+            run_export(
+                store,
+                _SPEC,
+                ExportPlan(),
+                cached_base_dir=cached_base,
+                subprocess_runner=lambda _cmd: None,
+                vendor_override=vendor,
+                adapter_path_override=tmp_path / "missing",
+            )
+
+    def test_missing_named_adapter_raises(self, tmp_path: Path) -> None:
+        cached_base, store, vendor = _setup_store(tmp_path)
+
+        with pytest.raises(ExportError, match="run `dlm train` before exporting for adapter"):
+            run_export(
+                store,
+                _SPEC,
+                ExportPlan(),
+                cached_base_dir=cached_base,
+                subprocess_runner=lambda _cmd: None,
+                vendor_override=vendor,
+                adapter_name="knowledge",
+            )
+
+    def test_named_adapter_export_uses_named_pointer(self, tmp_path: Path) -> None:
+        cached_base, store, vendor = _setup_named_store(tmp_path)
+        recorder = _SubprocessRecorder(store.export_quant_dir("Q4_K_M"))
+
+        result = run_export(
+            store,
+            _SPEC,
+            ExportPlan(),
+            cached_base_dir=cached_base,
+            subprocess_runner=recorder,
+            vendor_override=vendor,
+            skip_ollama=True,
+            vocab_checker=lambda _a, _g: None,
+            embedding_checker=lambda _a, _g: None,
+            adapter_name="knowledge",
+        )
+
+        assert result.export_dir == store.export_quant_dir("Q4_K_M")
+        assert len(recorder.commands) == 3
+
 
 class TestManifestAppend:
     def test_exports_list_grows(self, tmp_path: Path) -> None:
@@ -751,3 +849,179 @@ class TestManifestAppend:
         # Peer released → no export summary landed (we errored before save).
         manifest = load_manifest(store.manifest)
         assert len(manifest.exports) == 0
+
+
+class TestRunnerInternals:
+    def test_cached_base_missing_manifest_is_false(self, tmp_path: Path) -> None:
+        from dlm.export.runner import _cached_base_matches
+
+        export_dir = tmp_path / "exports" / "Q4_K_M"
+        export_dir.mkdir(parents=True)
+        base_gguf = export_dir / "base.Q4_K_M.gguf"
+        base_gguf.write_bytes(b"cached bytes")
+
+        assert _cached_base_matches(export_dir, base_gguf, "Q4_K_M") is False
+
+    def test_cached_base_quant_mismatch_is_false(self, tmp_path: Path) -> None:
+        from dlm.export.manifest import ExportManifest
+        from dlm.export.runner import _cached_base_matches
+
+        export_dir = tmp_path / "exports" / "Q4_K_M"
+        export_dir.mkdir(parents=True)
+        base_gguf = export_dir / "base.Q4_K_M.gguf"
+        base_gguf.write_bytes(b"cached bytes")
+        manifest = ExportManifest(
+            target="ollama",
+            quant="Q5_K_M",
+            created_at=datetime(2026, 4, 23, 12, 0, 0),
+            created_by="dlm-test",
+            base_model_hf_id="org/base",
+            base_model_revision="a" * 40,
+            adapter_version=1,
+            artifacts=[],
+        )
+        (export_dir / "export_manifest.json").write_text(
+            manifest.model_dump_json(indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        assert _cached_base_matches(export_dir, base_gguf, "Q4_K_M") is False
+
+    def test_cached_base_without_recorded_artifact_is_false(self, tmp_path: Path) -> None:
+        from dlm.export.manifest import ExportManifest, build_artifact
+        from dlm.export.runner import _cached_base_matches
+
+        export_dir = tmp_path / "exports" / "Q4_K_M"
+        export_dir.mkdir(parents=True)
+        base_gguf = export_dir / "base.Q4_K_M.gguf"
+        other = export_dir / "other.gguf"
+        base_gguf.write_bytes(b"cached bytes")
+        other.write_bytes(b"other bytes")
+        manifest = ExportManifest(
+            target="ollama",
+            quant="Q4_K_M",
+            created_at=datetime(2026, 4, 23, 12, 0, 0),
+            created_by="dlm-test",
+            base_model_hf_id="org/base",
+            base_model_revision="a" * 40,
+            adapter_version=1,
+            artifacts=[build_artifact(export_dir, other)],
+        )
+        (export_dir / "export_manifest.json").write_text(
+            manifest.model_dump_json(indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        assert _cached_base_matches(export_dir, base_gguf, "Q4_K_M") is False
+
+    def test_cached_imatrix_without_existing_file_returns_none(self, tmp_path: Path) -> None:
+        from dlm.export.runner import _resolve_or_build_imatrix
+
+        cached_base, store, _vendor = _setup_store(tmp_path)
+        fp16 = tmp_path / "base.fp16.gguf"
+        fp16.write_bytes(b"fp16")
+
+        assert (
+            _resolve_or_build_imatrix(
+                export_dir=tmp_path,
+                fp16_path=fp16,
+                plan=ExportPlan(quant="Q4_K_M", imatrix="cached"),
+                run=lambda _cmd: None,
+                vendor_override=None,
+                spec=_SPEC,
+                store=store,
+            )
+            is None
+        )
+
+    def test_auto_imatrix_cache_hit_logs_and_returns_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from types import SimpleNamespace
+
+        from dlm.export.runner import _resolve_or_build_imatrix
+
+        cached_base, store, _vendor = _setup_store(tmp_path)
+        fp16 = tmp_path / "base.fp16.gguf"
+        fp16.write_bytes(b"fp16")
+        imatrix = tmp_path / "imatrix.gguf"
+        imatrix.write_bytes(b"imatrix")
+
+        monkeypatch.setattr(
+            "dlm.export.imatrix.calibration_text_from_replay",
+            lambda **_kwargs: ("calibration text", "abc123"),
+        )
+        monkeypatch.setattr(
+            "dlm.export.imatrix.resolve_imatrix",
+            lambda *_args, **_kwargs: SimpleNamespace(path=imatrix, sha256="abcdef123456"),
+        )
+        caplog.set_level(logging.INFO, logger="dlm.export.runner")
+
+        resolved = _resolve_or_build_imatrix(
+            export_dir=tmp_path,
+            fp16_path=fp16,
+            plan=ExportPlan(quant="Q4_K_M", imatrix="auto"),
+            run=lambda _cmd: None,
+            vendor_override=None,
+            spec=_SPEC,
+            store=store,
+        )
+
+        assert resolved == imatrix
+        assert "imatrix: cache hit (" in caplog.text
+
+    def test_run_ollama_stage_records_detected_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dlm.export.runner import _run_ollama_stage
+
+        cached_base, store, _vendor = _setup_store(tmp_path)
+        export_dir = store.export_quant_dir("Q4_K_M")
+        export_dir.mkdir(parents=True, exist_ok=True)
+        base_gguf = export_dir / "base.Q4_K_M.gguf"
+        base_gguf.write_bytes(b"base")
+        adapter = store.resolve_current_adapter()
+        assert adapter is not None
+
+        monkeypatch.setattr("dlm.export.ollama.check_ollama_version", lambda: (1, 2, 3))
+        monkeypatch.setattr("dlm.export.draft_registry.resolve_draft", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "dlm.export.ollama.render_modelfile",
+            lambda _ctx: "FROM ./base.Q4_K_M.gguf\n",
+        )
+
+        seen: list[str] = []
+
+        def _create(*, name: str, modelfile_path: Path, cwd: Path) -> str:
+            seen.append(name)
+            assert modelfile_path.exists()
+            assert cwd == export_dir
+            return "created"
+
+        monkeypatch.setattr("dlm.export.ollama.ollama_create", _create)
+        monkeypatch.setattr("dlm.export.ollama.ollama_run", lambda **_kwargs: "unused")
+
+        modelfile_path, name, ver_str, smoke_first_line = _run_ollama_stage(
+            store=store,
+            spec=_SPEC,
+            plan=ExportPlan(quant="Q4_K_M"),
+            adapter_path=adapter,
+            export_dir=export_dir,
+            base_gguf_path=base_gguf,
+            adapter_version=1,
+            system_prompt=None,
+            source_dlm_path=None,
+            skip_smoke=True,
+            ollama_create_runner=None,
+            ollama_run_runner=None,
+            training_sequence_len=None,
+            override_temperature=None,
+            override_top_p=None,
+            draft_override=None,
+            draft_disabled=False,
+        )
+
+        assert modelfile_path.exists()
+        assert name == seen[0]
+        assert ver_str == "1.2.3"
+        assert smoke_first_line is None

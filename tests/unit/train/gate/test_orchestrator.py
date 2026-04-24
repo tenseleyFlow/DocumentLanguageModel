@@ -171,6 +171,22 @@ class TestRunPostSftGate:
         )
         assert result is None
 
+    def test_exactly_one_named_adapter_returns_none(self, tmp_path: Path) -> None:
+        parsed = _parsed((_prose("x", adapter="solo"),), gate_enabled=False, adapters=("solo",))
+        object.__setattr__(parsed.frontmatter.training.gate, "enabled", True)
+        store = StorePath(root=tmp_path)
+        store.ensure_layout()
+        recorder = MetricsRecorder(tmp_path)
+        result = run_post_sft_gate(
+            store,
+            parsed,
+            run_id=1,
+            recorder=recorder,
+            embed=lambda _p: _tensor(4),
+            input_dim=4,
+        )
+        assert result is None
+
     def test_cold_start_fallback_records_uniform_events(self, tmp_path: Path) -> None:
         parsed = _parsed((_prose("only-a", adapter="a"),))
         store = StorePath(root=tmp_path)

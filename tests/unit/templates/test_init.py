@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
+from dlm.base_models import GatedModelError
 from dlm.doc.parser import parse_file
 from dlm.templates import TemplateApplyError, TemplateNotFoundError, apply_template
 
@@ -58,3 +61,28 @@ def test_apply_template_unknown_name_raises(tmp_path: Path) -> None:
         apply_template("nonexistent-template", target)
     # And doesn't leave a half-written file behind.
     assert not target.exists()
+
+
+def test_apply_template_wraps_gated_model_error(tmp_path: Path) -> None:
+    target = tmp_path / "out.dlm"
+
+    with (
+        patch(
+            "dlm.base_models.resolve",
+            side_effect=GatedModelError("llama-3.2-1b", "https://example.test/license"),
+        ),
+        pytest.raises(TemplateApplyError, match="pass accept_license=True"),
+    ):
+        apply_template("coding-tutor", target)
+
+
+def test_apply_template_refuses_gated_base_without_acceptance_flag(tmp_path: Path) -> None:
+    target = tmp_path / "out.dlm"
+    spec = SimpleNamespace(key="llama-3.2-1b")
+
+    with (
+        patch("dlm.base_models.resolve", return_value=spec),
+        patch("dlm.base_models.license.is_gated", return_value=True),
+        pytest.raises(TemplateApplyError, match="uses gated base"),
+    ):
+        apply_template("coding-tutor", target)

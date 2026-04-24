@@ -19,9 +19,10 @@ from typing import Any
 
 import pytest
 
+import dlm.export.vl_gguf as vl_gguf
 from dlm.base_models.schema import BaseModelSpec, VlPreprocessorPlan
 from dlm.export.arch_probe import ArchProbeResult, SupportLevel
-from dlm.export.errors import VlGgufUnsupportedError
+from dlm.export.errors import ExportError, VlGgufUnsupportedError
 from dlm.export.plan import ExportPlan
 from dlm.export.vl_gguf import VlGgufResult, run_vl_gguf_export
 from dlm.store.paths import for_dlm
@@ -129,6 +130,38 @@ def _populate_adapter(store: Any, version: int = 1) -> Path:
         encoding="utf-8",
     )
     store.set_current_adapter(adapter)
+    return adapter
+
+
+def _populate_named_adapter(store: Any, name: str, version: int = 1) -> Path:
+    """Write a minimally-valid named adapter checkpoint under `adapter/<name>/`."""
+    store.ensure_layout()
+    adapter: Path = store.adapter_version_for(name, version)
+    adapter.mkdir(parents=True, exist_ok=True)
+    (adapter / "adapter_config.json").write_text(
+        json.dumps(
+            {
+                "base_model_name_or_path": "Qwen/Qwen2-VL-2B-Instruct",
+                "target_modules": ["q_proj", "v_proj"],
+                "r": 16,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (adapter / "tokenizer_config.json").write_text(
+        json.dumps(
+            {
+                "vocab_size": 151643,
+                "chat_template": "{{ 'hi' }}",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (adapter / "training_run.json").write_text(
+        json.dumps({"use_qlora": False}),
+        encoding="utf-8",
+    )
+    store.set_current_adapter_for(name, adapter)
     return adapter
 
 
@@ -302,3 +335,82 @@ class TestHappyPath:
         paths = {a["path"] for a in manifest["artifacts"]}
         assert "base.Q4_K_M.gguf" in paths
         assert "Modelfile" in paths
+
+    def test_named_adapter_export_uses_named_current_pointer(self, tmp_path: Path) -> None:
+        store = for_dlm(_VALID_ULID, home=tmp_path)
+        flat = _populate_adapter(store, version=1)
+        named = _populate_named_adapter(store, "knowledge", version=2)
+        cached_base = tmp_path / "base-cache"
+        cached_base.mkdir()
+        llama_cpp_root = _fixture_llama_cpp_root(tmp_path)
+
+        merge_calls: list[tuple[Path, Path, Path]] = []
+
+        def _recorder(args: Any) -> None:
+            if args and args[0].endswith("llama-quantize"):
+                Path(args[2]).write_bytes(b"stub-gguf-bytes")
+
+        def _merge(adapter: Path, out_dir: Path, *, cached_base_dir: Path) -> None:
+            merge_calls.append((adapter, out_dir, cached_base_dir))
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+        result = run_vl_gguf_export(
+            store,
+            _qwen2vl_spec(),
+            _merged_plan(),
+            verdict=_supported_verdict(),
+            cached_base_dir=cached_base,
+            adapter_name="knowledge",
+            subprocess_runner=_recorder,
+            merge_runner=_merge,
+            llama_cpp_root_override=llama_cpp_root,
+        )
+
+        assert len(merge_calls) == 1
+        assert merge_calls[0][0] == named
+        assert merge_calls[0][0] != flat
+        manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+        assert manifest["adapter_version"] == 2
+
+    def test_missing_quantize_output_raises(self, tmp_path: Path) -> None:
+        store = for_dlm(_VALID_ULID, home=tmp_path)
+        _populate_adapter(store)
+        cached_base = tmp_path / "base-cache"
+        cached_base.mkdir()
+        llama_cpp_root = _fixture_llama_cpp_root(tmp_path)
+
+        def _recorder(_args: Any) -> None:
+            return None
+
+        def _merge(_adapter: Path, out_dir: Path, *, cached_base_dir: Path) -> None:
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+        with pytest.raises(ExportError, match="expected .*base.Q4_K_M.gguf"):
+            run_vl_gguf_export(
+                store,
+                _qwen2vl_spec(),
+                _merged_plan(),
+                verdict=_supported_verdict(),
+                cached_base_dir=cached_base,
+                subprocess_runner=_recorder,
+                merge_runner=_merge,
+                llama_cpp_root_override=llama_cpp_root,
+            )
+
+
+class TestHelpers:
+    def test_version_parser_falls_back_to_one_for_non_version_dir(self, tmp_path: Path) -> None:
+        assert vl_gguf._version_from_dir_name(tmp_path / "merged-adapter") == 1
+
+    def test_default_runner_delegates_to_run_checked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        recorded: dict[str, object] = {}
+
+        def _fake_run_checked(args: list[str], *, timeout: int) -> object:
+            recorded["args"] = args
+            recorded["timeout"] = timeout
+            return "ok"
+
+        monkeypatch.setattr(vl_gguf, "run_checked", _fake_run_checked)
+        out = vl_gguf._default_runner(("python", "tool.py"))
+        assert out == "ok"
+        assert recorded == {"args": ["python", "tool.py"], "timeout": 60 * 60}

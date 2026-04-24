@@ -119,6 +119,18 @@ class TestHappyPath:
         assert len(candidates) == 1
         assert candidates[0].confidence == 1.0
 
+    def test_invalid_confidence_defaults_to_one(self, tmp_path: Path) -> None:
+        broken_conf = {**_PROBE_FAIL_WITH_REF}
+        broken_conf["evidence"] = {
+            "prompt": "q?",
+            "reference": "a.",
+            "confidence": {"not": "numeric"},
+        }
+        report = _write(tmp_path, _full_report([broken_conf]))
+        candidates = read_sway_report(report)
+        assert len(candidates) == 1
+        assert candidates[0].confidence == 1.0
+
 
 class TestMissingReference:
     def test_strict_raises(self, tmp_path: Path) -> None:

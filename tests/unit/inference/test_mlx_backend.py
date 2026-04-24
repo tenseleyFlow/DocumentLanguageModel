@@ -10,7 +10,11 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from dlm.base_models import BASE_MODELS
-from dlm.inference.backends.mlx_backend import MlxBackend, _resolve_base_num_hidden_layers
+from dlm.inference.backends.mlx_backend import (
+    MlxBackend,
+    _resolve_base_num_hidden_layers,
+    stage_mlx_adapter_dir,
+)
 from dlm.inference.errors import AdapterNotFoundError
 from dlm.inference.mlx_adapter import MlxConversionError
 
@@ -123,3 +127,18 @@ class TestMlxBackend:
         assert backend._workdir is None
         assert backend._model is None
         assert backend._tokenizer is None
+
+
+class TestStageMlxAdapterDir:
+    def test_unreadable_adapter_config_raises_conversion_error(self, tmp_path: Path) -> None:
+        adapter_dir = tmp_path / "adapter"
+        adapter_dir.mkdir()
+        (adapter_dir / "adapter_model.safetensors").write_bytes(b"fake")
+        (adapter_dir / "adapter_config.json").mkdir()
+
+        with pytest.raises(MlxConversionError, match="cannot read .*adapter_config.json"):
+            stage_mlx_adapter_dir(
+                adapter_dir,
+                tmp_path / "staged",
+                base_hf_id=BASE_MODELS["smollm2-135m"].hf_id,
+            )

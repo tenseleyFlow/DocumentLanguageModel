@@ -54,6 +54,10 @@ class TestWasTrainedWithQlora:
         with pytest.raises(PreflightError, match="training_run_json"):
             was_trained_with_qlora(tmp_path, strict_training_run=True)
 
+    def test_malformed_pinned_versions_falls_back_to_false(self, tmp_path: Path) -> None:
+        (tmp_path / "pinned_versions.json").write_text("not json", encoding="utf-8")
+        assert was_trained_with_qlora(tmp_path) is False
+
 
 class TestResolvePrecisionSafety:
     def test_unmerged_export_is_safe(self, tmp_path: Path) -> None:

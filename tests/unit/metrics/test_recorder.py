@@ -7,6 +7,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -14,15 +15,17 @@ from dlm.metrics.db import metrics_db_path
 from dlm.metrics.events import (
     EvalEvent,
     ExportEvent,
+    GateEvent,
     PreferenceMineEvent,
     RunEnd,
     RunStart,
     StepEvent,
+    TokenizationEvent,
 )
-from dlm.metrics.recorder import DlmTrainerCallback, MetricsRecorder
+from dlm.metrics.recorder import DlmTrainerCallback, MetricsRecorder, _maybe_float
 
 
-def _select_all(db_path: Path, table: str) -> list[tuple]:
+def _select_all(db_path: Path, table: str) -> list[tuple[Any, ...]]:
     conn = sqlite3.connect(str(db_path))
     try:
         rows = conn.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall()
@@ -106,6 +109,43 @@ class TestEvals:
         rows = _select_all(metrics_db_path(tmp_path), "evals")
         assert len(rows) == 1
         assert rows[0][2] == 1.8  # val_loss
+
+
+class TestTokenization:
+    def test_tokenization_written(self, tmp_path: Path) -> None:
+        rec = MetricsRecorder(tmp_path)
+        rec.record_run_start(RunStart(run_id=1, adapter_version=None, phase="sft", seed=0))
+        rec.record_tokenization(
+            TokenizationEvent(
+                run_id=1,
+                total_sections=4,
+                cache_hits=3,
+                cache_misses=1,
+                total_tokenize_seconds=0.25,
+                cache_bytes_after=1024,
+            )
+        )
+        rows = _select_all(metrics_db_path(tmp_path), "tokenization")
+        assert len(rows) == 1
+        assert rows[0][1:6] == (4, 3, 1, 0.25, 1024)
+
+
+class TestGateRecorder:
+    def test_gate_written(self, tmp_path: Path) -> None:
+        rec = MetricsRecorder(tmp_path)
+        rec.record_run_start(RunStart(run_id=1, adapter_version=None, phase="sft", seed=0))
+        rec.record_gate(
+            GateEvent(
+                run_id=1,
+                adapter_name="tone",
+                mean_weight=0.6,
+                sample_count=8,
+                mode="trained",
+            )
+        )
+        rows = _select_all(metrics_db_path(tmp_path), "gate_events")
+        assert len(rows) == 1
+        assert rows[0][1:5] == ("tone", 0.6, 8, "trained")
 
 
 class TestExports:
@@ -236,3 +276,15 @@ class TestTrainerCallbackCompatibility:
 
         with pytest.raises(AttributeError, match="not_a_callback"):
             _ = callback.not_a_callback
+
+
+class TestMaybeFloat:
+    def test_none_returns_none(self) -> None:
+        assert _maybe_float(None) is None
+
+    def test_numeric_values_parse(self) -> None:
+        assert _maybe_float(1.25) == 1.25
+        assert _maybe_float("2.5") == 2.5
+
+    def test_bad_value_returns_none(self) -> None:
+        assert _maybe_float("nope") is None

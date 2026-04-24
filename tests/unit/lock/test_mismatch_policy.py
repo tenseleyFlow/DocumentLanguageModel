@@ -272,6 +272,13 @@ class TestLicenseAcceptanceRule:
         msgs = [msg for _s, msg in classify_mismatches(prior, current)]
         assert any("url changed" in m for m in msgs)
 
+    def test_equal_acceptance_is_silent(self) -> None:
+        acceptance = self._acceptance()
+        prior = _lock(license_acceptance=acceptance)
+        current = _lock(license_acceptance=acceptance)
+        msgs = [msg for _s, msg in classify_mismatches(prior, current)]
+        assert not any("license_acceptance" in m for m in msgs)
+
     def test_both_none_is_silent(self) -> None:
         prior = _lock(license_acceptance=None)
         current = _lock(license_acceptance=None)

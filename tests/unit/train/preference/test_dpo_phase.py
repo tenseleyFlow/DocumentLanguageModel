@@ -7,11 +7,15 @@ manifest → state-sidecar without importing HF/TRL or torch.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
+import dlm.train.preference.dpo_phase as dpo_phase
 from dlm.base_models import BASE_MODELS
 from dlm.doc.parser import ParsedDlm
 from dlm.doc.schema import DlmFrontmatter, PreferenceConfig, TrainingConfig
@@ -220,3 +224,29 @@ class TestRunSteps:
             trainer_factory=_capturing_factory,
         )
         assert captured["include_auto_mined"] is False
+
+    def test_writes_lock_when_decision_requests_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = for_dlm("01DPOTEST5", home=tmp_path)
+        _seed_prior_sft(store, dlm_id="01DPOTEST5")
+        parsed = replace(_parsed_with_preferences(), source_path=tmp_path / "doc.dlm")
+        persist_lock = MagicMock()
+
+        monkeypatch.setattr(
+            dpo_phase,
+            "_validate_or_abort_lock",
+            lambda **_kwargs: SimpleNamespace(should_write_lock=True),
+        )
+        monkeypatch.setattr(dpo_phase, "_persist_lock", persist_lock)
+
+        run(
+            store,
+            parsed,
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            reference_adapter_version=1,
+            trainer_factory=_mock_factory,
+        )
+
+        persist_lock.assert_called_once()

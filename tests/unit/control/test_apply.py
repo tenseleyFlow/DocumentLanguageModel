@@ -8,6 +8,7 @@ import torch
 from torch import nn
 
 from dlm.control import ControlApplyError, apply_control
+from dlm.control.apply import _make_hook
 
 
 class _ToyLayer(nn.Module):
@@ -43,6 +44,12 @@ def _run_through_layer(model: _ToyModel, layer_index: int, hidden: torch.Tensor)
 
 
 class TestHookArithmetic:
+    def test_hook_with_no_args_returns_original_tuple(self) -> None:
+        hook = _make_hook(torch.ones(4), 1.0)
+        empty: tuple[object, ...] = ()
+
+        assert hook(None, empty) == empty
+
     def test_adds_scaled_vector_to_hidden(self) -> None:
         model = _ToyModel(n_layers=4, hidden_dim=8)
         vector = np.ones(8, dtype=np.float32)
@@ -177,3 +184,30 @@ class TestValidation:
         with apply_control(wrapped, vector, layer_index=2, strength=1.0):
             out = _run_through_layer(inner, 2, hidden)
         assert torch.allclose(out, torch.ones_like(out))
+
+    def test_falls_through_sparse_projection_paths(self) -> None:
+        class _SparseProjLayer(nn.Module):
+            def __init__(self, hidden_dim: int) -> None:
+                super().__init__()
+                self.self_attn = nn.Module()
+                self.self_attn.q_proj = nn.Module()
+                self.attn = nn.Module()
+                self.attn.qkv_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
+
+            def forward(self, hidden: torch.Tensor) -> torch.Tensor:
+                return hidden
+
+        class _SparseProjModel(nn.Module):
+            def __init__(self, hidden_dim: int) -> None:
+                super().__init__()
+                self.model = nn.Module()
+                self.model.layers = nn.ModuleList([_SparseProjLayer(hidden_dim)])
+
+        model = _SparseProjModel(hidden_dim=4)
+        vector = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        hidden = torch.zeros(1, 1, 4)
+
+        with apply_control(model, vector, layer_index=0, strength=1.0):
+            out = model.model.layers[0](hidden)
+
+        assert out[0, 0, 0].item() == 1.0

@@ -12,6 +12,7 @@ Mirrors `test_vl_snapshot.py`. Covers:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -97,6 +98,12 @@ class TestRefusals:
         with pytest.raises(ExportError, match="only audio-language bases"):
             run_audio_snapshot_export(populated_store, _text_spec())
 
+    def test_missing_audio_preprocessor_plan_refused(self, populated_store) -> None:
+        spec = _audio_spec()
+        object.__setattr__(spec, "audio_preprocessor_plan", None)
+        with pytest.raises(ExportError, match="no audio_preprocessor_plan"):
+            run_audio_snapshot_export(populated_store, spec)
+
     def test_missing_adapter_refused(self, tmp_path: Path) -> None:
         store = for_dlm(_VALID_ULID, home=tmp_path)
         store.ensure_layout()
@@ -141,6 +148,72 @@ class TestSnapshotLayout:
         result = run_audio_snapshot_export(populated_store, _audio_spec())
         assert result.export_dir.name != "hf-snapshot"
         assert result.export_dir.name == AUDIO_SNAPSHOT_SUBDIR
+
+    def test_named_adapter_export_uses_named_current_pointer(self, populated_store) -> None:
+        named = populated_store.adapter_version_for("podcast", 5)
+        named.mkdir(parents=True, exist_ok=True)
+        (named / "adapter_config.json").write_text('{"r": 32}', encoding="utf-8")
+        (named / "adapter_model.safetensors").write_bytes(b"named audio bytes")
+        populated_store.set_current_adapter_for("podcast", named)
+
+        result = run_audio_snapshot_export(
+            populated_store,
+            _audio_spec(),
+            adapter_name="podcast",
+        )
+
+        assert (
+            result.adapter_dir / "adapter_model.safetensors"
+        ).read_bytes() == b"named audio bytes"
+        manifest = load_audio_snapshot_manifest(result.export_dir)
+        assert manifest.adapter_version == 5
+        assert manifest.adapter_name == "podcast"
+
+    def test_adapter_override_uses_provided_dir(self, populated_store, tmp_path: Path) -> None:
+        override = tmp_path / "merged-adapter"
+        override.mkdir()
+        (override / "adapter_model.safetensors").write_bytes(b"override audio bytes")
+
+        result = run_audio_snapshot_export(
+            populated_store,
+            _audio_spec(),
+            adapter_path_override=override,
+        )
+
+        assert (
+            result.adapter_dir / "adapter_model.safetensors"
+        ).read_bytes() == b"override audio bytes"
+        manifest = load_audio_snapshot_manifest(result.export_dir)
+        assert manifest.adapter_version == 1
+
+    def test_missing_adapter_override_refused(self, populated_store, tmp_path: Path) -> None:
+        with pytest.raises(ExportError, match="adapter_path_override .* does not exist"):
+            run_audio_snapshot_export(
+                populated_store,
+                _audio_spec(),
+                adapter_path_override=tmp_path / "missing",
+            )
+
+    def test_processor_save_pretrained_writes_processor_artifact(self, populated_store) -> None:
+        class _Processor:
+            def save_pretrained(self, out_dir: str) -> None:
+                Path(out_dir, "processor_config.json").write_text("{}", encoding="utf-8")
+
+        result = run_audio_snapshot_export(populated_store, _audio_spec(), processor=_Processor())
+
+        assert (result.processor_dir / "processor_config.json").exists()
+        manifest = load_audio_snapshot_manifest(result.export_dir)
+        paths = {entry.path for entry in manifest.artifacts}
+        assert "processor/processor_config.json" in paths
+
+    def test_noncallable_processor_save_is_ignored(self, populated_store) -> None:
+        class _Processor:
+            save_pretrained = "not-callable"
+
+        result = run_audio_snapshot_export(populated_store, _audio_spec(), processor=_Processor())
+
+        assert result.processor_dir.exists()
+        assert not any(result.processor_dir.iterdir())
 
 
 class TestManifestContent:
@@ -211,6 +284,14 @@ class TestManifestLoadFailures:
     def test_malformed_json_raises(self, tmp_path: Path) -> None:
         (tmp_path / SNAPSHOT_MANIFEST_FILENAME).write_text("not json", encoding="utf-8")
         with pytest.raises(ExportManifestError, match="cannot parse"):
+            load_audio_snapshot_manifest(tmp_path)
+
+    def test_invalid_shape_raises(self, tmp_path: Path) -> None:
+        (tmp_path / SNAPSHOT_MANIFEST_FILENAME).write_text(
+            json.dumps({"created_by": "dlm-test"}),
+            encoding="utf-8",
+        )
+        with pytest.raises(ExportManifestError, match="invalid shape"):
             load_audio_snapshot_manifest(tmp_path)
 
 

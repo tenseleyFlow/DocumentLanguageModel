@@ -54,11 +54,18 @@ class _FakeBackendTokenizer:
         return self._canonical
 
 
+class _BrokenBackendTokenizer:
+    def to_str(self) -> str:
+        raise RuntimeError("boom")
+
+
 class _FakeTokenizer:
     """Minimal shape for tokenizer_sha256 — just enough attrs."""
 
     def __init__(self, *, canonical: str | None = None, vocab_size: int = 32000) -> None:
-        self.backend_tokenizer = _FakeBackendTokenizer(canonical) if canonical else None
+        self.backend_tokenizer: object | None = (
+            _FakeBackendTokenizer(canonical) if canonical else None
+        )
         self.vocab_size = vocab_size
         self.model_max_length = 2048
         self.pad_token = "<pad>"
@@ -101,3 +108,9 @@ class TestTokenizerSha256:
         tok.backend_tokenizer = _FakeBackendTokenizer('{"v": 2}')
         sha2 = tokenizer_sha256(tok)
         assert sha1 == sha2
+
+    def test_backend_to_str_failure_falls_back_to_legacy(self) -> None:
+        tok = _FakeTokenizer()
+        tok.backend_tokenizer = _BrokenBackendTokenizer()
+        sha = tokenizer_sha256(tok)
+        assert len(sha) == 64

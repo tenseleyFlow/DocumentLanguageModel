@@ -10,8 +10,9 @@ Covers:
 
 from __future__ import annotations
 
+import builtins
 import sys
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -42,24 +43,17 @@ class TestBackendPickFailure:
     def test_no_backend_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Force both imports to fail and confirm the error names both paths."""
 
-        real_import = (
-            __builtins__["__import__"]
-            if isinstance(__builtins__, dict)
-            else __builtins__.__import__
-        )
+        real_import = builtins.__import__
 
         def fake_import(name: str, *args: object, **kwargs: object) -> object:
             if name in ("soxr", "scipy", "scipy.signal"):
                 raise ImportError(f"forced: {name}")
-            return real_import(name, *args, **kwargs)  # type: ignore[operator]
+            return real_import(name, *args, **kwargs)
 
-        monkeypatch.setitem(sys.modules, "soxr", None)
-        # Monkey-patch the _pick_backend helper's import probes so both
-        # attempts fail regardless of what's installed in the env.
-        monkeypatch.setattr(audio_resample, "_pick_backend", _no_backend)
+        monkeypatch.setattr(builtins, "__import__", fake_import)
 
         with pytest.raises(AudioResampleUnavailable, match="soxr or scipy"):
-            resample(np.zeros(8, dtype=np.float32), src_sr=48_000, dst_sr=16_000)
+            audio_resample._pick_backend()
 
 
 def _no_backend() -> None:
@@ -71,21 +65,73 @@ def _no_backend() -> None:
 
 
 class TestScipyBackend:
-    def test_scipy_fallback_resamples(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """With soxr disabled, scipy fallback produces expected length."""
-        # Pretend soxr isn't importable so the pick falls through to scipy.
-        monkeypatch.setitem(sys.modules, "soxr", None)
+    def test_resample_routes_through_selected_backend(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        called: dict[str, object] = {}
 
-        pytest.importorskip("scipy.signal")
+        def fake_backend(waveform: np.ndarray, *, src_sr: int, dst_sr: int) -> np.ndarray:
+            called["waveform"] = waveform
+            called["src_sr"] = src_sr
+            called["dst_sr"] = dst_sr
+            return np.ones(4, dtype=np.float32)
 
-        # 1 second of 8 kHz silence → resample to 16 kHz = 2 s of samples.
-        wave = np.zeros(8_000, dtype=np.float32)
+        wave = np.zeros(8, dtype=np.float32)
+        monkeypatch.setattr(audio_resample, "_pick_backend", lambda: fake_backend)
         out = resample(wave, src_sr=8_000, dst_sr=16_000)
 
+        assert out.tolist() == [1.0, 1.0, 1.0, 1.0]
+        assert called == {"waveform": wave, "src_sr": 8_000, "dst_sr": 16_000}
+
+    def test_scipy_fallback_uses_fake_module(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """With soxr disabled, _pick_backend falls through to scipy."""
+        monkeypatch.setitem(sys.modules, "soxr", None)
+        fake_signal = ModuleType("scipy.signal")
+        fake_signal.resample_poly = lambda waveform, *, up, down: np.repeat(waveform, up)[
+            : len(waveform) * up // down
+        ]
+        fake_scipy = ModuleType("scipy")
+        fake_scipy.signal = fake_signal
+        monkeypatch.setitem(sys.modules, "scipy", fake_scipy)
+        monkeypatch.setitem(sys.modules, "scipy.signal", fake_signal)
+
+        backend = audio_resample._pick_backend()
+        assert backend is audio_resample._scipy_resample
+
+    def test_soxr_backend_coerces_float32_contiguous(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_soxr = ModuleType("soxr")
+        fake_soxr.resample = lambda waveform, src_sr, dst_sr, quality="HQ": np.asarray(
+            waveform * 2, dtype=np.float64
+        )
+        monkeypatch.setitem(sys.modules, "soxr", fake_soxr)
+
+        wave = np.arange(6, dtype=np.float32)[::2]
+        out = audio_resample._soxr_resample(wave, src_sr=8_000, dst_sr=16_000)
+
         assert out.dtype == np.float32
-        # resample_poly produces len(x) * up // down on integer ratios.
-        # scipy rounds up-or-down depending on filter length; accept ±1.
-        assert abs(out.shape[0] - 16_000) <= 1
+        assert out.flags.c_contiguous
+        assert out.tolist() == [0.0, 4.0, 8.0]
+
+    def test_scipy_backend_reduces_ratio_before_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: dict[str, object] = {}
+
+        def fake_resample_poly(waveform: np.ndarray, *, up: int, down: int) -> np.ndarray:
+            calls["up"] = up
+            calls["down"] = down
+            return np.asarray(waveform + 1, dtype=np.float64)
+
+        fake_signal = ModuleType("scipy.signal")
+        fake_signal.resample_poly = fake_resample_poly
+        fake_scipy = ModuleType("scipy")
+        fake_scipy.signal = fake_signal
+        monkeypatch.setitem(sys.modules, "scipy", fake_scipy)
+        monkeypatch.setitem(sys.modules, "scipy.signal", fake_signal)
+
+        wave = np.arange(5, dtype=np.float32)
+        out = audio_resample._scipy_resample(wave, src_sr=48_000, dst_sr=16_000)
+
+        assert calls == {"up": 1, "down": 3}
+        assert out.dtype == np.float32
         assert out.flags.c_contiguous
 
 

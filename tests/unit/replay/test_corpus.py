@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import dlm.replay.corpus as replay_corpus
 from dlm.replay.corpus import _encode_frame, append_snapshot, iter_snapshots, read_chunk
 from dlm.replay.errors import CorpusCorruptError
 from dlm.replay.models import SectionSnapshot
@@ -87,6 +88,20 @@ class TestCorruption:
         frame = zstd.ZstdCompressor(level=3).compress(b"not-a-cbor-record-\xff\xff\xff")
         corpus.write_bytes(frame)
         with pytest.raises(CorpusCorruptError):
+            read_chunk(corpus, byte_offset=0, length=len(frame))
+
+    def test_cbor_value_error_is_wrapped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        frame = _encode_frame(_snap("a" * 16, "hello"))
+        corpus = tmp_path / "corpus.zst"
+        corpus.write_bytes(frame)
+
+        def _boom(_payload: bytes) -> object:
+            raise ValueError("bad semantic tag")
+
+        monkeypatch.setattr(replay_corpus.cbor2, "loads", _boom)
+        with pytest.raises(CorpusCorruptError, match="CBOR decode failed"):
             read_chunk(corpus, byte_offset=0, length=len(frame))
 
     def test_iter_short_read_raises(self, tmp_path: Path) -> None:

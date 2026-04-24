@@ -50,6 +50,20 @@ class TestInstructionShape:
         with pytest.raises(InstructionParseError):
             sections_to_rows([s])
 
+    def test_probe_markers_normalized_before_parse(self) -> None:
+        s = _s(SectionType.INSTRUCTION, "### Q !probe\nq1\n### A\na1")
+        rows = sections_to_rows([s])
+        assert rows == [
+            {
+                "messages": [
+                    {"role": "user", "content": "q1"},
+                    {"role": "assistant", "content": "a1"},
+                ],
+                "_dlm_section_id": s.section_id,
+                "_dlm_row_tags": {},
+            },
+        ]
+
 
 class TestPreferenceShape:
     def test_each_triple_becomes_preference_row(self) -> None:
