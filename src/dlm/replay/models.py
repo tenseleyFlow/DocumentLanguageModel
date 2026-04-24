@@ -37,6 +37,10 @@ class SectionSnapshot(BaseModel):
     section_id: str = Field(..., description="16-char content hash (doc.sections).")
     section_type: Literal["prose", "instruction", "preference"]
     content: str = Field(..., description="Raw section body.")
+    auto_mined: bool = Field(
+        False,
+        description="True when the source preference section was auto-mined.",
+    )
     first_seen_at: datetime = Field(default_factory=_utc_now_seconds)
     last_seen_at: datetime = Field(default_factory=_utc_now_seconds)
     training_runs_seen: list[int] = Field(

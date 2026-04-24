@@ -30,6 +30,20 @@ def _pref(body: str) -> Section:
     return Section(type=SectionType.PREFERENCE, content=body, start_line=1)
 
 
+def _mined_pref(body: str) -> Section:
+    return Section(
+        type=SectionType.PREFERENCE,
+        content=body,
+        start_line=1,
+        auto_mined=True,
+        judge_name="sway:preference_judge",
+        judge_score_chosen=0.9,
+        judge_score_rejected=0.1,
+        mined_at="2026-04-23T20:00:00Z",
+        mined_run_id=7,
+    )
+
+
 def _prose(body: str) -> Section:
     return Section(type=SectionType.PROSE, content=body, start_line=1)
 
@@ -67,6 +81,14 @@ class TestExtractPreferenceTriples:
     def test_no_preference_sections_returns_empty(self) -> None:
         assert extract_preference_triples([_prose("hi")]) == []
 
+    def test_can_exclude_auto_mined_sections(self) -> None:
+        pairs = extract_preference_triples(
+            [_pref(_PREF_BODY_ONE), _mined_pref(_PREF_BODY_TWO)],
+            include_auto_mined=False,
+        )
+        assert len(pairs) == 1
+        assert pairs[0][1].prompt == "What time is it?"
+
 
 class TestPreferenceRows:
     def test_row_shape(self) -> None:
@@ -99,6 +121,14 @@ class TestPreferenceRows:
     def test_empty_document_yields_no_rows(self) -> None:
         assert preference_rows([]) == []
 
+    def test_can_exclude_auto_mined_rows(self) -> None:
+        rows = preference_rows(
+            [_pref(_PREF_BODY_ONE), _mined_pref(_PREF_BODY_TWO)],
+            include_auto_mined=False,
+        )
+        assert len(rows) == 1
+        assert rows[0]["prompt"] == "What time is it?"
+
 
 class TestBuildDpoDataset:
     def test_returns_hf_dataset_with_correct_columns(self) -> None:
@@ -119,6 +149,14 @@ class TestBuildDpoDataset:
     def test_empty_dataset_has_zero_rows(self) -> None:
         ds = build_dpo_dataset([_prose("no prefs here")])
         assert len(ds) == 0
+
+    def test_dataset_can_exclude_auto_mined_rows(self) -> None:
+        ds = build_dpo_dataset(
+            [_pref(_PREF_BODY_ONE), _mined_pref(_PREF_BODY_TWO)],
+            include_auto_mined=False,
+        )
+        assert len(ds) == 1
+        assert ds[0]["prompt"] == "What time is it?"
 
 
 class TestParserErrorPropagates:

@@ -489,6 +489,17 @@ def train_cmd(
             help="Promote metrics SQLite write failures to hard errors.",
         ),
     ] = False,
+    no_mined: Annotated[
+        bool,
+        typer.Option(
+            "--no-mined",
+            help=(
+                "Exclude auto-mined preference sections from the preference "
+                "phase, including replay-sampled mined pairs. Hand-authored "
+                "`::preference::` sections still train normally."
+            ),
+        ),
+    ] = False,
     gpus: Annotated[
         str | None,
         typer.Option(
@@ -908,6 +919,7 @@ def train_cmd(
             capabilities=doctor_result.capabilities,
             world_size=ws,
             strict_metrics=strict_metrics,
+            include_auto_mined=not no_mined,
         )
     except sqlite3.Error as exc:
         console.print(f"[red]metrics:[/red] {exc}")

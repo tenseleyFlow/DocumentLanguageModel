@@ -13,11 +13,19 @@ def _store(tmp: Path) -> ReplayStore:
     return ReplayStore.at(tmp / "corpus.zst", tmp / "index.json")
 
 
-def _snap(sid: str, section_type: str, content: str, *, added: datetime) -> SectionSnapshot:
+def _snap(
+    sid: str,
+    section_type: str,
+    content: str,
+    *,
+    added: datetime,
+    auto_mined: bool = False,
+) -> SectionSnapshot:
     return SectionSnapshot(
         section_id=sid,
         section_type=section_type,  # type: ignore[arg-type]
         content=content,
+        auto_mined=auto_mined,
         first_seen_at=added,
         last_seen_at=added,
     )
@@ -131,3 +139,24 @@ class TestSamplePreferenceRows:
         s.append(_snap("a" * 16, "preference", _PREF_BODY_A, added=datetime(2026, 1, 1)))
         rows = s.sample_preference_rows(k=1, now=datetime(2026, 4, 1), rng=random.Random(0))
         assert rows[0]["_dlm_section_id"].startswith("replay:")
+
+    def test_can_exclude_auto_mined_preferences(self, tmp_path: Path) -> None:
+        s = _store(tmp_path)
+        s.append(_snap("a" * 16, "preference", _PREF_BODY_A, added=datetime(2026, 1, 1)))
+        s.append(
+            _snap(
+                "b" * 16,
+                "preference",
+                _PREF_BODY_B,
+                added=datetime(2026, 1, 2),
+                auto_mined=True,
+            )
+        )
+        rows = s.sample_preference_rows(
+            k=10,
+            now=datetime(2026, 4, 1),
+            rng=random.Random(0),
+            include_auto_mined=False,
+        )
+        assert len(rows) == 1
+        assert rows[0]["prompt"] == "qA"

@@ -50,6 +50,20 @@ def _pref() -> Section:
     )
 
 
+def _mined_pref() -> Section:
+    return Section(
+        type=SectionType.PREFERENCE,
+        content=("### Prompt\nq\n### Chosen\nc\n### Rejected\nr\n"),
+        start_line=1,
+        auto_mined=True,
+        judge_name="sway:preference_judge",
+        judge_score_chosen=0.9,
+        judge_score_rejected=0.1,
+        mined_at="2026-04-23T20:00:00Z",
+        mined_run_id=7,
+    )
+
+
 @dataclass
 class _FakeTraining:
     preference: PreferenceConfig
@@ -199,6 +213,24 @@ class TestDispatcherAllPhase:
         _, dpo_kwargs = dpo.call_args
         assert dpo_kwargs["reference_adapter_version"] == 3
 
+    def test_forwards_include_auto_mined_to_preference_runner(self) -> None:
+        sft = MagicMock(return_value=_FakeRunResult(adapter_version=3))
+        dpo = MagicMock(return_value=_FakeRunResult(adapter_version=4))
+
+        run_phases(
+            store=MagicMock(),
+            parsed=_parsed([_prose(), _pref()], dpo_enabled=True),
+            spec=MagicMock(),
+            plan=MagicMock(),
+            phase="all",
+            include_auto_mined=False,
+            sft_runner=sft,
+            dpo_runner=dpo,
+        )
+
+        _, dpo_kwargs = dpo.call_args
+        assert dpo_kwargs["include_auto_mined"] is False
+
     def test_skips_dpo_when_disabled(self) -> None:
         sft = MagicMock(return_value=_FakeRunResult(adapter_version=1))
         dpo = MagicMock()
@@ -226,6 +258,27 @@ class TestDispatcherAllPhase:
                 spec=MagicMock(),
                 plan=MagicMock(),
                 phase="all",
+                sft_runner=sft,
+                dpo_runner=dpo,
+            )
+        assert [r.phase for r in results] == ["sft"]
+        dpo.assert_not_called()
+        assert any("no ::preference::" in rec.message for rec in caplog.records)
+
+    def test_no_mined_treats_mined_only_doc_as_no_preference(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        sft = MagicMock(return_value=_FakeRunResult(adapter_version=1))
+        dpo = MagicMock()
+        with caplog.at_level(logging.WARNING):
+            results = run_phases(
+                store=MagicMock(),
+                parsed=_parsed([_prose(), _mined_pref()], dpo_enabled=True),
+                spec=MagicMock(),
+                plan=MagicMock(),
+                phase="all",
+                include_auto_mined=False,
                 sft_runner=sft,
                 dpo_runner=dpo,
             )

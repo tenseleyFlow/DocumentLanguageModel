@@ -201,6 +201,28 @@ class TestRunSteps:
         )
         assert captured["reference_adapter_version"] == 3
 
+    def test_factory_receives_include_auto_mined(self, tmp_path: Path) -> None:
+        captured: dict[str, Any] = {}
+
+        def _capturing_factory(**kwargs: Any) -> MagicMock:
+            captured.update(kwargs)
+            return _mock_factory(**kwargs)
+
+        store = for_dlm("01ORPOTEST4", home=tmp_path)
+        _seed_prior_sft(store, dlm_id="01ORPOTEST4")
+
+        spec = BASE_MODELS["smollm2-135m"]
+        run(
+            store,
+            _parsed_with_preferences(),
+            spec,
+            _plan(),
+            reference_adapter_version=1,
+            include_auto_mined=False,
+            trainer_factory=_capturing_factory,
+        )
+        assert captured["include_auto_mined"] is False
+
     def test_explicit_seed_overrides_frontmatter(self, tmp_path: Path) -> None:
         store = for_dlm("01ORPOTEST", home=tmp_path)
         _seed_prior_sft(store)

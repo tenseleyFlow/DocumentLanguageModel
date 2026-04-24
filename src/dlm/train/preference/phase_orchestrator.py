@@ -79,6 +79,20 @@ def has_preference_content(sections: list[Section]) -> bool:
     return any(s.type is SectionType.PREFERENCE for s in sections)
 
 
+def _filter_preference_sections(
+    sections: list[Section],
+    *,
+    include_auto_mined: bool,
+) -> list[Section]:
+    if include_auto_mined:
+        return sections
+    return [
+        section
+        for section in sections
+        if section.type is not SectionType.PREFERENCE or not section.auto_mined
+    ]
+
+
 def run_phases(
     store: StorePath,
     parsed: ParsedDlm,
@@ -93,6 +107,7 @@ def run_phases(
     capabilities: Capabilities | None = None,
     world_size: int | None = None,
     strict_metrics: bool = False,
+    include_auto_mined: bool = True,
     sft_runner: SftRunner | None = None,
     dpo_runner: PreferenceRunner | None = None,
 ) -> list[PhaseResult]:
@@ -116,7 +131,10 @@ def run_phases(
       document has no preference content and the user didn't
       explicitly request DPO, skip with a warning instead of raising.
     """
-    sections = list(parsed.sections)
+    sections = _filter_preference_sections(
+        list(parsed.sections),
+        include_auto_mined=include_auto_mined,
+    )
     pref_cfg = resolve_preference_enabled(parsed.frontmatter.training.preference, sections)
     results: list[PhaseResult] = []
 
@@ -168,6 +186,7 @@ def run_phases(
             max_steps=max_steps,
             lock_mode=lock_mode,
             capabilities=capabilities,
+            include_auto_mined=include_auto_mined,
         )
         results.append(PhaseResult(phase="preference", result=pref_result))
 

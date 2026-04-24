@@ -28,6 +28,8 @@ DpoRow = dict[str, Any]
 
 def extract_preference_triples(
     sections: list[Section],
+    *,
+    include_auto_mined: bool = True,
 ) -> list[tuple[Section, PreferenceTriple]]:
     """Parse every `::preference::` body into triples, paired with the
     owning section so callers know where each triple came from.
@@ -41,13 +43,19 @@ def extract_preference_triples(
     for section in sections:
         if section.type is not SectionType.PREFERENCE:
             continue
+        if not include_auto_mined and section.auto_mined:
+            continue
         triples = parse_preference_body(section.content, section_id=section.section_id)
         for triple in triples:
             pairs.append((section, triple))
     return pairs
 
 
-def preference_rows(sections: list[Section]) -> list[DpoRow]:
+def preference_rows(
+    sections: list[Section],
+    *,
+    include_auto_mined: bool = True,
+) -> list[DpoRow]:
     """Flatten preference sections into DPOTrainer-shaped rows.
 
     Each row carries `_dlm_section_id` + `_dlm_sub_index` so the
@@ -57,7 +65,10 @@ def preference_rows(sections: list[Section]) -> list[DpoRow]:
     """
     rows: list[DpoRow] = []
     sub_indices: dict[str, int] = {}
-    for section, triple in extract_preference_triples(sections):
+    for section, triple in extract_preference_triples(
+        sections,
+        include_auto_mined=include_auto_mined,
+    ):
         sid = section.section_id
         idx = sub_indices.get(sid, 0)
         sub_indices[sid] = idx + 1
@@ -73,7 +84,11 @@ def preference_rows(sections: list[Section]) -> list[DpoRow]:
     return rows
 
 
-def build_dpo_dataset(sections: list[Section]) -> Dataset:
+def build_dpo_dataset(
+    sections: list[Section],
+    *,
+    include_auto_mined: bool = True,
+) -> Dataset:
     """Wrap `preference_rows()` output in a HF `Dataset`.
 
     Imported lazily: `datasets` is a ~20 MB import and a lot of non-DPO
@@ -81,5 +96,5 @@ def build_dpo_dataset(sections: list[Section]) -> Dataset:
     """
     from datasets import Dataset
 
-    rows = preference_rows(sections)
+    rows = preference_rows(sections, include_auto_mined=include_auto_mined)
     return Dataset.from_list(rows)

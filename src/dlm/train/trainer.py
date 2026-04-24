@@ -1382,6 +1382,7 @@ def _append_change_set_to_replay(
                 section.type.value,
             ),
             content=section.content,
+            auto_mined=section.auto_mined,
             first_seen_at=now,
             last_seen_at=now,
             training_runs_seen=[run_id],

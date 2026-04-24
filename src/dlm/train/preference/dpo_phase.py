@@ -72,6 +72,7 @@ def run(
     reference_adapter_version: int,
     seed: int | None = None,
     max_steps: int | None = None,
+    include_auto_mined: bool = True,
     lock_mode: LockMode = "default",
     capabilities: Capabilities | None = None,
     trainer_factory: TrainerFactory | None = None,
@@ -152,6 +153,7 @@ def run(
             plan=plan,
             seed=seed,
             max_steps=max_steps,
+            include_auto_mined=include_auto_mined,
             reference_adapter_version=reference_adapter_version,
             factory=trainer_factory,
             change_set=change_set,
@@ -290,6 +292,7 @@ def _build_trainer(
     plan: TrainingPlan,
     seed: int,
     max_steps: int | None,
+    include_auto_mined: bool,
     reference_adapter_version: int,
     factory: TrainerFactory | None,
     change_set: ChangeSet,
@@ -311,6 +314,7 @@ def _build_trainer(
             plan=plan,
             seed=seed,
             max_steps=max_steps,
+            include_auto_mined=include_auto_mined,
             reference_adapter_version=reference_adapter_version,
             change_set=change_set,
             replay=replay,
@@ -323,6 +327,7 @@ def _build_trainer(
         plan=plan,
         seed=seed,
         max_steps=max_steps,
+        include_auto_mined=include_auto_mined,
         reference_adapter_version=reference_adapter_version,
         replay=replay,
     )
@@ -336,6 +341,7 @@ def _build_real_dpo_trainer(  # pragma: no cover
     plan: TrainingPlan,
     seed: int,
     max_steps: int | None,
+    include_auto_mined: bool,
     reference_adapter_version: int,
     replay: ReplayStore,
 ) -> Any:
@@ -371,10 +377,18 @@ def _build_real_dpo_trainer(  # pragma: no cover
     # preferences (if any prior preference snapshots are in the corpus).
     from datasets import Dataset, concatenate_datasets
 
-    doc_ds = build_dpo_dataset(list(parsed.sections))
+    doc_ds = build_dpo_dataset(
+        list(parsed.sections),
+        include_auto_mined=include_auto_mined,
+    )
     rng = _random.Random(seed + reference_adapter_version)
     now = datetime.now(UTC).replace(tzinfo=None, microsecond=0)
-    replay_rows = replay.sample_preference_rows(k=max(8, 2 * len(doc_ds)), now=now, rng=rng)
+    replay_rows = replay.sample_preference_rows(
+        k=max(8, 2 * len(doc_ds)),
+        now=now,
+        rng=rng,
+        include_auto_mined=include_auto_mined,
+    )
     if replay_rows:
         replay_ds = Dataset.from_list(replay_rows)
         train_ds = concatenate_datasets([doc_ds, replay_ds])

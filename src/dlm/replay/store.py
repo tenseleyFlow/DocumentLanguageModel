@@ -123,6 +123,7 @@ class ReplayStore:
         k: int,
         now: datetime,
         rng: random.Random,
+        include_auto_mined: bool = True,
         scheme: Scheme = "recency",
     ) -> list[Row]:
         """Sample `k` *preference* snapshots; emit DPO-shaped rows.
@@ -149,6 +150,8 @@ class ReplayStore:
         by_section_id: dict[str, SectionSnapshot] = {}
         for entry, snap in zip(entries, snapshots, strict=True):
             if snap.section_type != "preference":
+                continue
+            if not include_auto_mined and snap.auto_mined:
                 continue
             preference_entries.append(entry)
             by_section_id[entry.section_id] = snap
