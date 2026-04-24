@@ -44,7 +44,9 @@ class TestDlmHome:
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "u")
         assert dlm_home() == tmp_path / "u" / ".dlm"
 
-    def test_default_on_nt_prefers_appdata(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_default_on_nt_prefers_appdata(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         monkeypatch.delenv("DLM_HOME", raising=False)
         monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
         monkeypatch.setattr("dlm.store.paths._current_os_name", lambda: "nt")

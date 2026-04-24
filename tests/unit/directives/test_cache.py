@@ -310,11 +310,19 @@ class TestLRUEviction:
         key_c = _key("cc" * 8)
 
         cache.put(key_a, _tokens(20))
-        size_a = next(entry.size for entry in cache._manifest.values() if entry.filename == key_a.as_filename())
+        size_a = next(
+            entry.size
+            for entry in cache._manifest.values()
+            if entry.filename == key_a.as_filename()
+        )
         cache._touched_this_run.clear()
         time.sleep(0.01)
         cache.put(key_b, _tokens(20))
-        size_b = next(entry.size for entry in cache._manifest.values() if entry.filename == key_b.as_filename())
+        size_b = next(
+            entry.size
+            for entry in cache._manifest.values()
+            if entry.filename == key_b.as_filename()
+        )
         cache._touched_this_run.clear()
 
         cache._max_bytes = size_a + size_b

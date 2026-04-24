@@ -352,7 +352,9 @@ class TestMergeGate:
         # No subprocess should have launched on the safety-gate path.
         assert recorder.commands == []
 
-    def test_merged_export_delegates_to_merge_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_merged_export_delegates_to_merge_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         cached_base, store, vendor = _setup_store(tmp_path, use_qlora=False)
         plan = ExportPlan(merged=True, dequantize_confirmed=True)
         recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
@@ -968,7 +970,9 @@ class TestRunnerInternals:
         assert resolved == imatrix
         assert "imatrix: cache hit (" in caplog.text
 
-    def test_run_ollama_stage_records_detected_version(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_run_ollama_stage_records_detected_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from dlm.export.runner import _run_ollama_stage
 
         cached_base, store, _vendor = _setup_store(tmp_path)

@@ -48,7 +48,9 @@ class TestLlamaCppRoot:
         root = _populate_vendor(tmp_path / "llama.cpp")
         assert llama_cpp_root(override=root) == root
 
-    def test_enumeration_failure_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_enumeration_failure_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         root = _populate_vendor(tmp_path / "llama.cpp")
 
         def _raise_iterdir() -> object:
@@ -112,14 +114,20 @@ class TestLlamaBinaries:
         with pytest.raises(VendoringError, match="llama-server"):
             llama_server_bin(override=root)
 
-    def test_path_lookup_returns_binary_when_vendor_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_path_lookup_returns_binary_when_vendor_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("PATH", str(tmp_path))
         fake = tmp_path / "llama-quantize"
         fake.write_text("#!/bin/sh\n", encoding="utf-8")
         fake.chmod(0o755)
-        monkeypatch.setattr("shutil.which", lambda name: str(fake) if name == "llama-quantize" else None)
+        monkeypatch.setattr(
+            "shutil.which", lambda name: str(fake) if name == "llama-quantize" else None
+        )
 
-        path = llama_quantize_bin(override=_populate_vendor(tmp_path / "llama.cpp", with_binary=False))
+        path = llama_quantize_bin(
+            override=_populate_vendor(tmp_path / "llama.cpp", with_binary=False)
+        )
 
         assert path == fake
 

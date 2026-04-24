@@ -105,7 +105,9 @@ class TestCommitVersion:
         v2 = allocate_next_version(store)
         assert v2.name == "v0002"
 
-    def test_nonfinite_writer_uniquify_failure_leaves_pending(self, tmp_path: Path, monkeypatch) -> None:
+    def test_nonfinite_writer_uniquify_failure_leaves_pending(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         store = _store(tmp_path)
 
         def bad_writer(p: Path) -> None:
@@ -123,7 +125,9 @@ class TestCommitVersion:
         assert store.adapter_version(1).exists()
         assert store.resolve_current_adapter() is None
 
-    def test_nonfinite_writer_rename_failure_still_reraises(self, tmp_path: Path, monkeypatch) -> None:
+    def test_nonfinite_writer_rename_failure_still_reraises(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         store = _store(tmp_path)
 
         def bad_writer(p: Path) -> None:

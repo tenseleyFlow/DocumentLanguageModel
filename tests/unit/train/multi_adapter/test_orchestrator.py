@@ -156,7 +156,9 @@ class TestSingleAdapterPassthrough:
         )
         assert len(results) == 1
 
-    def test_gate_enabled_with_one_named_adapter_still_returns_one_result(self, tmp_path: Path) -> None:
+    def test_gate_enabled_with_one_named_adapter_still_returns_one_result(
+        self, tmp_path: Path
+    ) -> None:
         dlm_id = "01HZ4X7TGZM3J1A2B3C4D5E6FY"
         store = _seed_store(tmp_path, dlm_id)
         parsed = ParsedDlm(

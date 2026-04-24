@@ -94,7 +94,9 @@ class TestTokenizerVocab:
             check_tokenizer_vocab(tmp_path)
 
     def test_malformed_tokenizer_json_raises(self, tmp_path: Path) -> None:
-        (tmp_path / "tokenizer_config.json").write_text(json.dumps({"chat_template": "{{messages}}"}))
+        (tmp_path / "tokenizer_config.json").write_text(
+            json.dumps({"chat_template": "{{messages}}"})
+        )
         (tmp_path / "tokenizer.json").write_text("not json {{{")
         with pytest.raises(PreflightError, match="cannot parse"):
             check_tokenizer_vocab(tmp_path)

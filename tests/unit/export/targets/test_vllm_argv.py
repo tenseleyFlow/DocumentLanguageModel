@@ -278,7 +278,9 @@ class TestPrepareVllmExport:
             declared_adapter_names=None,
         )
 
-        config = json.loads((prepared.export_dir / VLLM_CONFIG_FILENAME).read_text(encoding="utf-8"))
+        config = json.loads(
+            (prepared.export_dir / VLLM_CONFIG_FILENAME).read_text(encoding="utf-8")
+        )
         assert config["lora_modules"] == [
             {"adapter_version": 2, "name": "knowledge", "path": "adapters/knowledge"}
         ]

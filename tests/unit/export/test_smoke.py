@@ -330,7 +330,9 @@ class TestChatCompletion:
 
 
 class TestSmokeHelpers:
-    def test_reserve_local_port_returns_loopback_port(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_reserve_local_port_returns_loopback_port(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         class _FakeSocket:
             def __enter__(self) -> _FakeSocket:
                 return self

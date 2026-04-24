@@ -72,7 +72,9 @@ class TestProbeRocm:
 
     def test_rocm_arch_probe_missing_name_yields_unknown_arch(self) -> None:
         with force_rocm():
-            with patch("torch.cuda.get_device_properties", return_value=SimpleNamespace(name="AMD")):
+            with patch(
+                "torch.cuda.get_device_properties", return_value=SimpleNamespace(name="AMD")
+            ):
                 caps = probe()
         assert caps.rocm_arch is None
 

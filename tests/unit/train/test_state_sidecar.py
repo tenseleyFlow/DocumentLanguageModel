@@ -341,7 +341,9 @@ class TestLegacyV1Compat:
         loaded = load_state(tmp_path, runtime_versions={"torch": torch.__version__})
         assert loaded["global_step"] == 10
 
-    def test_double_failed_torch_load_raises_integrity_error(self, tmp_path: Path, monkeypatch) -> None:
+    def test_double_failed_torch_load_raises_integrity_error(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         save_state(tmp_path, _mock_state())
 
         calls = {"count": 0}
@@ -358,7 +360,9 @@ class TestLegacyV1Compat:
             load_state(tmp_path, runtime_versions={"torch": torch.__version__})
         monkeypatch.setattr(torch, "load", real_load)
 
-    def test_missing_sidecar_version_defaults_rng_to_none(self, tmp_path: Path, monkeypatch) -> None:
+    def test_missing_sidecar_version_defaults_rng_to_none(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         save_state(tmp_path, _mock_state())
         real_load = torch.load
 

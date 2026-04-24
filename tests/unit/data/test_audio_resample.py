@@ -65,7 +65,9 @@ def _no_backend() -> None:
 
 
 class TestScipyBackend:
-    def test_resample_routes_through_selected_backend(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resample_routes_through_selected_backend(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         called: dict[str, object] = {}
 
         def fake_backend(waveform: np.ndarray, *, src_sr: int, dst_sr: int) -> np.ndarray:
@@ -85,7 +87,9 @@ class TestScipyBackend:
         """With soxr disabled, _pick_backend falls through to scipy."""
         monkeypatch.setitem(sys.modules, "soxr", None)
         fake_signal = ModuleType("scipy.signal")
-        fake_signal.resample_poly = lambda waveform, *, up, down: np.repeat(waveform, up)[: len(waveform) * up // down]
+        fake_signal.resample_poly = lambda waveform, *, up, down: np.repeat(waveform, up)[
+            : len(waveform) * up // down
+        ]
         fake_scipy = ModuleType("scipy")
         fake_scipy.signal = fake_signal
         monkeypatch.setitem(sys.modules, "scipy", fake_scipy)

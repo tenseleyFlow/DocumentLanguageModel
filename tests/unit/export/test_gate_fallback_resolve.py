@@ -199,6 +199,5 @@ def test_resolve_and_announce_substitution_banner(tmp_path: Path) -> None:
 
     assert resolution.entries == [("a", 0.5), ("b", 0.5)]
     assert resolution.banner_lines == [
-        "[dim]export: substituting learned gate weights for "
-        "--adapter-mix (gate_mode=static).[/dim]"
+        "[dim]export: substituting learned gate weights for --adapter-mix (gate_mode=static).[/dim]"
     ]

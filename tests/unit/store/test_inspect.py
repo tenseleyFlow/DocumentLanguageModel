@@ -240,7 +240,9 @@ class TestInspectCoverageEdges:
             raise OSError("pointer unreadable")
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(StorePath, "resolve_current_adapter_for", lambda self, _name: _boom(_name))
+        monkeypatch.setattr(
+            StorePath, "resolve_current_adapter_for", lambda self, _name: _boom(_name)
+        )
         try:
             states = _discover_named_adapters(store)
         finally:

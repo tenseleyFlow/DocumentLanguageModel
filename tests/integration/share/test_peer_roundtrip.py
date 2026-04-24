@@ -24,7 +24,9 @@ import pytest
 from dlm.share import ServeHandle
 
 
-def _start_server_in_thread(tmp_path: Path, *, ttl: int = 600) -> tuple[ServeHandle, threading.Thread, bytes]:
+def _start_server_in_thread(
+    tmp_path: Path, *, ttl: int = 600
+) -> tuple[ServeHandle, threading.Thread, bytes]:
     """Helper: pack a trivial file + start the peer server in a thread.
 
     Returns `(handle, thread, pack_bytes)`. Caller stops via

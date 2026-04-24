@@ -232,7 +232,9 @@ class TestPrepareMlxServeExport:
                 declared_adapter_names=None,
             )
 
-    def test_existing_adapter_override_uses_mixed_dir(self, tmp_path: Path, monkeypatch: object) -> None:
+    def test_existing_adapter_override_uses_mixed_dir(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
         store = _setup_flat_store(tmp_path)
         override = tmp_path / "custom-adapter"
         _write_adapter(override)
