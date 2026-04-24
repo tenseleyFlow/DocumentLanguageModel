@@ -2,15 +2,29 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from dlm.metrics.events import EvalEvent, PreferenceMineEvent, RunEnd, RunStart, StepEvent
+import pytest
+
+from dlm.metrics.events import (
+    EvalEvent,
+    GateEvent,
+    PreferenceMineEvent,
+    RunEnd,
+    RunStart,
+    StepEvent,
+    TokenizationEvent,
+)
 from dlm.metrics.queries import (
     evals_for_run,
     evals_to_dict,
+    gate_events_for_run,
+    latest_gate_events,
     latest_preference_mining,
     latest_run_id,
+    latest_tokenization,
     preference_mining_for_run,
     preference_mining_to_dict,
     preference_mining_totals,
@@ -18,6 +32,7 @@ from dlm.metrics.queries import (
     runs_to_dict,
     steps_for_run,
     steps_to_dict,
+    tokenization_for_run,
 )
 from dlm.metrics.recorder import MetricsRecorder
 
@@ -31,6 +46,34 @@ def _seed(store_root: Path) -> None:
             rec.record_step(StepEvent(run_id=run_id, step=step, loss=2.0 - 0.1 * step))
         rec.record_eval(EvalEvent(run_id=run_id, step=30, val_loss=1.5))
         rec.record_run_end(RunEnd(run_id=run_id, status="ok"))
+    rec.record_tokenization(
+        TokenizationEvent(
+            run_id=3,
+            total_sections=10,
+            cache_hits=7,
+            cache_misses=3,
+            total_tokenize_seconds=0.75,
+            cache_bytes_after=4096,
+        )
+    )
+    rec.record_gate(
+        GateEvent(
+            run_id=2,
+            adapter_name="tone",
+            mean_weight=0.8,
+            sample_count=12,
+            mode="trained",
+        )
+    )
+    rec.record_gate(
+        GateEvent(
+            run_id=2,
+            adapter_name="facts",
+            mean_weight=0.2,
+            sample_count=12,
+            mode="trained",
+        )
+    )
     rec.record_preference_mine(
         PreferenceMineEvent(
             run_id=2,
@@ -124,6 +167,133 @@ class TestLatestRunId:
             pass
         assert latest_run_id(tmp_path) is None
 
+    def test_none_on_sqlite_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.queries as queries_mod
+
+        def _boom(_store_root: Path) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(queries_mod, "connect", _boom)
+        assert latest_run_id(tmp_path) is None
+
+
+class TestTokenizationQueries:
+    def test_tokenization_for_run_returns_row_with_hit_rate(self, tmp_path: Path) -> None:
+        _seed(tmp_path)
+        row = tokenization_for_run(tmp_path, run_id=3)
+        assert row is not None
+        assert row.cache_hits == 7
+        assert row.hit_rate == 0.7
+
+    def test_tokenization_for_run_none_when_table_has_no_row(self, tmp_path: Path) -> None:
+        from dlm.metrics.db import connect
+
+        with connect(tmp_path) as _conn:
+            pass
+        assert tokenization_for_run(tmp_path, run_id=3) is None
+
+    def test_hit_rate_zero_when_total_lookups_is_zero(self) -> None:
+        from dlm.metrics.queries import TokenizationRow
+
+        row = TokenizationRow(
+            run_id=1,
+            total_sections=0,
+            cache_hits=0,
+            cache_misses=0,
+            total_tokenize_seconds=0.0,
+            cache_bytes_after=0,
+            at="2026-01-01T00:00:00Z",
+        )
+        assert row.hit_rate == 0.0
+
+    def test_tokenization_for_run_none_on_sqlite_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.queries as queries_mod
+
+        def _boom(_store_root: Path) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(queries_mod, "connect", _boom)
+        assert tokenization_for_run(tmp_path, run_id=1) is None
+
+    def test_latest_tokenization_returns_most_recent_row(self, tmp_path: Path) -> None:
+        _seed(tmp_path)
+        row = latest_tokenization(tmp_path)
+        assert row is not None
+        assert row.run_id == 3
+
+    def test_latest_tokenization_none_when_empty(self, tmp_path: Path) -> None:
+        from dlm.metrics.db import connect
+
+        with connect(tmp_path) as _conn:
+            pass
+        assert latest_tokenization(tmp_path) is None
+
+    def test_latest_tokenization_none_on_sqlite_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.queries as queries_mod
+
+        def _boom(_store_root: Path) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(queries_mod, "connect", _boom)
+        assert latest_tokenization(tmp_path) is None
+
+
+class TestGateQueries:
+    def test_gate_events_for_run_returns_rows_sorted_by_adapter(self, tmp_path: Path) -> None:
+        _seed(tmp_path)
+        rows = gate_events_for_run(tmp_path, run_id=2)
+        assert [row.adapter_name for row in rows] == ["facts", "tone"]
+
+    def test_gate_events_for_run_returns_empty_on_sqlite_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.queries as queries_mod
+
+        def _boom(_store_root: Path) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(queries_mod, "connect", _boom)
+        assert gate_events_for_run(tmp_path, run_id=2) == []
+
+    def test_latest_gate_events_returns_latest_run_rows(self, tmp_path: Path) -> None:
+        _seed(tmp_path)
+        rows = latest_gate_events(tmp_path)
+        assert [row.adapter_name for row in rows] == ["facts", "tone"]
+
+    def test_latest_gate_events_empty_when_table_empty(self, tmp_path: Path) -> None:
+        from dlm.metrics.db import connect
+
+        with connect(tmp_path) as _conn:
+            pass
+        assert latest_gate_events(tmp_path) == []
+
+    def test_latest_gate_events_empty_on_sqlite_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.queries as queries_mod
+
+        def _boom(_store_root: Path) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(queries_mod, "connect", _boom)
+        assert latest_gate_events(tmp_path) == []
+
 
 class TestPreferenceMiningQueries:
     def test_preference_mining_for_run_returns_oldest_first(self, tmp_path: Path) -> None:
@@ -154,6 +324,52 @@ class TestPreferenceMiningQueries:
         assert totals.event_count == 2
         assert totals.total_mined_pairs == 3
         assert totals.total_skipped_prompts == 3
+
+    def test_preference_mining_for_run_returns_empty_on_sqlite_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.queries as queries_mod
+
+        def _boom(_store_root: Path) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(queries_mod, "connect", _boom)
+        assert preference_mining_for_run(tmp_path, run_id=2) == []
+
+    def test_latest_preference_mining_returns_none_on_sqlite_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.queries as queries_mod
+
+        def _boom(_store_root: Path) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(queries_mod, "connect", _boom)
+        assert latest_preference_mining(tmp_path) is None
+
+    def test_preference_mining_totals_none_when_table_empty(self, tmp_path: Path) -> None:
+        from dlm.metrics.db import connect
+
+        with connect(tmp_path) as _conn:
+            pass
+        assert preference_mining_totals(tmp_path) is None
+
+    def test_preference_mining_totals_none_on_sqlite_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import dlm.metrics.queries as queries_mod
+
+        def _boom(_store_root: Path) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(queries_mod, "connect", _boom)
+        assert preference_mining_totals(tmp_path) is None
 
 
 class TestDictSerialization:
