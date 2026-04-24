@@ -17,7 +17,7 @@ from dlm.store.errors import LockHeldError, StaleLockError
 # Module-level worker fns so `spawn` context can pickle them.
 
 
-def _child_attempt(path: str, queue: _MPQueue) -> None:
+def _child_attempt(path: str, queue: _MPQueue[str]) -> None:
     try:
         with lock.exclusive(Path(path), timeout=0.0):
             queue.put("acquired")
@@ -65,7 +65,7 @@ class TestMutualExclusion:
         # Parent acquires and releases in sequence; we hold inside the `with`
         # block long enough for the child to try + fail.
         ctx = multiprocessing.get_context("spawn")
-        outcome: _MPQueue = ctx.Queue()
+        outcome: _MPQueue[str] = ctx.Queue()
 
         with lock.exclusive(lock_path):
             proc = ctx.Process(target=_child_attempt, args=(str(lock_path), outcome))
@@ -123,10 +123,30 @@ class TestStaleLock:
             pass
         assert exc.value.holder_pid is None
 
+    def test_transient_empty_lockfile_retries_when_timeout_allows(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        lock_path = tmp_path / "test.lock"
+        payload = lock.LockInfo(pid=os.getpid(), hostname="host", acquired_at=time.time())
+        acquire_results = iter([False, True])
+        read_results = iter([None, payload])
+
+        monkeypatch.setattr(lock, "_acquire_once", lambda _path: next(acquire_results))
+        monkeypatch.setattr(lock, "_read_lock", lambda _path: next(read_results))
+        monkeypatch.setattr(lock, "_release", lambda _path: None)
+
+        with lock.exclusive(lock_path, timeout=1.0, poll_interval=0.0) as info:
+            assert info == payload
+
 
 class TestProcessProbeEdges:
     def test_permission_error_treated_as_alive(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(lock.os, "kill", lambda _pid, _sig: (_ for _ in ()).throw(PermissionError()))
+        monkeypatch.setattr(
+            "dlm.store.lock.os.kill",
+            lambda _pid, _sig: (_ for _ in ()).throw(PermissionError()),
+        )
         assert lock._is_alive(123) is True
 
     def test_generic_oserror_treated_as_alive(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -135,7 +155,7 @@ class TestProcessProbeEdges:
             err.errno = errno.EIO
             raise err
 
-        monkeypatch.setattr(lock.os, "kill", _raise)
+        monkeypatch.setattr("dlm.store.lock.os.kill", _raise)
         assert lock._is_alive(123) is True
 
     def test_esrch_oserror_treated_as_dead(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -144,5 +164,5 @@ class TestProcessProbeEdges:
             err.errno = errno.ESRCH
             raise err
 
-        monkeypatch.setattr(lock.os, "kill", _raise)
+        monkeypatch.setattr("dlm.store.lock.os.kill", _raise)
         assert lock._is_alive(123) is False

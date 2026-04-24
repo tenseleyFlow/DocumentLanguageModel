@@ -179,9 +179,14 @@ def exclusive(
 
         existing = _read_lock(lock_path)
         if existing is None:
-            # Malformed lockfile, or a race between stat and read.
-            # Treat as stale to avoid infinite contention.
-            raise StaleLockError(lock_path, holder_pid=None)
+            # Malformed lockfile, or a race between create and payload
+            # write. If we still have timeout budget left, treat this as
+            # transient and retry; callers with timeout=0 still get the
+            # old immediate stale-lock signal.
+            if deadline is None or time.monotonic() >= deadline:
+                raise StaleLockError(lock_path, holder_pid=None)
+            time.sleep(poll_interval)
+            continue
 
         if not _is_alive(existing.pid):
             raise StaleLockError(lock_path, holder_pid=existing.pid)
