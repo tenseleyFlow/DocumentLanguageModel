@@ -93,7 +93,7 @@ for gate in "${gates[@]}"; do
         "${tests_arr[@]}" \
         --cov="$cov" \
         --cov-report=term-missing \
-        --cov-fail-under=95 \
+        --cov-fail-under=100 \
         -q
     echo
 done
