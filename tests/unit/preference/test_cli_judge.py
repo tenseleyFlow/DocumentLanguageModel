@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -11,11 +12,13 @@ import pytest
 from dlm.preference import (
     CliJudge,
     HfRewardModelJudge,
+    InvalidJudgeSpecError,
     JudgeInvocationError,
     JudgeUnavailableError,
     SwayJudge,
     build_judge,
 )
+from dlm.preference.judge import _combine_reasoning, _parse_cli_candidate_score
 
 
 def _proc(
@@ -33,6 +36,21 @@ def _proc(
 
 
 class TestCliJudge:
+    def test_blank_command_is_rejected(self) -> None:
+        with pytest.raises(InvalidJudgeSpecError, match="include a command"):
+            CliJudge("   ")
+
+    def test_empty_argv_after_split_is_rejected(self) -> None:
+        with (
+            patch("dlm.preference.judge.shlex.split", return_value=[]),
+            pytest.raises(InvalidJudgeSpecError, match="include a command"),
+        ):
+            CliJudge("judge-bin")
+
+    def test_non_positive_timeout_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="timeout must be > 0"):
+            CliJudge("judge-bin", timeout=0.0)
+
     def test_scores_pair_via_two_json_round_trips(self) -> None:
         seen_payloads: list[str] = []
 
@@ -113,6 +131,54 @@ class TestCliJudge:
             pytest.raises(JudgeInvocationError, match="timed out after 1.5s"),
         ):
             judge.score_pair("p", "a", "b")
+
+    def test_oserror_raises_unavailable_error(self) -> None:
+        judge = CliJudge("judge-bin")
+        with (
+            patch(
+                "dlm.preference.judge.subprocess.run",
+                side_effect=OSError("permission denied"),
+            ),
+            pytest.raises(JudgeUnavailableError, match="could not start"),
+        ):
+            judge.score_pair("p", "a", "b")
+
+
+class TestCliJudgeHelpers:
+    def test_empty_stdout_is_rejected(self) -> None:
+        with pytest.raises(JudgeInvocationError, match="empty stdout"):
+            _parse_cli_candidate_score("   ")
+
+    def test_json_must_be_object(self) -> None:
+        with pytest.raises(JudgeInvocationError, match="JSON object"):
+            _parse_cli_candidate_score('["not", "an", "object"]')
+
+    @pytest.mark.parametrize("score", [float("nan"), float("inf"), -float("inf")])
+    def test_score_must_be_finite(self, score: float) -> None:
+        rendered = "NaN" if math.isnan(score) else ("Infinity" if score > 0 else "-Infinity")
+        with pytest.raises(JudgeInvocationError, match="must be finite"):
+            _parse_cli_candidate_score(f'{{"score": {rendered}}}')
+
+    def test_reasoning_must_be_string_when_present(self) -> None:
+        with pytest.raises(JudgeInvocationError, match="must be a string"):
+            _parse_cli_candidate_score('{"score": 1.0, "reasoning": 7}')
+
+    @pytest.mark.parametrize(
+        ("left", "right", "expected"),
+        [
+            ("why a", None, "a: why a"),
+            (None, "why b", "b: why b"),
+            ("why a", "why b", "a: why a | b: why b"),
+            (None, None, None),
+        ],
+    )
+    def test_combine_reasoning_formats_present_parts(
+        self,
+        left: str | None,
+        right: str | None,
+        expected: str | None,
+    ) -> None:
+        assert _combine_reasoning(left, right) == expected
 
 
 class TestBuildJudge:
