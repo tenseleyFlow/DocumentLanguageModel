@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -131,6 +132,60 @@ class TestInitializedStore:
             "pinned_versions",
         }
         assert expected_keys.issubset(payload.keys())
+
+    def test_json_exports_surface_target_names(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dlm.doc.parser import parse_file
+        from dlm.store.manifest import ExportSummary, Manifest, save_manifest
+        from dlm.store.paths import for_dlm
+
+        home = tmp_path / "dlm-home"
+        monkeypatch.setenv("DLM_HOME", str(home))
+
+        doc = _scaffold(tmp_path)
+        parsed = parse_file(doc)
+        store = for_dlm(parsed.frontmatter.dlm_id)
+        store.ensure_layout()
+        save_manifest(
+            store.manifest,
+            Manifest(
+                dlm_id=parsed.frontmatter.dlm_id,
+                base_model="smollm2-135m",
+                exports=[
+                    ExportSummary(
+                        exported_at=datetime(2026, 4, 23, 12, 0, 0),
+                        target="ollama",
+                        quant="Q4_K_M",
+                        merged=False,
+                        ollama_name="doc:latest",
+                    ),
+                    ExportSummary(
+                        exported_at=datetime(2026, 4, 23, 12, 5, 0),
+                        target="llama-server",
+                        quant="Q4_K_M",
+                        merged=False,
+                    ),
+                    ExportSummary(
+                        exported_at=datetime(2026, 4, 23, 12, 10, 0),
+                        target="mlx-serve",
+                        quant="hf",
+                        merged=False,
+                    ),
+                ],
+            ),
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["show", str(doc), "--json"])
+        assert result.exit_code == 0, result.output
+
+        payload = json.loads(result.output)
+        assert [export["target"] for export in payload["exports"]] == [
+            "ollama",
+            "llama-server",
+            "mlx-serve",
+        ]
 
 
 class TestTrainingSources:
