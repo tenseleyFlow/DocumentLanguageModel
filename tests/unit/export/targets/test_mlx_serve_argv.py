@@ -15,6 +15,9 @@ from dlm.export.targets.mlx_serve import (
     MLX_SERVE_TARGET,
     _quote_script_arg,
     _require_prepared_int,
+    _require_prepared_path,
+    _require_prepared_str,
+    _version_from_dir_name,
     finalize_mlx_serve_export,
     prepare_mlx_serve_export,
 )
@@ -115,6 +118,30 @@ class TestPrepareMlxServeExport:
         assert store_manifest.exports[-1].quant == "hf"
         assert store_manifest.exports[-1].smoke_output_first_line == "hello from mlx"
 
+    def test_prepare_replaces_stale_staged_adapter_dir(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        store = _setup_flat_store(tmp_path)
+        export_dir = store.exports / "mlx-serve"
+        stale_dir = export_dir / "adapter"
+        stale_dir.mkdir(parents=True)
+        (stale_dir / "stale.txt").write_text("stale", encoding="utf-8")
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.is_apple_silicon", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.mlx_available", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.stage_mlx_adapter_dir", _fake_stage_mlx)
+
+        prepared = prepare_mlx_serve_export(
+            store=store,
+            spec=_SPEC,
+            adapter_name=None,
+            adapter_path_override=None,
+            declared_adapter_names=None,
+        )
+
+        assert prepared.launch_script_path is not None
+        assert not (prepared.export_dir / "adapter" / "stale.txt").exists()
+        assert (prepared.export_dir / "adapter" / "adapters.safetensors").exists()
+
     def test_multi_adapter_export_requires_explicit_selection(
         self, tmp_path: Path, monkeypatch: object
     ) -> None:
@@ -173,6 +200,56 @@ class TestPrepareMlxServeExport:
                 adapter_path_override=None,
                 declared_adapter_names=None,
             )
+
+    def test_named_adapter_export_uses_named_dir(self, tmp_path: Path, monkeypatch: object) -> None:
+        store = _setup_named_store(tmp_path)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.is_apple_silicon", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.mlx_available", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.stage_mlx_adapter_dir", _fake_stage_mlx)
+
+        prepared = prepare_mlx_serve_export(
+            store=store,
+            spec=_SPEC,
+            adapter_name="knowledge",
+            adapter_path_override=None,
+            declared_adapter_names=None,
+        )
+
+        assert str(prepared.extras["adapter_dir"]).endswith("knowledge")
+        assert prepared.extras["adapter_version"] == 2
+
+    def test_missing_adapter_override_raises(self, tmp_path: Path, monkeypatch: object) -> None:
+        store = _setup_flat_store(tmp_path)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.is_apple_silicon", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.mlx_available", lambda: True)
+
+        with pytest.raises(ExportError, match="adapter_path_override .* does not exist"):
+            prepare_mlx_serve_export(
+                store=store,
+                spec=_SPEC,
+                adapter_name=None,
+                adapter_path_override=tmp_path / "missing",
+                declared_adapter_names=None,
+            )
+
+    def test_existing_adapter_override_uses_mixed_dir(self, tmp_path: Path, monkeypatch: object) -> None:
+        store = _setup_flat_store(tmp_path)
+        override = tmp_path / "custom-adapter"
+        _write_adapter(override)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.is_apple_silicon", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.mlx_available", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.stage_mlx_adapter_dir", _fake_stage_mlx)
+
+        prepared = prepare_mlx_serve_export(
+            store=store,
+            spec=_SPEC,
+            adapter_name=None,
+            adapter_path_override=override,
+            declared_adapter_names=None,
+        )
+
+        assert str(prepared.extras["adapter_dir"]).endswith("mixed")
+        assert prepared.extras["adapter_version"] == 1
 
     def test_missing_default_adapter_raises(self, tmp_path: Path, monkeypatch: object) -> None:
         store = for_dlm("01EMPTYMLX", home=tmp_path)
@@ -262,3 +339,19 @@ class TestMlxServeHelpers:
         )
         with pytest.raises(ExportError, match="missing int extra"):
             _require_prepared_int(prepared, "adapter_version")
+
+    def test_string_and_path_validation(self) -> None:
+        prepared = TargetResult(
+            name="mlx-serve",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"model": "", "adapter_dir": "bad"},
+        )
+
+        with pytest.raises(ExportError, match="missing string extra"):
+            _require_prepared_str(prepared, "model")
+        with pytest.raises(ExportError, match="missing Path extra"):
+            _require_prepared_path(prepared, "adapter_dir")
+
+    def test_version_from_dir_name_defaults_for_non_version_dirs(self) -> None:
+        assert _version_from_dir_name(Path("custom-adapter")) == 1
