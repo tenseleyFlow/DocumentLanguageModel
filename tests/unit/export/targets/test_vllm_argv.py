@@ -139,6 +139,35 @@ class TestPrepareVllmExport:
             {"adapter_version": 4, "name": "tone", "path": "adapters/tone"},
         ]
 
+    def test_adapter_mix_override_stages_one_mixed_module(self, tmp_path: Path) -> None:
+        store = _setup_named_store(tmp_path)
+        mixed = tmp_path / "mixed"
+        _write_adapter(mixed)
+
+        prepared = prepare_vllm_export(
+            store=store,
+            spec=_SPEC,
+            served_model_name="dlm-mixed",
+            training_sequence_len=1024,
+            adapter_name=None,
+            adapter_path_override=mixed,
+            declared_adapter_names=("knowledge", "tone"),
+        )
+
+        script = prepared.launch_script_path.read_text(encoding="utf-8")
+        assert "--served-model-name dlm-mixed" in script
+        assert "--max-model-len 1024" in script
+        assert 'mixed="$SCRIPT_DIR/adapters/mixed"' in script
+        assert 'knowledge="$SCRIPT_DIR/adapters/knowledge"' not in script
+        assert 'tone="$SCRIPT_DIR/adapters/tone"' not in script
+
+        config = json.loads(
+            (prepared.export_dir / VLLM_CONFIG_FILENAME).read_text(encoding="utf-8")
+        )
+        assert config["lora_modules"] == [
+            {"adapter_version": 1, "name": "mixed", "path": "adapters/mixed"}
+        ]
+
     def test_apple_silicon_export_records_conservative_runtime_env(
         self, tmp_path: Path, monkeypatch: object
     ) -> None:

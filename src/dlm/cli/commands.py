@@ -1784,13 +1784,13 @@ def export_cmd(
     if resolved_target.name == "vllm" and export_dispatch.accepts_audio:
         console.print(
             "[red]export:[/red] --target vllm is not wired for audio-language "
-            "documents yet; this Sprint 41 slice only supports text bases."
+            "documents yet; the current vllm export path only supports text bases."
         )
         raise typer.Exit(code=2)
     if resolved_target.name == "mlx-serve" and export_dispatch.accepts_audio:
         console.print(
             "[red]export:[/red] --target mlx-serve is not wired for audio-language "
-            "documents yet; this Sprint 41 slice only supports text bases."
+            "documents yet; the current mlx-serve export path only supports text bases."
         )
         raise typer.Exit(code=2)
     if export_dispatch.accepts_audio:
@@ -1835,13 +1835,13 @@ def export_cmd(
     if resolved_target.name == "vllm" and export_dispatch.accepts_images:
         console.print(
             "[red]export:[/red] --target vllm is not wired for vision-language "
-            "documents yet; this Sprint 41 slice only supports text bases."
+            "documents yet; the current vllm export path only supports text bases."
         )
         raise typer.Exit(code=2)
     if resolved_target.name == "mlx-serve" and export_dispatch.accepts_images:
         console.print(
             "[red]export:[/red] --target mlx-serve is not wired for vision-language "
-            "documents yet; this Sprint 41 slice only supports text bases."
+            "documents yet; the current mlx-serve export path only supports text bases."
         )
         raise typer.Exit(code=2)
     if export_dispatch.accepts_images:
