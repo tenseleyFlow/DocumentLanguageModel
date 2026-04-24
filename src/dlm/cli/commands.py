@@ -2510,6 +2510,8 @@ def metrics_cmd(
     from dlm.metrics.queries import (
         evals_for_run,
         evals_to_dict,
+        preference_mining_for_run,
+        preference_mining_to_dict,
         recent_runs,
         runs_to_dict,
         steps_for_run,
@@ -2538,12 +2540,14 @@ def metrics_cmd(
         run = runs[0]
         steps = steps_for_run(store.root, run_id)
         evals = evals_for_run(store.root, run_id)
+        preference_rows = preference_mining_for_run(store.root, run_id)
 
         if json_out:
             payload = {
                 "run": runs_to_dict([run])[0],
                 "steps": steps_to_dict(steps),
                 "evals": evals_to_dict(evals),
+                "preference_mining": preference_mining_to_dict(preference_rows),
             }
             sys.stdout.write(json.dumps(payload, indent=2) + "\n")
             return
@@ -2564,6 +2568,16 @@ def metrics_cmd(
             console.print(
                 f"  last eval: step={last.step}  val_loss={last.val_loss}  "
                 f"perplexity={last.perplexity}"
+            )
+        if preference_rows:
+            last_pref = preference_rows[-1]
+            console.print(
+                "  preference mining: "
+                f"events={len(preference_rows)}  "
+                f"mined_pairs={sum(row.mined_pairs for row in preference_rows)}  "
+                f"skipped_prompts={sum(row.skipped_prompts for row in preference_rows)}  "
+                f"last_mode={last_pref.write_mode}  "
+                f"judge={last_pref.judge_name}"
             )
         return
 
@@ -2764,6 +2778,7 @@ def show_cmd(
 
     training_cache = _summarize_training_cache(store.tokenized_cache_dir, store.root)
     gate = _summarize_gate(store)
+    preference_mining = _summarize_preference_mining(store.root)
     base_security = _summarize_base_security(parsed.frontmatter.base_model)
 
     if json_out:
@@ -2777,6 +2792,8 @@ def show_cmd(
         payload_full["training_cache_config"] = training_cache_config
         if gate is not None:
             payload_full["gate"] = gate
+        if preference_mining is not None:
+            payload_full["preference_mining"] = preference_mining
         if base_security is not None:
             payload_full["base_security"] = base_security
         # Write JSON to raw stdout — Rich's Console wraps lines at the
@@ -3055,6 +3072,23 @@ def _summarize_gate(store: object) -> dict[str, object] | None:
         "hidden_proj_dim": meta.hidden_proj_dim,
         "last_run_id": run_id,
         "per_adapter": per_adapter,
+    }
+
+
+def _summarize_preference_mining(store_root: Path) -> dict[str, object] | None:
+    """Return the latest preference-mine summary for `dlm show --json`."""
+    from dlm.metrics import queries as _queries
+
+    last = _queries.latest_preference_mining(store_root)
+    if last is None:
+        return None
+    rows = _queries.preference_mining_for_run(store_root, last.run_id)
+    return {
+        "last_run_id": last.run_id,
+        "event_count": len(rows),
+        "total_mined_pairs": sum(row.mined_pairs for row in rows),
+        "total_skipped_prompts": sum(row.skipped_prompts for row in rows),
+        "last_event": _queries.preference_mining_to_dict([last])[0],
     }
 
 

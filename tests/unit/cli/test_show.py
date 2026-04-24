@@ -187,6 +187,50 @@ class TestInitializedStore:
             "mlx-serve",
         ]
 
+    def test_json_surfaces_latest_preference_mining_summary(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dlm.doc.parser import parse_file
+        from dlm.metrics import MetricsRecorder, PreferenceMineEvent
+        from dlm.store.manifest import Manifest, save_manifest
+        from dlm.store.paths import for_dlm
+
+        home = tmp_path / "dlm-home"
+        monkeypatch.setenv("DLM_HOME", str(home))
+
+        doc = _scaffold(tmp_path)
+        parsed = parse_file(doc)
+        store = for_dlm(parsed.frontmatter.dlm_id)
+        store.ensure_layout()
+        save_manifest(
+            store.manifest,
+            Manifest(dlm_id=parsed.frontmatter.dlm_id, base_model="smollm2-135m"),
+        )
+        recorder = MetricsRecorder(store.root)
+        recorder.record_preference_mine(
+            PreferenceMineEvent(
+                run_id=7,
+                judge_name="sway",
+                sample_count=4,
+                mined_pairs=2,
+                skipped_prompts=1,
+                write_mode="applied",
+            )
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["show", str(doc), "--json"])
+        assert result.exit_code == 0, result.output
+
+        payload = json.loads(result.output)
+        pref = payload["preference_mining"]
+        assert pref["last_run_id"] == 7
+        assert pref["event_count"] == 1
+        assert pref["total_mined_pairs"] == 2
+        assert pref["total_skipped_prompts"] == 1
+        assert pref["last_event"]["judge_name"] == "sway"
+        assert pref["last_event"]["write_mode"] == "applied"
+
 
 class TestTrainingSources:
     """`training.sources` directives surface in `dlm show --json` output."""

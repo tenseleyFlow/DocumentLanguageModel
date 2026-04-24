@@ -55,6 +55,21 @@ class TestMetricsAndDoctor:
         monkeypatch.setattr("dlm.metrics.queries.steps_for_run", lambda *args, **kwargs: steps)
         monkeypatch.setattr("dlm.metrics.queries.evals_for_run", lambda *args, **kwargs: evals)
         monkeypatch.setattr(
+            "dlm.metrics.queries.preference_mining_for_run",
+            lambda *args, **kwargs: [
+                SimpleNamespace(
+                    event_id=1,
+                    run_id=7,
+                    judge_name="sway",
+                    sample_count=4,
+                    mined_pairs=2,
+                    skipped_prompts=1,
+                    write_mode="staged",
+                    at="2026-04-21T10:02:00Z",
+                )
+            ],
+        )
+        monkeypatch.setattr(
             "dlm.metrics.queries.runs_to_dict",
             lambda runs: [
                 {
@@ -74,6 +89,19 @@ class TestMetricsAndDoctor:
             "dlm.metrics.queries.evals_to_dict",
             lambda rows: [{"step": r.step, "val_loss": r.val_loss} for r in rows],
         )
+        monkeypatch.setattr(
+            "dlm.metrics.queries.preference_mining_to_dict",
+            lambda rows: [
+                {
+                    "run_id": r.run_id,
+                    "judge_name": r.judge_name,
+                    "mined_pairs": r.mined_pairs,
+                    "skipped_prompts": r.skipped_prompts,
+                    "write_mode": r.write_mode,
+                }
+                for r in rows
+            ],
+        )
 
         import sys
         from io import StringIO
@@ -89,6 +117,8 @@ class TestMetricsAndDoctor:
         assert payload["run"]["run_id"] == 7
         assert payload["steps"][0]["step"] == 1
         assert payload["evals"][0]["val_loss"] == 0.4
+        assert payload["preference_mining"][0]["judge_name"] == "sway"
+        assert payload["preference_mining"][0]["mined_pairs"] == 2
 
         old_stdout = sys.stdout
         try:
@@ -100,6 +130,46 @@ class TestMetricsAndDoctor:
         csv_text = csv_buf.getvalue()
         assert "step,loss,lr,grad_norm,val_loss" in csv_text
         assert "1,0.5,0.0001,0.9,0.4" in csv_text
+
+    def test_metrics_run_id_text_surfaces_preference_summary(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        doc = tmp_path / "doc.dlm"
+        _write_minimal_dlm(doc)
+        monkeypatch.setenv("DLM_HOME", str(tmp_path / "home"))
+
+        run = SimpleNamespace(
+            run_id=7,
+            phase="dpo",
+            seed=42,
+            status="ok",
+            started_at="2026-04-21T10:00:00Z",
+            ended_at="2026-04-21T10:01:00Z",
+        )
+        monkeypatch.setattr("dlm.metrics.queries.recent_runs", lambda *args, **kwargs: [run])
+        monkeypatch.setattr("dlm.metrics.queries.steps_for_run", lambda *args, **kwargs: [])
+        monkeypatch.setattr("dlm.metrics.queries.evals_for_run", lambda *args, **kwargs: [])
+        monkeypatch.setattr(
+            "dlm.metrics.queries.preference_mining_for_run",
+            lambda *args, **kwargs: [
+                SimpleNamespace(
+                    event_id=1,
+                    run_id=7,
+                    judge_name="hf:test/reward",
+                    sample_count=6,
+                    mined_pairs=3,
+                    skipped_prompts=2,
+                    write_mode="applied",
+                    at="2026-04-21T10:02:00Z",
+                )
+            ],
+        )
+
+        commands.metrics_cmd(doc, run_id=7)
+        out = capsys.readouterr().err
+        assert "preference mining" in out
+        assert "mined_pairs=3" in out
+        assert "judge=hf:test/reward" in out
 
     def test_metrics_since_parse_and_watch(
         self, tmp_path: Path, monkeypatch: Any, capsys: Any
