@@ -109,6 +109,13 @@ class TestTorchVersion:
         current = _lock(pinned_versions={"torch": "2.6.0"})
         assert Severity.ERROR in _severities(prior, current, strict=True)
 
+    def test_unparseable_versions_warn(self) -> None:
+        prior = _lock(pinned_versions={"torch": "b8816"})
+        current = _lock(pinned_versions={"torch": "b9000"})
+        assert classify_mismatches(prior, current) == [
+            (Severity.WARN, "torch version changed (unparseable: b8816 → b9000)"),
+        ]
+
 
 class TestMinorPeers:
     def test_transformers_change_is_warn(self) -> None:
@@ -211,6 +218,12 @@ class TestBaseModelSha256Rule:
         messages = [msg for _sev, msg in classify_mismatches(prior, current)]
         assert not any("base_model_sha256" in m for m in messages)
 
+    def test_equal_sha256_is_silent(self) -> None:
+        prior = _lock(base_model_sha256="a" * 64)
+        current = _lock(base_model_sha256="a" * 64)
+        messages = [msg for _sev, msg in classify_mismatches(prior, current)]
+        assert not any("base_model_sha256" in m for m in messages)
+
 
 class TestCudaRocmRules:
     def test_cuda_version_change_is_warn(self) -> None:
@@ -246,6 +259,18 @@ class TestLicenseAcceptanceRule:
         current = _lock(license_acceptance=self._acceptance(spdx="llama3.3"))
         msgs = [msg for _s, msg in classify_mismatches(prior, current)]
         assert any("spdx changed" in m for m in msgs)
+
+    def test_populated_to_none_is_warn(self) -> None:
+        prior = _lock(license_acceptance=self._acceptance())
+        current = _lock(license_acceptance=None)
+        msgs = [msg for _s, msg in classify_mismatches(prior, current)]
+        assert any("license_acceptance cleared" in m for m in msgs)
+
+    def test_url_change_is_warn(self) -> None:
+        prior = _lock(license_acceptance=self._acceptance(url="https://example.com/llama"))
+        current = _lock(license_acceptance=self._acceptance(url="https://example.com/llama-v2"))
+        msgs = [msg for _s, msg in classify_mismatches(prior, current)]
+        assert any("url changed" in m for m in msgs)
 
     def test_both_none_is_silent(self) -> None:
         prior = _lock(license_acceptance=None)

@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from dlm.lock.errors import GoldenIndexSchemaError
+from dlm.lock.errors import GoldenIndexSchemaError, GoldenIndexWriteError
 from dlm.lock.golden_index import (
+    CURRENT_GOLDEN_INDEX_VERSION,
     GOLDEN_INDEX_RELATIVE_PATH,
     DeterminismGoldenEntry,
     DeterminismGoldenIndex,
@@ -59,6 +60,13 @@ class TestWriteGoldenIndex:
         loaded = load_golden_index(tmp_path)
         assert loaded == original
 
+    def test_version_mismatch_raises_write_error(self, tmp_path: Path) -> None:
+        invalid = _index(_entry()).model_copy(
+            update={"lock_version": CURRENT_GOLDEN_INDEX_VERSION + 1}
+        )
+        with pytest.raises(GoldenIndexWriteError, match="write refused"):
+            write_golden_index(tmp_path, invalid)
+
 
 class TestLoadGoldenIndex:
     def test_missing_file_returns_none(self, tmp_path: Path) -> None:
@@ -80,6 +88,26 @@ class TestLoadGoldenIndex:
         golden_index_path(tmp_path).parent.mkdir(parents=True)
         golden_index_path(tmp_path).write_text('{"lock_version": 99}', encoding="utf-8")
         with pytest.raises(GoldenIndexSchemaError, match="unsupported lock_version"):
+            load_golden_index(tmp_path)
+
+    def test_unreadable_file_raises(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        golden_index_path(tmp_path).parent.mkdir(parents=True)
+        golden_index_path(tmp_path).write_text("{}", encoding="utf-8")
+
+        def _boom(self: Path, *, encoding: str = "utf-8") -> str:
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(Path, "read_text", _boom)
+        with pytest.raises(GoldenIndexSchemaError, match="unreadable"):
+            load_golden_index(tmp_path)
+
+    def test_schema_validation_error_raises(self, tmp_path: Path) -> None:
+        golden_index_path(tmp_path).parent.mkdir(parents=True)
+        golden_index_path(tmp_path).write_text(
+            '{"lock_version": 1, "updated_at": "not-a-datetime", "goldens": []}',
+            encoding="utf-8",
+        )
+        with pytest.raises(GoldenIndexSchemaError, match="schema validation"):
             load_golden_index(tmp_path)
 
 

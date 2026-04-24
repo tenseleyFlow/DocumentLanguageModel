@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from dlm.lock.errors import LockSchemaError
-from dlm.lock.schema import LOCK_FILENAME, DlmLock
+from dlm.lock.errors import LockSchemaError, LockWriteError
+from dlm.lock.schema import CURRENT_LOCK_VERSION, LOCK_FILENAME, DlmLock
 from dlm.lock.writer import load_lock, lock_path, write_lock
 
 
@@ -54,6 +54,11 @@ class TestWriteLock:
         assert loaded is not None
         assert loaded.seed == 99
 
+    def test_version_mismatch_raises_write_error(self, tmp_path: Path) -> None:
+        invalid = _lock().model_copy(update={"lock_version": CURRENT_LOCK_VERSION + 1})
+        with pytest.raises(LockWriteError, match="write refused"):
+            write_lock(tmp_path, invalid)
+
 
 class TestLoadLock:
     def test_missing_file_returns_none(self, tmp_path: Path) -> None:
@@ -77,4 +82,14 @@ class TestLoadLock:
     def test_schema_violation_surfaces_as_lock_schema_error(self, tmp_path: Path) -> None:
         (tmp_path / LOCK_FILENAME).write_text('{"lock_version": 1, "dlm_id": ""}')
         with pytest.raises(LockSchemaError, match="schema validation"):
+            load_lock(tmp_path)
+
+    def test_unreadable_file_raises(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        (tmp_path / LOCK_FILENAME).write_text("{}", encoding="utf-8")
+
+        def _boom(self: Path, *, encoding: str = "utf-8") -> str:
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(Path, "read_text", _boom)
+        with pytest.raises(LockSchemaError, match="unreadable"):
             load_lock(tmp_path)
