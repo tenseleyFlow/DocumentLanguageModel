@@ -152,6 +152,12 @@ class TestProbeChatTemplate:
         ):
             probe_chat_template(_spec())
 
+    def test_load_error_returns_failed_probe(self) -> None:
+        with patch("transformers.AutoTokenizer.from_pretrained", side_effect=RuntimeError("boom")):
+            result = probe_chat_template(_spec())
+        assert result.passed is False
+        assert "load failed: RuntimeError: boom" in result.detail
+
 
 class TestProbeGgufArch:
     def test_skips_when_vendor_missing(self, tmp_path: Path) -> None:
