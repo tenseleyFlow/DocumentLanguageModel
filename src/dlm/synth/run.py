@@ -16,6 +16,7 @@ from dlm.synth.teachers import SynthTeacher
 
 _NUMBERED_Q_RE = re.compile(r"^\s*\d+\.\s*(?:Q|Question):\s*(.+)\s*$", re.IGNORECASE)
 _NUMBERED_A_RE = re.compile(r"^\s*(?:A|Answer):\s*(.+)\s*$", re.IGNORECASE)
+_FENCED_JSON_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL | re.IGNORECASE)
 
 
 class SynthSkipReason(StrEnum):
@@ -236,8 +237,9 @@ def _parse_generated_pairs(raw: str, *, parser: PromptParserKind) -> list[SynthP
 
 
 def _parse_json_list_pairs(raw: str) -> list[SynthPair]:
+    candidate = _strip_json_fence(raw)
     try:
-        payload = json.loads(raw)
+        payload = json.loads(candidate)
     except json.JSONDecodeError as exc:
         raise ValueError(f"teacher output is not valid JSON: {exc}") from exc
     if not isinstance(payload, list):
@@ -257,6 +259,13 @@ def _parse_json_list_pairs(raw: str) -> list[SynthPair]:
             raise ValueError(f"teacher output item {idx} has an empty question or answer")
         pairs.append(SynthPair(question=question_text, answer=answer_text))
     return pairs
+
+
+def _strip_json_fence(raw: str) -> str:
+    match = _FENCED_JSON_RE.match(raw)
+    if match is None:
+        return raw
+    return match.group(1).strip()
 
 
 def _parse_numbered_list_pairs(raw: str) -> list[SynthPair]:

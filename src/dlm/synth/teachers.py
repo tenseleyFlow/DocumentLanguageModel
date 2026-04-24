@@ -93,6 +93,7 @@ class SelfTeacher:
         top_p: float | None = None,
         seed: int | None = None,
     ) -> str:
+        _ = seed  # The current inference backend wrapper does not accept seeding.
         backend = self._ensure_loaded()
         prompt = _flatten_teacher_prompt(system_prompt, user_prompt)
         kwargs: dict[str, Any] = {
@@ -101,8 +102,6 @@ class SelfTeacher:
         }
         if top_p is not None:
             kwargs["top_p"] = top_p
-        if seed is not None:
-            kwargs["seed"] = seed
         return _require_non_empty_teacher_output(
             backend.generate(prompt, **kwargs),
             teacher=self.name,
@@ -397,7 +396,12 @@ def build_teacher(raw: str | TeacherRef, *, dlm_path: Path | None = None) -> Syn
     if ref.kind == "self":
         if dlm_path is None:
             raise TeacherUnavailableError("self teacher requires the .dlm path context")
-        return SelfTeacher(dlm_path)
+        # The synth CLI wants the most conservative backend choice for the
+        # adapter-under-test path. PyTorch is slower than MLX on Apple
+        # Silicon, but it avoids bringing a second runtime stack into a
+        # write-heavy loop whose main requirement is stable, portable
+        # generation rather than lowest-latency prompting.
+        return SelfTeacher(dlm_path, backend="pytorch")
     if ref.kind == "hf":
         assert ref.target is not None
         return HfTeacher(ref.target)

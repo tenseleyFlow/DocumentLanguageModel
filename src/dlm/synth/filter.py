@@ -12,6 +12,7 @@ from dlm.synth.run import PlannedSynthInstruction, SynthRunPlan
 
 SynthFilterKind = Literal["none", "dedup-only", "sway"]
 _NEAR_DUP_RATIO = 0.95
+_SWAY_BASELINE_ANSWER = "I don't know."
 
 
 class SynthFilterSkipReason(StrEnum):
@@ -89,7 +90,7 @@ def filter_synth_plan(
             pair_score = judge.score_pair(
                 addition.pair.question,
                 addition.pair.answer,
-                "",
+                _SWAY_BASELINE_ANSWER,
             )
             if pair_score.preferred != "a":
                 filtered_skipped.append(

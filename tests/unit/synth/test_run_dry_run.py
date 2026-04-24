@@ -121,6 +121,18 @@ class TestBuildSynthPlan:
         assert len(plan.skipped) == 1
         assert plan.skipped[0].reason.value == "invalid_output"
 
+    def test_json_output_wrapped_in_code_fence_is_accepted(self) -> None:
+        parsed = _parsed("One prose block.\n")
+        teacher = StubTeacher(
+            ['```json\n[{"question":"What is DGEMM?","answer":"Matrix multiply."}]\n```']
+        )
+
+        plan = build_synth_plan(parsed, teacher, per_section=1, strategy="extraction")
+
+        assert len(plan.additions) == 1
+        assert plan.additions[0].pair.question == "What is DGEMM?"
+        assert plan.additions[0].pair.answer == "Matrix multiply."
+
     def test_existing_instruction_duplicate_is_skipped(self) -> None:
         parsed = _parsed(
             "Prose section.\n\n"

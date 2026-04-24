@@ -53,7 +53,9 @@ class TestBuildTeacher:
             build_teacher("self")
 
     def test_build_teacher_dispatches(self, tmp_path: Path) -> None:
-        assert isinstance(build_teacher("self", dlm_path=tmp_path / "doc.dlm"), SelfTeacher)
+        self_teacher = build_teacher("self", dlm_path=tmp_path / "doc.dlm")
+        assert isinstance(self_teacher, SelfTeacher)
+        assert self_teacher.backend == "pytorch"
         assert isinstance(build_teacher("hf:foo/bar"), HfTeacher)
         assert isinstance(build_teacher("openai:gpt-4o-mini"), OpenAiTeacher)
         assert isinstance(build_teacher("anthropic:claude"), AnthropicTeacher)
@@ -97,7 +99,6 @@ class TestSelfTeacher:
             "max_new_tokens": 33,
             "temperature": 0.7,
             "top_p": 0.9,
-            "seed": 7,
         }
 
 

@@ -101,8 +101,8 @@ class TestFilterSynthPlan:
         raw = SynthRunPlan(additions=(first, second), skipped=())
         judge = StubJudge(
             {
-                ("Q1", "A1", ""): PairScore(score_a=0.9, score_b=0.1),
-                ("Q2", "A2", ""): PairScore(score_a=0.55, score_b=0.50),
+                ("Q1", "A1", "I don't know."): PairScore(score_a=0.9, score_b=0.1),
+                ("Q2", "A2", "I don't know."): PairScore(score_a=0.55, score_b=0.50),
             }
         )
 
@@ -122,7 +122,7 @@ class TestFilterSynthPlan:
         raw = SynthRunPlan(additions=(addition,), skipped=())
         judge = StubJudge(
             {
-                ("Q1", "A1", ""): PairScore(score_a=0.0, score_b=0.4),
+                ("Q1", "A1", "I don't know."): PairScore(score_a=0.0, score_b=0.4),
             }
         )
 
@@ -142,7 +142,7 @@ class TestFilterSynthPlan:
         raw = SynthRunPlan(additions=(_planned(),), skipped=())
         judge = StubJudge(
             {
-                ("What is DGEMM?", "A matrix multiply routine.", ""): PairScore(
+                ("What is DGEMM?", "A matrix multiply routine.", "I don't know."): PairScore(
                     score_a=0.9,
                     score_b=0.1,
                 )
