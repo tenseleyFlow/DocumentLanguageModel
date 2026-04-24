@@ -330,6 +330,24 @@ class TestChatCompletion:
 
 
 class TestSmokeHelpers:
+    def test_reserve_local_port_returns_loopback_port(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _FakeSocket:
+            def __enter__(self) -> _FakeSocket:
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                return None
+
+            def bind(self, address: tuple[str, int]) -> None:
+                assert address == ("127.0.0.1", 0)
+
+            def getsockname(self) -> tuple[str, int]:
+                return ("127.0.0.1", 43123)
+
+        monkeypatch.setattr(smoke_mod.socket, "socket", lambda *_args, **_kwargs: _FakeSocket())
+
+        assert smoke_mod.reserve_local_port() == 43123
+
     def test_normalize_message_content(self) -> None:
         assert smoke_mod._normalize_message_content("  hello  ") == "hello"
         assert (
@@ -338,6 +356,7 @@ class TestSmokeHelpers:
             )
             == "first\nsecond"
         )
+        assert smoke_mod._normalize_message_content([{"text": "first"}, "skip-me"]) == "first"
         assert smoke_mod._normalize_message_content([{"text": "   "}]) is None
         assert smoke_mod._normalize_message_content(3) is None
 
