@@ -88,6 +88,26 @@ class _StubBaseModel:
     forward = __call__
 
 
+class _NoMaskTokenizer(_StubTokenizer):
+    def __call__(
+        self,
+        prompt: str,
+        *,
+        return_tensors: str = "pt",
+        truncation: bool = True,
+        max_length: int = 512,
+    ) -> dict[str, object]:
+        import torch
+
+        ids = torch.randint(0, 100, (1, self._seq_len))
+        return {"input_ids": ids}
+
+
+class _NoParamBaseModel(_StubBaseModel):
+    def parameters(self):  # type: ignore[no-untyped-def]
+        return iter(())
+
+
 def _train_gate_on_store(
     tmp_path: Path,
     *,
@@ -157,6 +177,22 @@ class TestEmbedPrompt:
         e1 = embed_prompt(prompt="compute dgemm", tokenizer=tokenizer, base_model=model)
         e2 = embed_prompt(prompt="hello world", tokenizer=tokenizer, base_model=model)
         assert not torch.allclose(e1, e2)
+
+    def test_falls_back_to_cpu_when_model_has_no_parameters(self) -> None:
+        embedding = embed_prompt(
+            prompt="hello",
+            tokenizer=_StubTokenizer(),
+            base_model=_NoParamBaseModel(hidden_dim=8),
+        )
+        assert embedding.shape == (8,)
+
+    def test_mean_pools_without_attention_mask(self) -> None:
+        embedding = embed_prompt(
+            prompt="hello",
+            tokenizer=_NoMaskTokenizer(),
+            base_model=_StubBaseModel(hidden_dim=8),
+        )
+        assert embedding.shape == (8,)
 
 
 class TestLoadGateHandle:

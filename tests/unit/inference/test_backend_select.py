@@ -9,6 +9,7 @@ import pytest
 from dlm.inference.backends.select import (
     UnsupportedBackendError,
     build_backend,
+    is_apple_silicon,
     select_backend,
 )
 
@@ -77,6 +78,12 @@ class TestBuildBackend:
         backend = build_backend("pytorch", MagicMock())
         assert isinstance(backend, PyTorchBackend)
 
+    def test_mlx_returns_mlx_backend(self) -> None:
+        from dlm.inference.backends.mlx_backend import MlxBackend
+
+        backend = build_backend("mlx", MagicMock())
+        assert isinstance(backend, MlxBackend)
+
     def test_unknown_backend_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown backend"):
             build_backend("haskell", MagicMock())  # type: ignore[arg-type]
@@ -94,3 +101,31 @@ class TestMlxAvailableDoesNotImportMlx:
         ):
             assert sel.mlx_available() is False
             m_find.assert_not_called()
+
+    def test_mlx_available_checks_both_packages_on_apple_silicon(self) -> None:
+        from dlm.inference.backends import select as sel
+
+        with (
+            patch.object(sel, "is_apple_silicon", return_value=True),
+            patch.object(
+                sel.importlib.util, "find_spec", side_effect=[object(), object()]
+            ) as m_find,
+        ):
+            assert sel.mlx_available() is True
+            assert m_find.call_count == 2
+
+
+class TestPlatformHelper:
+    def test_is_apple_silicon_true_only_for_darwin_arm64(self) -> None:
+        with (
+            patch("dlm.inference.backends.select.sys.platform", "darwin"),
+            patch("dlm.inference.backends.select.platform.machine", return_value="arm64"),
+        ):
+            assert is_apple_silicon() is True
+
+    def test_is_apple_silicon_false_for_other_hosts(self) -> None:
+        with (
+            patch("dlm.inference.backends.select.sys.platform", "linux"),
+            patch("dlm.inference.backends.select.platform.machine", return_value="x86_64"),
+        ):
+            assert is_apple_silicon() is False

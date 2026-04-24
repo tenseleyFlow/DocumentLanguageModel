@@ -77,3 +77,17 @@ class TestMapAllKeys:
         ]
         with pytest.raises(MlxConversionError, match="map to the same"):
             map_all_keys(collision)
+
+
+class TestBuildMlxAdapterConfig:
+    def test_non_positive_layer_count_rejected(self) -> None:
+        from dlm.inference.mlx_adapter import build_mlx_adapter_config
+
+        with pytest.raises(MlxConversionError, match="expected >=1"):
+            build_mlx_adapter_config(
+                {
+                    "r": 8,
+                    "target_modules": ["q_proj"],
+                },
+                0,
+            )
