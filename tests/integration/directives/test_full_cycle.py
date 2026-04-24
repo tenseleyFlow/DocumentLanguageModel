@@ -67,7 +67,7 @@ def test_directive_tree_trains_and_summarizes(
         doc = home / "dir.dlm"
         doc.write_text(
             "---\n"
-            "dlm_id: 01HRSHWD00000000000000DIRS\n"
+            "dlm_id: 01HRSHWD00000000000000DHRS\n"
             "dlm_version: 6\n"
             "base_model: smollm2-135m\n"
             "training:\n"
