@@ -334,6 +334,36 @@ class TestResolveImatrix:
             is None
         )
 
+    def test_non_string_sha_returns_none(self, tmp_path: Path) -> None:
+        export_dir = self._seed(tmp_path)
+        meta = json.loads((export_dir / "imatrix.meta.json").read_text())
+        meta["sha256"] = 123
+        (export_dir / "imatrix.meta.json").write_text(json.dumps(meta))
+        assert (
+            resolve_imatrix(
+                export_dir,
+                base_revision="r1",
+                corpus_sha256="c1",
+                chunks=DEFAULT_CHUNKS,
+            )
+            is None
+        )
+
+    def test_invalid_built_at_returns_none(self, tmp_path: Path) -> None:
+        export_dir = self._seed(tmp_path)
+        meta = json.loads((export_dir / "imatrix.meta.json").read_text())
+        meta["built_at"] = "not-a-datetime"
+        (export_dir / "imatrix.meta.json").write_text(json.dumps(meta))
+        assert (
+            resolve_imatrix(
+                export_dir,
+                base_revision="r1",
+                corpus_sha256="c1",
+                chunks=DEFAULT_CHUNKS,
+            )
+            is None
+        )
+
 
 # --- calibration_text_from_replay --------------------------------------------
 
@@ -417,3 +447,72 @@ class TestCalibrationTextFromReplay:
         # `max_chars` is the pre-joiner content budget; the `\n\n`
         # separator between snapshots adds a small constant overhead.
         assert len(text) <= 8_000 + 2 * 10  # 10 possible joiners
+
+    def test_empty_and_whitespace_snapshots_are_skipped(self, tmp_path: Path) -> None:
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        from dlm.replay.models import SectionSnapshot
+        from dlm.replay.store import ReplayStore
+
+        corpus = tmp_path / "corpus.zst"
+        idx = tmp_path / "index.json"
+        store = ReplayStore.at(corpus, idx)
+        snaps = [
+            SectionSnapshot(
+                section_id="0000000000000001",
+                section_type="prose",
+                content="",
+                first_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+                last_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+            ),
+            SectionSnapshot(
+                section_id="0000000000000002",
+                section_type="prose",
+                content="   \n\t  ",
+                first_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+                last_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+            ),
+            SectionSnapshot(
+                section_id="0000000000000003",
+                section_type="prose",
+                content="real calibration content",
+                first_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+                last_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+            ),
+        ]
+        store.append_many(snaps)
+
+        text, _sha = calibration_text_from_replay(corpus_path=corpus, index_path=idx)
+        assert text == "real calibration content"
+
+    def test_truncation_can_clip_with_zero_remaining_budget(self, tmp_path: Path) -> None:
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        from dlm.replay.models import SectionSnapshot
+        from dlm.replay.store import ReplayStore
+
+        corpus = tmp_path / "corpus.zst"
+        idx = tmp_path / "index.json"
+        store = ReplayStore.at(corpus, idx)
+        snaps = [
+            SectionSnapshot(
+                section_id="0000000000000001",
+                section_type="prose",
+                content="abcd",
+                first_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+                last_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+            ),
+            SectionSnapshot(
+                section_id="0000000000000002",
+                section_type="prose",
+                content="efgh",
+                first_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+                last_seen_at=_dt(2026, 4, 19, tzinfo=UTC).replace(tzinfo=None),
+            ),
+        ]
+        store.append_many(snaps)
+
+        text, _sha = calibration_text_from_replay(corpus_path=corpus, index_path=idx, max_chars=4)
+        assert text == "abcd"

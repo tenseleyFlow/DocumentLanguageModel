@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+import dlm.export.arch_probe as arch_probe
 from dlm.export.arch_probe import (
     ArchProbeResult,
     SupportLevel,
@@ -172,6 +173,22 @@ class TestGrammarEdgeCases:
         result = probe_gguf_arch("GemmaForCausalLM", llama_cpp_root=root)
         # "GemmaForCausalLM" (without the 3) isn't registered.
         assert result.support is SupportLevel.UNSUPPORTED
+
+    def test_decorator_without_following_class_is_ignored(self, tmp_path: Path) -> None:
+        root = _fixture_llama_cpp(
+            tmp_path,
+            '@ModelBase.register("FooForCausalLM")\n# no class follows\n',
+        )
+        result = probe_gguf_arch("FooForCausalLM", llama_cpp_root=root)
+        assert result.support is SupportLevel.UNSUPPORTED
+
+    def test_unextractable_class_name_is_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        text = '@ModelBase.register("FooForCausalLM")\nclass FooModel(TextModel):\n    pass\n'
+        monkeypatch.setattr(arch_probe, "_extract_class_name", lambda _text, _start: None)
+        assert arch_probe._find_arch_bindings(text, "FooForCausalLM") == []
+
+    def test_extract_class_name_returns_none_without_open_paren(self) -> None:
+        assert arch_probe._extract_class_name("class FooModel:\n    pass\n", 0) is None
 
 
 class TestMemoization:

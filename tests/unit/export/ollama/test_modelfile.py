@@ -135,6 +135,11 @@ class TestShape:
         text = render_modelfile(_ctx(tmp_path))
         assert 'LICENSE "Apache-2.0"' in text
 
+    def test_license_line_omitted_when_spec_has_no_spdx(self, tmp_path: Path) -> None:
+        spec = _SPEC.model_copy(update={"license_spdx": ""})
+        text = render_modelfile(_ctx(tmp_path, spec=spec))
+        assert "LICENSE " not in text
+
     def test_trailing_newline(self, tmp_path: Path) -> None:
         assert render_modelfile(_ctx(tmp_path)).endswith("\n")
 

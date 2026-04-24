@@ -239,6 +239,33 @@ class TestLoadTensorIndex:
         with pytest.raises(PreflightError, match="cannot parse GGUF"):
             load_tensor_index(path)
 
+    def test_short_tensor_name_read_refused(self, tmp_path: Path) -> None:
+        header = bytearray(b"GGUF")
+        header.extend(struct.pack("<I", 3))
+        header.extend(struct.pack("<Q", 1))  # tensor_count
+        header.extend(struct.pack("<Q", 1))  # kv_count
+        _write_kv_u32(header, "general.alignment", 32)
+        header.extend(struct.pack("<Q", 5))  # claims 5 bytes
+        header.extend(b"abc")  # only 3 bytes available
+        path = tmp_path / "short-name.gguf"
+        path.write_bytes(bytes(header))
+        with pytest.raises(PreflightError, match="cannot parse GGUF"):
+            load_tensor_index(path)
+
+    @pytest.mark.parametrize("n_dims", [0, 9])
+    def test_invalid_tensor_rank_refused(self, tmp_path: Path, n_dims: int) -> None:
+        header = bytearray(b"GGUF")
+        header.extend(struct.pack("<I", 3))
+        header.extend(struct.pack("<Q", 1))  # tensor_count
+        header.extend(struct.pack("<Q", 1))  # kv_count
+        _write_kv_u32(header, "general.alignment", 32)
+        _write_string(header, "token_embd.weight")
+        header.extend(struct.pack("<I", n_dims))
+        path = tmp_path / f"ndims-{n_dims}.gguf"
+        path.write_bytes(bytes(header))
+        with pytest.raises(PreflightError, match="cannot parse GGUF"):
+            load_tensor_index(path)
+
 
 class TestRowBytesErrors:
     def _build_basic(self, tmp_path: Path) -> Path:
@@ -275,6 +302,42 @@ class TestRowBytesErrors:
         path.write_bytes(blob)
         index = load_tensor_index(path)
         with pytest.raises(PreflightError, match="block-quantized"):
+            index.row_bytes("token_embd.weight", 0)
+
+    def test_rank_zero_tensor_refused(self, tmp_path: Path) -> None:
+        index = load_tensor_index(self._build_basic(tmp_path))
+        index = index.__class__(
+            path=index.path,
+            entries=(
+                TensorEntry(name="token_embd.weight", shape=(), dtype=GGML_TYPE_F16, offset=0),
+            ),
+            data_block_start=index.data_block_start,
+            alignment=index.alignment,
+        )
+        with pytest.raises(PreflightError, match="rank 0"):
+            index.row_bytes("token_embd.weight", 0)
+
+    def test_short_row_read_raises(self, tmp_path: Path) -> None:
+        path = self._build_basic(tmp_path)
+        index = load_tensor_index(path)
+        path.write_bytes(path.read_bytes()[:-1])
+        with pytest.raises(PreflightError, match="short read on row 1"):
+            index.row_bytes("token_embd.weight", 1)
+
+    def test_oserror_while_opening_tensor_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = self._build_basic(tmp_path)
+        index = load_tensor_index(path)
+        original_open = Path.open
+
+        def _boom(self: Path, *args: object, **kwargs: object) -> object:
+            if self == index.path:
+                raise OSError("nope")
+            return original_open(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", _boom)
+        with pytest.raises(PreflightError, match="cannot read row 0"):
             index.row_bytes("token_embd.weight", 0)
 
 
