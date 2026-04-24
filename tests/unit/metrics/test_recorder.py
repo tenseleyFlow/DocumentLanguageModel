@@ -11,7 +11,14 @@ from pathlib import Path
 import pytest
 
 from dlm.metrics.db import metrics_db_path
-from dlm.metrics.events import EvalEvent, ExportEvent, RunEnd, RunStart, StepEvent
+from dlm.metrics.events import (
+    EvalEvent,
+    ExportEvent,
+    PreferenceMineEvent,
+    RunEnd,
+    RunStart,
+    StepEvent,
+)
 from dlm.metrics.recorder import MetricsRecorder
 
 
@@ -119,6 +126,31 @@ class TestExports:
         assert rows[0][1] == "Q4_K_M"
         assert rows[0][2] == 0  # merged=False → 0
         assert rows[0][3] == "mydoc:v1"
+
+
+class TestPreferenceMining:
+    def test_preference_mine_written_without_run_row(self, tmp_path: Path) -> None:
+        rec = MetricsRecorder(tmp_path)
+        rec.record_preference_mine(
+            PreferenceMineEvent(
+                run_id=7,
+                judge_name="sway",
+                sample_count=4,
+                mined_pairs=2,
+                skipped_prompts=1,
+                write_mode="staged",
+            )
+        )
+        rows = _select_all(metrics_db_path(tmp_path), "preference_mining")
+        assert len(rows) == 1
+        _, run_id, judge_name, sample_count, mined_pairs, skipped_prompts, write_mode, at = rows[0]
+        assert run_id == 7
+        assert judge_name == "sway"
+        assert sample_count == 4
+        assert mined_pairs == 2
+        assert skipped_prompts == 1
+        assert write_mode == "staged"
+        assert at
 
 
 class TestBestEffort:

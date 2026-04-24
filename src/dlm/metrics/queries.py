@@ -70,6 +70,20 @@ class TokenizationRow:
         return self.cache_hits / total if total else 0.0
 
 
+@dataclass(frozen=True)
+class PreferenceMineRow:
+    """One row from the `preference_mining` table."""
+
+    event_id: int
+    run_id: int
+    judge_name: str
+    sample_count: int
+    mined_pairs: int
+    skipped_prompts: int
+    write_mode: str
+    at: str
+
+
 def recent_runs(
     store_root: Path,
     *,
@@ -170,6 +184,37 @@ def latest_tokenization(store_root: Path) -> TokenizationRow | None:
     return TokenizationRow(*row)
 
 
+def preference_mining_for_run(store_root: Path, run_id: int) -> list[PreferenceMineRow]:
+    """All preference-mine events for `run_id`, oldest first."""
+    try:
+        with connect(store_root) as conn:
+            rows = conn.execute(
+                "SELECT event_id, run_id, judge_name, sample_count, mined_pairs, "
+                "skipped_prompts, write_mode, at "
+                "FROM preference_mining WHERE run_id = ? ORDER BY event_id ASC",
+                (run_id,),
+            ).fetchall()
+    except sqlite3.Error:
+        return []
+    return [PreferenceMineRow(*row) for row in rows]
+
+
+def latest_preference_mining(store_root: Path) -> PreferenceMineRow | None:
+    """The most-recent preference-mine row, or None when absent."""
+    try:
+        with connect(store_root) as conn:
+            row = conn.execute(
+                "SELECT event_id, run_id, judge_name, sample_count, mined_pairs, "
+                "skipped_prompts, write_mode, at "
+                "FROM preference_mining ORDER BY event_id DESC LIMIT 1"
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    return PreferenceMineRow(*row)
+
+
 @dataclass(frozen=True)
 class GateEventRow:
     """One row of the gate_events table (per-run per-adapter)."""
@@ -266,4 +311,21 @@ def evals_to_dict(evals: list[EvalRow]) -> list[dict[str, Any]]:
             "at": e.at,
         }
         for e in evals
+    ]
+
+
+def preference_mining_to_dict(rows: list[PreferenceMineRow]) -> list[dict[str, Any]]:
+    """JSON-serializable view used by `dlm metrics --json` and `dlm show --json`."""
+    return [
+        {
+            "event_id": row.event_id,
+            "run_id": row.run_id,
+            "judge_name": row.judge_name,
+            "sample_count": row.sample_count,
+            "mined_pairs": row.mined_pairs,
+            "skipped_prompts": row.skipped_prompts,
+            "write_mode": row.write_mode,
+            "at": row.at,
+        }
+        for row in rows
     ]

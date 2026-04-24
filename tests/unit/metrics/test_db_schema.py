@@ -22,7 +22,16 @@ class TestConnect:
             tables = {
                 row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             }
-        assert tables == {"runs", "steps", "evals", "exports", "tokenization", "gate_events"}
+        user_tables = {table for table in tables if not table.startswith("sqlite_")}
+        assert user_tables == {
+            "runs",
+            "steps",
+            "evals",
+            "exports",
+            "tokenization",
+            "gate_events",
+            "preference_mining",
+        }
 
     def test_wal_mode_enabled(self, tmp_path: Path) -> None:
         with connect(tmp_path) as conn:

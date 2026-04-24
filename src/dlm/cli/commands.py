@@ -3734,6 +3734,8 @@ def preference_mine_cmd(
         build_backend,
         select_backend,
     )
+    from dlm.metrics import MetricsRecorder, PreferenceMineEvent
+    from dlm.metrics.events import PreferenceMineWriteMode
     from dlm.modality import modality_for
     from dlm.preference import (
         InvalidJudgeSpecError,
@@ -3858,10 +3860,25 @@ def preference_mine_cmd(
     finally:
         backend_obj.unload()
 
+    recorder = MetricsRecorder(store.root)
+
+    def _record_preference_mine(write_mode: PreferenceMineWriteMode) -> None:
+        recorder.record_preference_mine(
+            PreferenceMineEvent(
+                run_id=run_id,
+                judge_name=judge_obj.name,
+                sample_count=samples,
+                mined_pairs=len(plan.additions),
+                skipped_prompts=len(plan.skipped),
+                write_mode=write_mode,
+            )
+        )
+
     out_console.print(render_mine_plan(plan))
 
     if not plan.additions:
         clear_pending_plan(store)
+        _record_preference_mine("empty")
         out_console.print(
             "\n[yellow]no candidates to mine[/yellow] — either instruction prompts "
             "did not yield a confident pair, or the matching preference sections "
@@ -3877,6 +3894,7 @@ def preference_mine_cmd(
         out_console.print(render_apply_plan(apply_plan))
         summary = apply_preference_plan(parsed, apply_plan, target=path)
         clear_pending_plan(store)
+        _record_preference_mine("applied")
         out_console.print(
             f"\n[green]preference:[/green] wrote {summary.added} section(s) to {path} "
             f"({summary.skipped} skipped)"
@@ -3884,6 +3902,7 @@ def preference_mine_cmd(
         return
 
     pending = save_pending_plan(store, source_path=path.resolve(), sections=sections)
+    _record_preference_mine("staged")
     out_console.print(
         f"\n[green]preference:[/green] staged {len(pending.sections)} mined preference "
         f"section(s). Run [bold]dlm preference apply {path}[/bold] to write them."

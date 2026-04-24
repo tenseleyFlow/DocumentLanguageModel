@@ -38,6 +38,7 @@ from dlm.metrics.events import (
     EvalEvent,
     ExportEvent,
     GateEvent,
+    PreferenceMineEvent,
     RunEnd,
     RunStart,
     StepEvent,
@@ -194,6 +195,25 @@ class MetricsRecorder:
             )
 
         self._with_conn(_do, failure_key="gate", hard_fail=False)
+
+    def record_preference_mine(self, event: PreferenceMineEvent) -> None:
+        def _do(conn: sqlite3.Connection) -> None:
+            conn.execute(
+                "INSERT INTO preference_mining "
+                "(run_id, judge_name, sample_count, mined_pairs, skipped_prompts, write_mode, at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    event.run_id,
+                    event.judge_name,
+                    event.sample_count,
+                    event.mined_pairs,
+                    event.skipped_prompts,
+                    event.write_mode,
+                    event.at,
+                ),
+            )
+
+        self._with_conn(_do, failure_key="preference_mine", hard_fail=False)
 
     def record_export(self, event: ExportEvent) -> None:
         def _do(conn: sqlite3.Connection) -> None:

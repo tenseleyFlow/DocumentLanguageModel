@@ -96,6 +96,18 @@ _SCHEMA_SQL = [
         PRIMARY KEY (run_id, adapter_name)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS preference_mining (
+        event_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id           INTEGER NOT NULL,
+        judge_name       TEXT NOT NULL,
+        sample_count     INTEGER NOT NULL,
+        mined_pairs      INTEGER NOT NULL,
+        skipped_prompts  INTEGER NOT NULL,
+        write_mode       TEXT NOT NULL,
+        at               TEXT NOT NULL
+    )
+    """,
 ]
 
 

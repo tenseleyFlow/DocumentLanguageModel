@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 from dlm.base_models import BaseModelSpec
 from dlm.cli.app import app
 from dlm.doc.parser import parse_file
+from dlm.metrics.queries import preference_mining_for_run
 from dlm.preference.judge import PairScore
 from dlm.preference.pending import load_pending_plan
 from dlm.store.manifest import Manifest, TrainingRunSummary, save_manifest
@@ -162,6 +163,14 @@ class TestPreferenceCmd:
         assert pending is not None
         assert len(pending.sections) == 1
         assert pending.sections[0].auto_mined is True
+
+        rows = preference_mining_for_run(for_dlm(_DLM_ID, home=home).root, run_id=7)
+        assert len(rows) == 1
+        assert rows[0].judge_name == "stub:judge"
+        assert rows[0].sample_count == 2
+        assert rows[0].mined_pairs == 1
+        assert rows[0].skipped_prompts == 0
+        assert rows[0].write_mode == "staged"
 
     def test_apply_writes_staged_preferences_and_clears_pending(
         self,

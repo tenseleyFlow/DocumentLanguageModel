@@ -12,6 +12,7 @@ from typing import Literal
 
 Phase = Literal["sft", "dpo", "orpo", "cpt"]
 Status = Literal["running", "ok", "failed", "cancelled"]
+PreferenceMineWriteMode = Literal["staged", "applied", "empty"]
 
 
 def _utc_iso() -> str:
@@ -123,6 +124,23 @@ class GateEvent:
     mean_weight: float
     sample_count: int
     mode: str  # "trained" | "uniform" | "diverged"
+    at: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.at:
+            object.__setattr__(self, "at", _utc_iso())
+
+
+@dataclass(frozen=True)
+class PreferenceMineEvent:
+    """Emitted from `dlm preference mine` after judging completes."""
+
+    run_id: int
+    judge_name: str
+    sample_count: int
+    mined_pairs: int
+    skipped_prompts: int
+    write_mode: PreferenceMineWriteMode
     at: str = ""
 
     def __post_init__(self) -> None:
