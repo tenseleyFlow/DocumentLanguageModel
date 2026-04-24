@@ -13,6 +13,7 @@ from dlm.metrics.queries import (
     latest_run_id,
     preference_mining_for_run,
     preference_mining_to_dict,
+    preference_mining_totals,
     recent_runs,
     runs_to_dict,
     steps_for_run,
@@ -144,6 +145,15 @@ class TestPreferenceMiningQueries:
         with connect(tmp_path) as _conn:
             pass
         assert latest_preference_mining(tmp_path) is None
+
+    def test_preference_mining_totals_aggregate_across_events(self, tmp_path: Path) -> None:
+        _seed(tmp_path)
+        totals = preference_mining_totals(tmp_path)
+        assert totals is not None
+        assert totals.run_count == 1
+        assert totals.event_count == 2
+        assert totals.total_mined_pairs == 3
+        assert totals.total_skipped_prompts == 3
 
 
 class TestDictSerialization:

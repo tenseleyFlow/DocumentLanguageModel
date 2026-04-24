@@ -225,11 +225,15 @@ class TestInitializedStore:
         payload = json.loads(result.output)
         pref = payload["preference_mining"]
         assert pref["last_run_id"] == 7
+        assert pref["run_count"] == 1
         assert pref["event_count"] == 1
+        assert pref["last_run_event_count"] == 1
         assert pref["total_mined_pairs"] == 2
         assert pref["total_skipped_prompts"] == 1
         assert pref["last_event"]["judge_name"] == "sway"
         assert pref["last_event"]["write_mode"] == "applied"
+        assert payload["preference_mining_runs"] == 1
+        assert payload["total_auto_mined_pairs"] == 2
 
 
 class TestTrainingSources:

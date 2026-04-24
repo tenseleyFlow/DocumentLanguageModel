@@ -2794,6 +2794,8 @@ def show_cmd(
             payload_full["gate"] = gate
         if preference_mining is not None:
             payload_full["preference_mining"] = preference_mining
+            payload_full["preference_mining_runs"] = preference_mining["run_count"]
+            payload_full["total_auto_mined_pairs"] = preference_mining["total_mined_pairs"]
         if base_security is not None:
             payload_full["base_security"] = base_security
         # Write JSON to raw stdout — Rich's Console wraps lines at the
@@ -3079,15 +3081,19 @@ def _summarize_preference_mining(store_root: Path) -> dict[str, object] | None:
     """Return the latest preference-mine summary for `dlm show --json`."""
     from dlm.metrics import queries as _queries
 
-    last = _queries.latest_preference_mining(store_root)
-    if last is None:
+    totals = _queries.preference_mining_totals(store_root)
+    if totals is None:
         return None
+    last = _queries.latest_preference_mining(store_root)
+    assert last is not None
     rows = _queries.preference_mining_for_run(store_root, last.run_id)
     return {
+        "run_count": totals.run_count,
+        "event_count": totals.event_count,
+        "total_mined_pairs": totals.total_mined_pairs,
+        "total_skipped_prompts": totals.total_skipped_prompts,
         "last_run_id": last.run_id,
-        "event_count": len(rows),
-        "total_mined_pairs": sum(row.mined_pairs for row in rows),
-        "total_skipped_prompts": sum(row.skipped_prompts for row in rows),
+        "last_run_event_count": len(rows),
         "last_event": _queries.preference_mining_to_dict([last])[0],
     }
 

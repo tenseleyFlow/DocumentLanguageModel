@@ -84,6 +84,16 @@ class PreferenceMineRow:
     at: str
 
 
+@dataclass(frozen=True)
+class PreferenceMineTotals:
+    """Aggregate counts across the whole `preference_mining` table."""
+
+    run_count: int
+    event_count: int
+    total_mined_pairs: int
+    total_skipped_prompts: int
+
+
 def recent_runs(
     store_root: Path,
     *,
@@ -213,6 +223,30 @@ def latest_preference_mining(store_root: Path) -> PreferenceMineRow | None:
     if row is None:
         return None
     return PreferenceMineRow(*row)
+
+
+def preference_mining_totals(store_root: Path) -> PreferenceMineTotals | None:
+    """Aggregate counts across all preference-mine events.
+
+    Returns None when the table is absent or empty.
+    """
+    try:
+        with connect(store_root) as conn:
+            row = conn.execute(
+                "SELECT COUNT(DISTINCT run_id), COUNT(*), "
+                "COALESCE(SUM(mined_pairs), 0), COALESCE(SUM(skipped_prompts), 0) "
+                "FROM preference_mining"
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None or int(row[1]) == 0:
+        return None
+    return PreferenceMineTotals(
+        run_count=int(row[0]),
+        event_count=int(row[1]),
+        total_mined_pairs=int(row[2]),
+        total_skipped_prompts=int(row[3]),
+    )
 
 
 @dataclass(frozen=True)
