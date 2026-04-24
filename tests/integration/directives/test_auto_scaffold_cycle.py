@@ -39,17 +39,12 @@ def test_auto_scaffold_train_resume_cycle(
         except Exception as exc:
             pytest.skip(f"tiny-model fixture unavailable: {exc}")
 
-        from dlm.base_models import resolve as resolve_base_model
         from dlm.cli.scaffold import scaffold_train_target
         from dlm.doc.parser import parse_file
-        from dlm.hardware import doctor
         from dlm.store.manifest import Manifest, load_manifest, save_manifest
         from dlm.store.paths import for_dlm
         from dlm.train import run as run_training
-
-        plan = doctor().plan
-        if plan is None:
-            pytest.skip("doctor() returned no viable training plan on this host")
+        from tests.fixtures.planning import resolve_spec_and_plan
 
         home = tmp_path_factory.mktemp("dlm-scaffold-home")
         os.environ["DLM_HOME"] = str(home)
@@ -85,7 +80,7 @@ def test_auto_scaffold_train_resume_cycle(
         assert parsed.frontmatter.training.sources is not None
         assert parsed.frontmatter.training.sources[0].include == ("**/*.md",)
 
-        spec = resolve_base_model(parsed.frontmatter.base_model)
+        spec, plan, _caps = resolve_spec_and_plan(parsed)
         store = for_dlm(parsed.frontmatter.dlm_id)
         store.ensure_layout()
         save_manifest(

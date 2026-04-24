@@ -65,12 +65,11 @@ def _run_training(
     disable_cache: bool = False,
 ) -> Path:
     """Run one training cycle and return the committed adapter path."""
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
-    from dlm.hardware import doctor
     from dlm.store.manifest import Manifest, save_manifest
     from dlm.store.paths import for_dlm
     from dlm.train import run as run_training
+    from tests.fixtures.planning import resolve_spec_and_plan
 
     os.environ["DLM_HOME"] = str(home)
     if disable_cache:
@@ -79,12 +78,7 @@ def _run_training(
         os.environ.pop("DLM_DISABLE_TOKENIZED_CACHE", None)
 
     parsed = parse_file(doc)
-    spec = resolve_base_model(parsed.frontmatter.base_model)
-    plan = doctor(training_config=parsed.frontmatter.training).plan
-    if plan is None:
-        import pytest
-
-        pytest.skip("doctor() returned no viable training plan on this host")
+    spec, plan, _caps = resolve_spec_and_plan(parsed)
 
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()

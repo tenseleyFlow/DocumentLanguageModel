@@ -186,17 +186,12 @@ def test_harvest_roundtrip_preserves_probes_into_retrain(
         except Exception as exc:
             pytest.skip(f"tiny-model fixture unavailable: {exc}")
 
-        from dlm.base_models import resolve as resolve_base_model
         from dlm.doc.parser import parse_file
-        from dlm.hardware import doctor
         from dlm.harvest import apply_plan, build_plan, read_sway_report
         from dlm.store.manifest import Manifest, save_manifest
         from dlm.store.paths import for_dlm
         from dlm.train import run as run_training
-
-        plan = doctor().plan
-        if plan is None:
-            pytest.skip("doctor() returned no viable training plan on this host")
+        from tests.fixtures.planning import resolve_spec_and_plan
 
         home = tmp_path_factory.mktemp("dlm-harvest-home")
         os.environ["DLM_HOME"] = str(home)
@@ -214,7 +209,7 @@ def test_harvest_roundtrip_preserves_probes_into_retrain(
 
         # --- v1 train --------------------------------------------------
         parsed_v1 = parse_file(dlm_path)
-        spec = resolve_base_model(parsed_v1.frontmatter.base_model)
+        spec, plan, _caps = resolve_spec_and_plan(parsed_v1)
         store = for_dlm(parsed_v1.frontmatter.dlm_id)
         store.ensure_layout()
         save_manifest(

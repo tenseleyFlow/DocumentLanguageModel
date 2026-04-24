@@ -36,12 +36,11 @@ def _train_once(home: Path) -> Path:
     """Fresh 20-step training run under `home`. Returns adapter dir."""
     os.environ["DLM_HOME"] = str(home)
 
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
-    from dlm.hardware import doctor
     from dlm.store.paths import for_dlm
     from dlm.train import run as run_training
     from tests.fixtures.dlm_factory import make_dlm
+    from tests.fixtures.planning import resolve_spec_and_plan
 
     doc = home / "det.dlm"
     doc.write_text(
@@ -53,12 +52,7 @@ def _train_once(home: Path) -> Path:
         encoding="utf-8",
     )
     parsed = parse_file(doc)
-    spec = resolve_base_model(parsed.frontmatter.base_model)
-    plan = doctor().plan
-    if plan is None:
-        import pytest
-
-        pytest.skip("doctor() returned no viable training plan on this host")
+    spec, plan, _caps = resolve_spec_and_plan(parsed)
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
 

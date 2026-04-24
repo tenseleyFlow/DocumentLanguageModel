@@ -75,10 +75,9 @@ def test_strict_lock_rejects_torch_minor_drift(tmp_path: Path) -> None:
     # runs — the test can't distinguish lock-drift from plan-miss in
     # that case. Skip there; the unit-test counterpart still covers
     # the lock validator directly.
-    from dlm.hardware import doctor
+    from tests.fixtures.planning import resolve_spec_and_plan
 
-    if doctor(training_config=parsed.frontmatter.training).plan is None:
-        pytest.skip("doctor() returned no viable training plan on this host")
+    resolve_spec_and_plan(parsed)
 
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
