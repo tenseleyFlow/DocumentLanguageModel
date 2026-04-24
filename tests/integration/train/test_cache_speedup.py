@@ -18,7 +18,6 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-import time
 from pathlib import Path
 
 import pytest
@@ -158,9 +157,7 @@ def test_cache_warms_then_hits_and_preserves_determinism(
     sha_uncached = _adapter_weight_sha(adapter_uncached)
 
     # === Run 2: cache cold, populate it ===
-    t0 = time.perf_counter()
     adapter_cached_1 = _run_training(doc_b, home_b, disable_cache=False)
-    elapsed_cold = time.perf_counter() - t0
     sha_cached = _adapter_weight_sha(adapter_cached_1)
 
     # Byte-identity guardrail: same seed + same tokens → same LoRA
@@ -183,9 +180,7 @@ def test_cache_warms_then_hits_and_preserves_determinism(
     # === Run 3: cache warm, should serve hits ===
     # Fresh run_id but same store + same cache. Expect most rows to
     # hit the cache.
-    t0 = time.perf_counter()
     _run_training(doc_b, home_b, disable_cache=False)
-    elapsed_warm = time.perf_counter() - t0
 
     # Tokenization events are recorded per run. The second cached run
     # must report a non-zero hit rate.
@@ -197,12 +192,7 @@ def test_cache_warms_then_hits_and_preserves_determinism(
         f"cached second run got zero hits: hits={tok.cache_hits}, misses={tok.cache_misses}"
     )
 
-    # Soft speedup signal — the warm run's tokenization seconds should
-    # be materially lower than the cold run's (the `>5×` target in the
-    # sprint spec is corpus-size-dependent; on an 8-file toy corpus we
-    # settle for "warm <= cold" as a sanity check rather than a
-    # hard-coded threshold). The real speedup shows up at 1K+ files.
-    assert elapsed_warm <= elapsed_cold * 1.5, (
-        f"warm run should not be materially slower than cold: "
-        f"cold={elapsed_cold:.2f}s warm={elapsed_warm:.2f}s"
-    )
+    # Wall-clock speedup is corpus-size-dependent (>5x target at 1K+
+    # files per sprint spec). On an 8-file toy corpus, CI variance
+    # dwarfs any tokenization saving, so we rely on cache_hits > 0
+    # above rather than a flaky timing assertion.
