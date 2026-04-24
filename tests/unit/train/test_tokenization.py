@@ -18,8 +18,8 @@ from transformers import PreTrainedTokenizerBase
 
 from dlm.directives.cache import TokenizedCache
 from dlm.train.tokenization import (
-    _as_int_list,
     TokenizationStats,
+    _as_int_list,
     pretokenize_rows,
 )
 
