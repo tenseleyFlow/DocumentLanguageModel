@@ -119,8 +119,6 @@ def build_synth_plan(
         for concrete_strategy, count in _strategy_counts(strategy, per_section):
             if count == 0:
                 continue
-            if max_pairs is not None and len(additions) >= max_pairs:
-                return SynthRunPlan(additions=tuple(additions), skipped=tuple(skipped))
 
             template = get_prompt_template(concrete_strategy)
             rendered = teacher.generate(

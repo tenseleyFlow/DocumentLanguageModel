@@ -7,7 +7,7 @@ from collections import deque
 import pytest
 
 import dlm.synth.run as run_mod
-from dlm.doc.parser import parse_text
+from dlm.doc.parser import ParsedDlm, parse_text
 from dlm.synth import SynthPromptTemplate, build_synth_plan, render_synth_plan
 
 _FRONTMATTER = """---
@@ -49,11 +49,37 @@ class StubTeacher:
         return self._outputs.popleft()
 
 
-def _parsed(body: str):
+def _parsed(body: str) -> ParsedDlm:
     return parse_text(_FRONTMATTER + body)
 
 
 class TestBuildSynthPlan:
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        [
+            ("per_section", 0, "per_section must be >= 1"),
+            ("max_pairs", 0, "max_pairs must be >= 1"),
+            ("max_new_tokens", 0, "max_new_tokens must be >= 1"),
+        ],
+    )
+    def test_rejects_invalid_limits(
+        self,
+        field: str,
+        value: int,
+        message: str,
+    ) -> None:
+        parsed = _parsed("One prose block.\n")
+
+        if field == "per_section":
+            with pytest.raises(ValueError, match=message):
+                build_synth_plan(parsed, StubTeacher([]), per_section=value)
+        elif field == "max_pairs":
+            with pytest.raises(ValueError, match=message):
+                build_synth_plan(parsed, StubTeacher([]), max_pairs=value)
+        else:
+            with pytest.raises(ValueError, match=message):
+                build_synth_plan(parsed, StubTeacher([]), max_new_tokens=value)
+
     def test_materializes_auto_synth_instruction_sections(self) -> None:
         parsed = _parsed("A short prose section about matrix multiplication.\n")
         teacher = StubTeacher(
@@ -192,6 +218,47 @@ class TestBuildSynthPlan:
 
         assert len(plan.additions) == 1
         assert plan.additions[0].pair.question == "Q1"
+        assert len(teacher.calls) == 1
+
+    def test_max_pairs_returns_before_generating_from_later_sources(self) -> None:
+        parsed = _parsed(
+            "First prose block.\n\n"
+            "::instruction::\n"
+            "### Q\nmanual?\n"
+            "### A\nyes.\n\n"
+            "Second prose block.\n"
+        )
+        teacher = StubTeacher(
+            [
+                '[{"question":"Q1","answer":"A1"}]',
+                '[{"question":"Q2","answer":"A2"}]',
+            ]
+        )
+
+        plan = build_synth_plan(parsed, teacher, per_section=1, strategy="extraction", max_pairs=1)
+
+        assert len(plan.additions) == 1
+        assert len(teacher.calls) == 1
+
+    def test_both_strategy_skips_zero_count_branch(self) -> None:
+        parsed = _parsed("One prose block.\n")
+        teacher = StubTeacher(['[{"question":"Q1","answer":"A1"}]'])
+
+        plan = build_synth_plan(parsed, teacher, per_section=1, strategy="both")
+
+        assert len(plan.additions) == 1
+        assert [add.strategy for add in plan.additions] == ["extraction"]
+        assert len(teacher.calls) == 1
+
+    def test_expansion_strategy_uses_expansion_template(self) -> None:
+        parsed = _parsed("One prose block.\n")
+        teacher = StubTeacher(['[{"question":"Q1","answer":"A1"}]'])
+
+        plan = build_synth_plan(parsed, teacher, per_section=1, strategy="expansion")
+
+        assert len(plan.additions) == 1
+        assert [add.strategy for add in plan.additions] == ["expansion"]
+        assert "expand on the material" in teacher.calls[0][1]
 
 
 def test_render_synth_plan_mentions_adds_and_skips() -> None:
@@ -203,3 +270,52 @@ def test_render_synth_plan_mentions_adds_and_skips() -> None:
 
     assert "synth plan: 0 add, 1 skip" in rendered
     assert "invalid_output" in rendered
+
+
+def test_render_synth_plan_mentions_additions_and_truncates_long_lines() -> None:
+    parsed = _parsed("One prose block.\n")
+    long_question = "Q" * 90
+    long_answer = "A" * 90
+    teacher = StubTeacher([f'[{{"question":"{long_question}","answer":"{long_answer}"}}]'])
+
+    plan = build_synth_plan(parsed, teacher, per_section=1, strategy="extraction")
+    rendered = render_synth_plan(plan)
+
+    assert "synth plan: 1 add, 0 skip" in rendered
+    assert "+ ::instruction::" in rendered
+    assert "q: " in rendered
+    assert "a: " in rendered
+    assert "…" in rendered
+
+
+def test_first_line_returns_short_text_unchanged() -> None:
+    assert run_mod._first_line("short line") == "short line"
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ("[]", "teacher output produced no instruction pairs"),
+        ("{}", "teacher output must be a JSON list"),
+        ("[1]", "teacher output item 0 must be an object"),
+        ('[{"question":1,"answer":"ok"}]', "must contain string question/answer keys"),
+        ('[{"question":" ","answer":"ok"}]', "has an empty question or answer"),
+    ],
+)
+def test_parse_generated_pairs_rejects_bad_json_list_payloads(raw: str, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        run_mod._parse_generated_pairs(raw, parser="json_list")
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ("Question: hi\nA: ok", "must use lines like `1. Q: ...`"),
+        ("1. Q: hi", "missing an answer line"),
+        ("1. Q: hi\nB: ok", "answers must use `A:` or `Answer:`"),
+        ("1. Q:   \nA: ok", "contains an empty question or answer"),
+    ],
+)
+def test_parse_generated_pairs_rejects_bad_numbered_list_payloads(raw: str, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        run_mod._parse_generated_pairs(raw, parser="numbered_list")
