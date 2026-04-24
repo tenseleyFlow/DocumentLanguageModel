@@ -46,10 +46,14 @@ def test_watch_cycle_detects_new_content_and_retrains(  # pragma: no cover - slo
     initial_adapter = store.resolve_current_adapter()
     assert initial_adapter is not None
 
-    # Append a new section to the doc so the ChangeSet sees `new`.
+    # Strip any ::preference:: sections that earlier session-scoped tests
+    # (e.g. test_dpo_tinymodel) may have appended to the shared doc.
     original = doc_path.read_text(encoding="utf-8")
+    sft_only = original.split("::preference::")[0].rstrip()
+
+    # Append a new instruction section so the ChangeSet sees `new`.
     doc_path.write_text(
-        original
+        sft_only
         + "\n\n::instruction::\n"
         + "### Q\n"
         + "What changed in the watch test?\n"
