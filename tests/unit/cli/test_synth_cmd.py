@@ -370,3 +370,61 @@ class TestSynthCmd:
         assert pending is not None
         assert len(pending.sections) == 1
         assert pending.sections[0].auto_mined is True
+
+    def test_openai_teacher_without_api_key_fails_cleanly(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        home = tmp_path / "home"
+        doc = tmp_path / "doc.dlm"
+        _write_synth_doc(doc)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "--home",
+                str(home),
+                "synth",
+                "instructions",
+                str(doc),
+                "--teacher",
+                "openai:gpt-4o-mini",
+                "--filter",
+                "none",
+            ],
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "requires $OPENAI_API_KEY to be set" in _normalized_output(result)
+
+    def test_anthropic_teacher_without_api_key_fails_cleanly(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        home = tmp_path / "home"
+        doc = tmp_path / "doc.dlm"
+        _write_synth_doc(doc)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "--home",
+                str(home),
+                "synth",
+                "instructions",
+                str(doc),
+                "--teacher",
+                "anthropic:claude-3-5-haiku-latest",
+                "--filter",
+                "none",
+            ],
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "requires $ANTHROPIC_API_KEY to be set" in _normalized_output(result)
