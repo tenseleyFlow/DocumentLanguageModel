@@ -115,6 +115,17 @@ app.command("show")(commands.show_cmd)
 app.command("migrate")(commands.migrate_cmd)
 app.command("harvest")(commands.harvest_cmd)
 
+# `dlm preference mine|apply|revert|list` — auto-mined preference loop.
+_preference_app = typer.Typer(
+    help="Mine, stage, apply, and inspect auto-mined preference sections.",
+    no_args_is_help=True,
+)
+_preference_app.command("mine")(commands.preference_mine_cmd)
+_preference_app.command("apply")(commands.preference_apply_cmd)
+_preference_app.command("revert")(commands.preference_revert_cmd)
+_preference_app.command("list")(commands.preference_list_cmd)
+app.add_typer(_preference_app, name="preference")
+
 # `dlm metrics <path>` + `dlm metrics watch <path>` as a subcommand
 # group. Typer nests naturally via an Annotated sub-app.
 _metrics_app = typer.Typer(

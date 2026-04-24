@@ -73,3 +73,16 @@ def test_reference_doc_covers_export_target_surface() -> None:
     help_text = _normalized_help("export")
     assert "--target" in help_text
     assert "--target" in section
+
+
+def test_reference_doc_covers_preference_surface() -> None:
+    section = _section("preference")
+    help_text = _normalized_help("preference", "mine")
+
+    for flag in ("--judge", "--threshold", "--backend", "--adapter", "--apply"):
+        assert flag in help_text
+        assert flag in section
+
+    assert "dlm preference apply <path>" in section
+    assert "dlm preference revert <path>" in section
+    assert "dlm preference list <path>" in section

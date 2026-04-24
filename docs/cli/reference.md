@@ -166,6 +166,41 @@ they arrive. See the [metrics cookbook](../cookbook/metrics.md) for
 the full flow + optional TensorBoard / W&B sinks (`uv sync --extra
 observability`).
 
+### `dlm preference`
+
+Mine, stage, apply, revert, and inspect auto-mined preference
+sections (Sprint 42).
+
+```
+dlm preference mine <path> [--samples N] [--judge J] [--threshold F]
+                          [--max-pairs N] [--temp F] [--top-p F]
+                          [--backend {auto,pytorch,mlx}] [--adapter NAME]
+                          [--apply]
+dlm preference apply <path>
+dlm preference revert <path>
+dlm preference list <path>
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--samples N` | `4` | Candidate responses to sample per instruction prompt. Minimum `2`. |
+| `--judge J` | `sway` | Judge selector: `sway`, `hf:<model>`, or `cli:<cmd>`. |
+| `--threshold F` | judge default | Minimum chosen-vs-rejected score margin. Defaults to the selected judge's native threshold (`0.1` for sway, `1.0` for HF reward models). |
+| `--max-pairs N` | unlimited | Cap the number of mined pairs kept from one run. |
+| `--temp F` | `0.7` | Sampling temperature for candidate generation. |
+| `--top-p F` | None | Optional top-p cutoff for candidate generation. |
+| `--backend {auto,pytorch,mlx}` | `auto` | Generation backend. Follows the same selection contract as `dlm prompt`. |
+| `--adapter NAME` | None | Required on multi-adapter documents so mining knows which adapter to sample. `--judge sway` is currently refused there; use `hf:` or `cli:` judges instead. |
+| `--apply` | false | Write mined sections directly to the `.dlm`. Without it, `mine` stages the plan under the store root for `dlm preference apply`. |
+
+`dlm preference mine` requires a prior training run because the mined
+sections carry `mined_run_id` provenance. By default it stages the
+auto-mined `::preference::` sections under the store and prints the
+plan; `dlm preference apply` writes the staged plan into the `.dlm`,
+`dlm preference revert` strips every `auto_mined: true` preference
+section, and `dlm preference list` shows both applied and staged
+sections.
+
 ### `dlm templates`
 
 Browse the starter template gallery (Sprint 27).
