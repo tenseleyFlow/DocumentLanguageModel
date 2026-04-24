@@ -198,6 +198,21 @@ ignore_missing_imports = true
 # actual return types aren't reflected in stubs.
 disable_error_code = ["no-untyped-call"]
 
+# Optional runtime deps used behind feature gates may be absent or
+# ship without type metadata on some CI runners. Keep those imports
+# narrow and local in code, and suppress missing-stub noise here
+# instead of scattering environment-specific inline ignores.
+[[tool.mypy.overrides]]
+module = [
+    "soxr",
+    "scipy",
+    "scipy.*",
+    "mlx_lm",
+    "mlx_lm.*",
+]
+ignore_missing_imports = true
+disable_error_code = ["no-untyped-call"]
+
 # -------- pytest --------
 [tool.pytest.ini_options]
 testpaths = ["tests"]

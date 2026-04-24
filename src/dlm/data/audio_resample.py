@@ -70,14 +70,14 @@ def _pick_backend() -> _Backend:
     backend-pick time keeps the failure near the user's config.
     """
     try:
-        import soxr  # type: ignore[import-not-found]  # noqa: F401
+        import soxr  # noqa: F401
     except ImportError:
         pass
     else:
         return _soxr_resample
 
     try:
-        import scipy.signal  # type: ignore[import-untyped]  # noqa: F401
+        import scipy.signal  # noqa: F401
     except ImportError:
         pass
     else:

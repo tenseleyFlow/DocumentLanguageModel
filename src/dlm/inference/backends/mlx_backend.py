@@ -164,7 +164,7 @@ class MlxBackend(InferenceBackend):
         *,
         adapter_name: str | None = None,
     ) -> None:
-        from mlx_lm import load  # type: ignore[import-not-found, unused-ignore]
+        from mlx_lm import load
 
         from dlm.inference.loader import resolve_adapter_path
 
