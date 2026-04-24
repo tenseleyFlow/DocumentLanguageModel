@@ -21,8 +21,10 @@ from pathlib import Path
 
 import pytest
 
+from dlm.share import ServeHandle
 
-def _start_server_in_thread(tmp_path: Path, *, ttl: int = 600):
+
+def _start_server_in_thread(tmp_path: Path, *, ttl: int = 600) -> tuple[ServeHandle, threading.Thread, bytes]:
     """Helper: pack a trivial file + start the peer server in a thread.
 
     Returns `(handle, thread, pack_bytes)`. Caller stops via
@@ -36,7 +38,10 @@ def _start_server_in_thread(tmp_path: Path, *, ttl: int = 600):
     pack.write_bytes(pack_bytes)
 
     opts = ServeOptions(port=0, token_ttl_seconds=ttl)  # port=0 → OS picks free port
-    handle = serve("01HZTESTID", pack, opts)
+    try:
+        handle = serve("01HZTESTID", pack, opts)
+    except PermissionError as exc:
+        pytest.skip(f"loopback bind blocked on this host: {exc}")
 
     thread = threading.Thread(target=handle._server.serve_forever, daemon=True)
     thread.start()
@@ -46,7 +51,7 @@ def _start_server_in_thread(tmp_path: Path, *, ttl: int = 600):
     return handle, thread, pack_bytes
 
 
-def _stop_server(handle, thread: threading.Thread) -> None:
+def _stop_server(handle: ServeHandle, thread: threading.Thread) -> None:
     handle._server.shutdown()
     handle._server.server_close()
     thread.join(timeout=2.0)
