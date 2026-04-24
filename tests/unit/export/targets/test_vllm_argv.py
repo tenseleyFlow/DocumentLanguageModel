@@ -5,11 +5,23 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from dlm.base_models import BASE_MODELS
+from dlm.export.errors import ExportError, TargetSmokeError
 from dlm.export.manifest import load_export_manifest
+from dlm.export.targets.base import TargetResult
 from dlm.export.targets.vllm import (
     VLLM_CONFIG_FILENAME,
     VLLM_TARGET,
+    LoraModule,
+    _default_runtime_env,
+    _optional_prepared_int,
+    _render_launch_script,
+    _require_module_specs,
+    _require_prepared_int,
+    _require_prepared_str,
+    _runtime_env,
     finalize_vllm_export,
     prepare_vllm_export,
 )
@@ -53,6 +65,10 @@ def _setup_named_store(tmp_path: Path) -> object:
 
 
 class TestPrepareVllmExport:
+    def test_prepare_method_is_not_used_directly(self) -> None:
+        with pytest.raises(NotImplementedError, match="prepare_vllm_export"):
+            VLLM_TARGET.prepare(object())
+
     def test_flat_export_writes_config_manifest_and_launch_script(self, tmp_path: Path) -> None:
         store = _setup_flat_store(tmp_path)
 
@@ -197,6 +213,81 @@ class TestPrepareVllmExport:
             "VLLM_METAL_USE_PAGED_ATTENTION": "0",
         }
 
+    def test_prepare_requires_at_least_one_module(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = _setup_flat_store(tmp_path)
+        monkeypatch.setattr("dlm.export.targets.vllm._stage_modules", lambda **kwargs: [])
+
+        with pytest.raises(ExportError, match="at least one adapter module"):
+            prepare_vllm_export(
+                store=store,
+                spec=_SPEC,
+                served_model_name="dlm-flat",
+                training_sequence_len=2048,
+                adapter_name=None,
+                adapter_path_override=None,
+                declared_adapter_names=None,
+            )
+
+    def test_missing_named_adapter_raises(self, tmp_path: Path) -> None:
+        store = _setup_named_store(tmp_path)
+
+        with pytest.raises(ExportError, match="no current adapter under"):
+            prepare_vllm_export(
+                store=store,
+                spec=_SPEC,
+                served_model_name="dlm-missing",
+                training_sequence_len=2048,
+                adapter_name="missing",
+                adapter_path_override=None,
+                declared_adapter_names=None,
+            )
+
+    def test_missing_default_adapter_raises(self, tmp_path: Path) -> None:
+        store = for_dlm("01EMPTYVLLM", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01EMPTYVLLM", base_model=_SPEC.key))
+
+        with pytest.raises(ExportError, match="no current adapter under"):
+            prepare_vllm_export(
+                store=store,
+                spec=_SPEC,
+                served_model_name="dlm-empty",
+                training_sequence_len=2048,
+                adapter_name=None,
+                adapter_path_override=None,
+                declared_adapter_names=None,
+            )
+
+    def test_missing_declared_named_adapter_raises(self, tmp_path: Path) -> None:
+        store = _setup_named_store(tmp_path)
+
+        with pytest.raises(ExportError, match="no current adapter under"):
+            prepare_vllm_export(
+                store=store,
+                spec=_SPEC,
+                served_model_name="dlm-multi",
+                training_sequence_len=2048,
+                adapter_name=None,
+                adapter_path_override=None,
+                declared_adapter_names=("knowledge", "missing"),
+            )
+
+    def test_missing_adapter_override_raises(self, tmp_path: Path) -> None:
+        store = _setup_flat_store(tmp_path)
+
+        with pytest.raises(ExportError, match="adapter_path_override"):
+            prepare_vllm_export(
+                store=store,
+                spec=_SPEC,
+                served_model_name="dlm-mixed",
+                training_sequence_len=2048,
+                adapter_name=None,
+                adapter_path_override=tmp_path / "missing",
+                declared_adapter_names=None,
+            )
+
 
 class TestVllmSmoke:
     def test_smoke_uses_absolute_runtime_paths(self, tmp_path: Path, monkeypatch: object) -> None:
@@ -237,3 +328,130 @@ class TestVllmSmoke:
         }
         assert f"knowledge={prepared.export_dir / 'adapters' / 'knowledge'}" in argv
         assert f"tone={prepared.export_dir / 'adapters' / 'tone'}" in argv
+
+    def test_smoke_failure_returns_failed_result(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = _setup_flat_store(tmp_path)
+        prepared = prepare_vllm_export(
+            store=store,
+            spec=_SPEC,
+            served_model_name="dlm-flat",
+            training_sequence_len=2048,
+            adapter_name=None,
+            adapter_path_override=None,
+            declared_adapter_names=None,
+        )
+        monkeypatch.setattr(
+            "dlm.export.targets.vllm.smoke_openai_compat_server",
+            lambda argv, **kwargs: (_ for _ in ()).throw(TargetSmokeError("boom")),
+        )
+
+        result = VLLM_TARGET.smoke_test(prepared)
+
+        assert result.attempted is True
+        assert result.ok is False
+        assert result.detail == "boom"
+
+
+class TestVllmHelpers:
+    def test_default_runtime_env_is_empty_off_apple_silicon(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("dlm.export.targets.vllm._sys_platform", lambda: "linux")
+        monkeypatch.setattr("dlm.export.targets.vllm._machine", lambda: "x86_64")
+
+        assert _default_runtime_env() == {}
+
+    def test_runtime_env_validation(self) -> None:
+        empty = TargetResult(
+            name="vllm",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+        )
+        assert _runtime_env(empty) == {}
+
+        prepared = TargetResult(
+            name="vllm",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"runtime_env": {"A": "B"}},
+        )
+        assert _runtime_env(prepared) == {"A": "B"}
+
+        bad = TargetResult(
+            name="vllm",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"runtime_env": {"A": 3}},
+        )
+        with pytest.raises(ExportError, match="dict\\[str, str\\]"):
+            _runtime_env(bad)
+
+    def test_optional_int_and_module_validation(self) -> None:
+        prepared = TargetResult(
+            name="vllm",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"context_length": None},
+        )
+        assert _optional_prepared_int(prepared, "context_length") is None
+
+        bad_int = TargetResult(
+            name="vllm",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"context_length": "bad"},
+        )
+        with pytest.raises(ExportError, match="must be an int"):
+            _optional_prepared_int(bad_int, "context_length")
+
+        bad_modules = TargetResult(
+            name="vllm",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"module_specs": ("bad",)},
+        )
+        with pytest.raises(ExportError, match="LoraModule tuple"):
+            _require_module_specs(bad_modules)
+
+        good_modules = TargetResult(
+            name="vllm",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"module_specs": (LoraModule("adapter", Path("/tmp/a"), 1),)},
+        )
+        assert _require_module_specs(good_modules)[0].name == "adapter"
+
+        bad_str = TargetResult(
+            name="vllm",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"model": ""},
+        )
+        with pytest.raises(ExportError, match="missing string extra"):
+            _require_prepared_str(bad_str, "model")
+
+        bad_required_int = TargetResult(
+            name="vllm",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"context_length": "bad"},
+        )
+        with pytest.raises(ExportError, match="missing int extra"):
+            _require_prepared_int(bad_required_int, "context_length")
+
+    def test_render_launch_script_quotes_inline_script_dir_modules(self) -> None:
+        rendered = _render_launch_script(
+            [
+                "vllm",
+                "serve",
+                "model",
+                "knowledge=$SCRIPT_DIR/adapters/knowledge",
+                "$SCRIPT_DIR/direct",
+            ],
+            {},
+        )
+
+        assert 'knowledge="$SCRIPT_DIR/adapters/knowledge"' in rendered
+        assert '"$SCRIPT_DIR/direct"' in rendered

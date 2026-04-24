@@ -7,11 +7,14 @@ from pathlib import Path
 import pytest
 
 from dlm.base_models import BASE_MODELS
-from dlm.export.errors import ExportError
+from dlm.export.errors import ExportError, TargetSmokeError
 from dlm.export.manifest import load_export_manifest
+from dlm.export.targets.base import TargetResult
 from dlm.export.targets.mlx_serve import (
     LAUNCH_SCRIPT_FILENAME,
     MLX_SERVE_TARGET,
+    _quote_script_arg,
+    _require_prepared_int,
     finalize_mlx_serve_export,
     prepare_mlx_serve_export,
 )
@@ -60,6 +63,10 @@ def _setup_named_store(tmp_path: Path) -> object:
 
 
 class TestPrepareMlxServeExport:
+    def test_prepare_method_is_not_used_directly(self) -> None:
+        with pytest.raises(NotImplementedError, match="prepare_mlx_serve_export"):
+            MLX_SERVE_TARGET.prepare(object())
+
     def test_prepare_writes_launch_script_and_manifest(
         self, tmp_path: Path, monkeypatch: object
     ) -> None:
@@ -139,6 +146,50 @@ class TestPrepareMlxServeExport:
                 declared_adapter_names=None,
             )
 
+    def test_refuses_without_mlx_extra(self, tmp_path: Path, monkeypatch: object) -> None:
+        store = _setup_flat_store(tmp_path)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.is_apple_silicon", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.mlx_available", lambda: False)
+
+        with pytest.raises(ExportError, match="mlx extra"):
+            prepare_mlx_serve_export(
+                store=store,
+                spec=_SPEC,
+                adapter_name=None,
+                adapter_path_override=None,
+                declared_adapter_names=None,
+            )
+
+    def test_missing_named_adapter_raises(self, tmp_path: Path, monkeypatch: object) -> None:
+        store = _setup_named_store(tmp_path)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.is_apple_silicon", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.mlx_available", lambda: True)
+
+        with pytest.raises(ExportError, match="no current adapter under"):
+            prepare_mlx_serve_export(
+                store=store,
+                spec=_SPEC,
+                adapter_name="missing",
+                adapter_path_override=None,
+                declared_adapter_names=None,
+            )
+
+    def test_missing_default_adapter_raises(self, tmp_path: Path, monkeypatch: object) -> None:
+        store = for_dlm("01EMPTYMLX", home=tmp_path)
+        store.ensure_layout()
+        save_manifest(store.manifest, Manifest(dlm_id="01EMPTYMLX", base_model=_SPEC.key))
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.is_apple_silicon", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.mlx_available", lambda: True)
+
+        with pytest.raises(ExportError, match="no current adapter under"):
+            prepare_mlx_serve_export(
+                store=store,
+                spec=_SPEC,
+                adapter_name=None,
+                adapter_path_override=None,
+                declared_adapter_names=None,
+            )
+
 
 class TestMlxServeSmoke:
     def test_smoke_uses_absolute_runtime_paths(self, tmp_path: Path, monkeypatch: object) -> None:
@@ -171,3 +222,43 @@ class TestMlxServeSmoke:
         assert "$SCRIPT_DIR" not in " ".join(argv)
         assert _SPEC.hf_id in argv
         assert str(prepared.export_dir / "adapter") in argv
+
+    def test_smoke_failure_returns_failed_result(self, tmp_path: Path, monkeypatch: object) -> None:
+        store = _setup_flat_store(tmp_path)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.is_apple_silicon", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.mlx_available", lambda: True)
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.stage_mlx_adapter_dir", _fake_stage_mlx)
+        prepared = prepare_mlx_serve_export(
+            store=store,
+            spec=_SPEC,
+            adapter_name=None,
+            adapter_path_override=None,
+            declared_adapter_names=None,
+        )
+
+        def _fake_smoke(argv: list[str], **_: object) -> str:
+            _ = argv
+            raise TargetSmokeError("boom")
+
+        monkeypatch.setattr("dlm.export.targets.mlx_serve.smoke_openai_compat_server", _fake_smoke)
+
+        result = MLX_SERVE_TARGET.smoke_test(prepared)
+
+        assert result.attempted is True
+        assert result.ok is False
+        assert result.detail == "boom"
+
+
+class TestMlxServeHelpers:
+    def test_quote_script_arg_and_int_validation(self) -> None:
+        assert _quote_script_arg("$SCRIPT_DIR/adapter") == '"$SCRIPT_DIR/adapter"'
+        assert _quote_script_arg("plain value") == "'plain value'"
+
+        prepared = TargetResult(
+            name="mlx-serve",
+            export_dir=Path("/tmp/export"),
+            manifest_path=Path("/tmp/export/export_manifest.json"),
+            extras={"adapter_version": "bad"},
+        )
+        with pytest.raises(ExportError, match="missing int extra"):
+            _require_prepared_int(prepared, "adapter_version")
