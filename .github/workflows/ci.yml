@@ -291,16 +291,17 @@ jobs:
           # heterogeneous ubuntu runner hosts.
           key: llama-cpp-build-portable-v1-${{ runner.os }}-${{ hashFiles('.gitmodules', 'vendor/llama.cpp/VERSION') }}
 
-      - name: Build llama-quantize (if not cached)
+      - name: Build llama.cpp tools (if not cached)
         if: steps.llama-cpp-cache.outputs.cache-hit != 'true'
         run: |
           set -euxo pipefail
           # ubuntu-latest ships cmake; `sudo apt-get install -y cmake` is a no-op fallback.
           command -v cmake >/dev/null 2>&1 || sudo apt-get install -y cmake
-          scripts/bump-llama-cpp.sh build --portable
+          scripts/bump-llama-cpp.sh build --portable --with-server
 
       - name: Run slow tests
         env:
           HF_HOME: ${{ github.workspace }}/.hf-cache
           DLM_TINY_MODEL_REVISION: ${{ env.TINY_MODEL_REVISION }}
+          DLM_ENABLE_SLOW_INTEGRATION: "1"
         run: uv run pytest -m "slow" -v
