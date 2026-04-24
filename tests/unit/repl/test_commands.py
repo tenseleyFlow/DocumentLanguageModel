@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dlm.repl.commands import Action, is_command, parse_and_dispatch
+from dlm.repl.commands import Action, _truncate, is_command, parse_and_dispatch
 from dlm.repl.errors import BadCommandArgumentError, UnknownCommandError
 from dlm.repl.session import ReplSession
 
@@ -164,6 +164,11 @@ class TestHelp:
         assert result.message is not None
         for cmd in ("/exit", "/clear", "/save", "/adapter", "/params", "/model", "/history"):
             assert cmd in result.message
+
+
+class TestHelpers:
+    def test_truncate_adds_ellipsis_for_long_lines(self) -> None:
+        assert _truncate("x" * 20, 10) == "x" * 9 + "…"
 
 
 class TestUnknownCommand:
