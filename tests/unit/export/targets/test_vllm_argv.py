@@ -16,12 +16,14 @@ from dlm.export.targets.vllm import (
     VLLM_TARGET,
     LoraModule,
     _default_runtime_env,
+    _machine,
     _optional_prepared_int,
     _render_launch_script,
     _require_module_specs,
     _require_prepared_int,
     _require_prepared_str,
     _runtime_env,
+    _sys_platform,
     finalize_vllm_export,
     prepare_vllm_export,
 )
@@ -396,6 +398,10 @@ class TestVllmSmoke:
 
 
 class TestVllmHelpers:
+    def test_platform_helpers_return_strings(self) -> None:
+        assert isinstance(_sys_platform(), str)
+        assert isinstance(_machine(), str)
+
     def test_default_runtime_env_is_empty_off_apple_silicon(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
