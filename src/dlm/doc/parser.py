@@ -42,6 +42,7 @@ _HARVEST_MARKER_RE: Final[re.Pattern[str]] = re.compile(
     r'^<!-- dlm-auto-harvest: source="([^"]*)" -->$'
 )
 _AUTO_MINED_MARKER_RE: Final[re.Pattern[str]] = re.compile(r"^<!-- dlm-auto-mined:(.*) -->$")
+_AUTO_SYNTH_MARKER_RE: Final[re.Pattern[str]] = re.compile(r"^<!-- dlm-auto-synth:(.*) -->$")
 _MARKER_ATTR_BLOB_RE: Final[re.Pattern[str]] = re.compile(r'(?:\s+[a-z][a-z0-9_]*="[^"\n]*")+')
 _AUTO_MINED_KEYS: Final[frozenset[str]] = frozenset(
     {
@@ -50,6 +51,14 @@ _AUTO_MINED_KEYS: Final[frozenset[str]] = frozenset(
         "judge_score_rejected",
         "mined_at",
         "mined_run_id",
+    }
+)
+_AUTO_SYNTH_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "synth_teacher",
+        "synth_strategy",
+        "synth_at",
+        "source_section_id",
     }
 )
 
@@ -243,6 +252,11 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
         judge_score_rejected: float | None = None
         mined_at: str | None = None
         mined_run_id: int | None = None
+        auto_synth = False
+        synth_teacher: str | None = None
+        synth_strategy: str | None = None
+        synth_at: str | None = None
+        source_section_id: str | None = None
         media_types = (SectionType.PROSE, SectionType.IMAGE, SectionType.AUDIO)
         if current_type not in media_types:
             while lines_for_content:
@@ -273,6 +287,25 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
                     auto_mined = True
                     lines_for_content = lines_for_content[1:]
                     continue
+                synth_match = (
+                    _AUTO_SYNTH_MARKER_RE.match(first)
+                    if current_type == SectionType.INSTRUCTION
+                    else None
+                )
+                if synth_match:
+                    (
+                        synth_teacher,
+                        synth_strategy,
+                        synth_at,
+                        source_section_id,
+                    ) = _parse_auto_synth_marker(
+                        synth_match.group(1),
+                        path=path,
+                        line=current_start_line,
+                    )
+                    auto_synth = True
+                    lines_for_content = lines_for_content[1:]
+                    continue
                 break
         content = "\n".join(lines_for_content)
         # Elide empty PROSE sections (no content at all).
@@ -295,6 +328,11 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
                 judge_score_rejected=judge_score_rejected,
                 mined_at=mined_at,
                 mined_run_id=mined_run_id,
+                auto_synth=auto_synth,
+                synth_teacher=synth_teacher,
+                synth_strategy=synth_strategy,
+                synth_at=synth_at,
+                source_section_id=source_section_id,
                 media_path=current_media_path,
                 media_alt=current_media_alt,
                 media_transcript=current_media_transcript,
@@ -562,4 +600,76 @@ def _parse_auto_mined_marker(
         score_rejected,
         mined_at,
         mined_run_id,
+    )
+
+
+def _parse_auto_synth_marker(
+    attr_blob: str, *, path: Path | None, line: int
+) -> tuple[str, str, str, str]:
+    """Parse the Sprint 43 auto-synth metadata marker on instruction sections."""
+    if not _MARKER_ATTR_BLOB_RE.fullmatch(attr_blob):
+        raise FenceError(
+            "invalid dlm-auto-synth marker syntax",
+            path=path,
+            line=line,
+            col=1,
+        )
+
+    attrs: dict[str, str] = {}
+    for kv in _ATTR_KV_RE.finditer(attr_blob):
+        key = kv.group(1)
+        value = kv.group(2)
+        if key in attrs:
+            raise FenceError(
+                f"dlm-auto-synth marker repeats attribute {key!r}",
+                path=path,
+                line=line,
+                col=1,
+            )
+        if key not in _AUTO_SYNTH_KEYS:
+            raise FenceError(
+                f"dlm-auto-synth marker has unknown attribute {key!r} "
+                f"(allowed: {sorted(_AUTO_SYNTH_KEYS)})",
+                path=path,
+                line=line,
+                col=1,
+            )
+        attrs[key] = value
+
+    missing = _AUTO_SYNTH_KEYS - attrs.keys()
+    if missing:
+        raise FenceError(
+            f"dlm-auto-synth marker is missing required attribute(s) {sorted(missing)}",
+            path=path,
+            line=line,
+            col=1,
+        )
+
+    synth_at = attrs["synth_at"]
+    try:
+        datetime.fromisoformat(synth_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise FenceError(
+            "dlm-auto-synth marker synth_at must be ISO-8601",
+            path=path,
+            line=line,
+            col=1,
+        ) from exc
+
+    source_section_id = attrs["source_section_id"]
+    if len(source_section_id) != 16 or any(
+        ch not in "0123456789abcdef" for ch in source_section_id
+    ):
+        raise FenceError(
+            "dlm-auto-synth marker source_section_id must be a 16-char lowercase hex section id",
+            path=path,
+            line=line,
+            col=1,
+        )
+
+    return (
+        attrs["synth_teacher"],
+        attrs["synth_strategy"],
+        synth_at,
+        source_section_id,
     )

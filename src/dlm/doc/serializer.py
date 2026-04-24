@@ -315,6 +315,23 @@ def _serialize_section(section: Section) -> str:
             ]
         )
         markers.append(f"<!-- dlm-auto-mined: {attr_blob} -->\n")
+    if section.auto_synth:
+        if (
+            section.synth_teacher is None
+            or section.synth_strategy is None
+            or section.synth_at is None
+            or section.source_section_id is None
+        ):
+            raise ValueError("auto_synth section is missing required metadata fields")
+        attr_blob = " ".join(
+            [
+                f'synth_teacher="{_marker_attr_value(section.synth_teacher)}"',
+                f'synth_strategy="{_marker_attr_value(section.synth_strategy)}"',
+                f'synth_at="{_marker_attr_value(section.synth_at)}"',
+                f'source_section_id="{_marker_attr_value(section.source_section_id)}"',
+            ]
+        )
+        markers.append(f"<!-- dlm-auto-synth: {attr_blob} -->\n")
     return fence + "".join(markers) + body
 
 

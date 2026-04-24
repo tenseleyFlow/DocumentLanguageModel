@@ -22,7 +22,7 @@ _ULID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9A-HJ-KM-NP-TV-Z]{26}$")
 # Keeps store paths safe (adapter/<name>/versions/) and log lines readable.
 _ADAPTER_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
-CURRENT_SCHEMA_VERSION: Final[int] = 14
+CURRENT_SCHEMA_VERSION: Final[int] = 15
 """Schema version this parser implements.
 
 New fields bump the version and register a migrator in the same
@@ -57,7 +57,11 @@ ones. v14 adds additive auto-mined preference metadata on
 `::preference::` sections; the frontmatter shape remains unchanged,
 but the schema still advances so migration-aware tooling can tell
 pre-mining docs from ones that may carry mined-preference markers in
-the body.
+the body. v15 adds additive auto-synth instruction metadata on
+`::instruction::` sections; the frontmatter shape remains unchanged,
+but the schema still advances so migration-aware tooling can tell
+pre-synth docs from ones that may carry synthesized-instruction
+markers in the body.
 """
 
 

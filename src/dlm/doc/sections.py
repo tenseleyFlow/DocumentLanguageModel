@@ -99,6 +99,13 @@ class Section:
     provenance for review, metrics, and revert flows. Like harvest
     metadata, these fields do not participate in `section_id`.
 
+    `auto_synth` marks an `::instruction::` section as synthesized by
+    Sprint 43's instruction-generation loop rather than hand-authored.
+    The accompanying metadata (`synth_teacher`, `synth_strategy`,
+    `synth_at`, `source_section_id`) captures provenance for review,
+    metrics, and revert flows. Like the other provenance flags, these
+    fields do not participate in `section_id`.
+
     `media_path` / `media_alt` / `media_blob_sha` are media-section
     fields (IMAGE + AUDIO) populated from the fence attributes and
     the content-addressed blob store (after ingestion). Non-media
@@ -122,38 +129,74 @@ class Section:
     judge_score_rejected: float | None = None
     mined_at: str | None = None
     mined_run_id: int | None = None
+    auto_synth: bool = False
+    synth_teacher: str | None = None
+    synth_strategy: str | None = None
+    synth_at: str | None = None
+    source_section_id: str | None = None
     media_path: str | None = None
     media_alt: str | None = None
     media_blob_sha: str | None = None
     media_transcript: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.auto_mined:
-            return
-        if self.type != SectionType.PREFERENCE:
-            raise ValueError("auto_mined metadata is only valid on preference sections")
-        missing = [
-            name
-            for name, value in (
-                ("judge_name", self.judge_name),
-                ("judge_score_chosen", self.judge_score_chosen),
-                ("judge_score_rejected", self.judge_score_rejected),
-                ("mined_at", self.mined_at),
-                ("mined_run_id", self.mined_run_id),
-            )
-            if value is None
-        ]
-        if missing:
-            raise ValueError(f"auto_mined preference sections require metadata fields {missing!r}")
-        assert self.judge_score_chosen is not None
-        assert self.judge_score_rejected is not None
-        if not math.isfinite(self.judge_score_chosen) or not math.isfinite(
-            self.judge_score_rejected
-        ):
-            raise ValueError("judge scores must be finite floats")
-        assert self.mined_run_id is not None
-        if self.mined_run_id < 1:
-            raise ValueError("mined_run_id must be >= 1")
+        if self.auto_mined:
+            if self.type != SectionType.PREFERENCE:
+                raise ValueError("auto_mined metadata is only valid on preference sections")
+            missing = [
+                name
+                for name, value in (
+                    ("judge_name", self.judge_name),
+                    ("judge_score_chosen", self.judge_score_chosen),
+                    ("judge_score_rejected", self.judge_score_rejected),
+                    ("mined_at", self.mined_at),
+                    ("mined_run_id", self.mined_run_id),
+                )
+                if value is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"auto_mined preference sections require metadata fields {missing!r}"
+                )
+            assert self.judge_score_chosen is not None
+            assert self.judge_score_rejected is not None
+            if not math.isfinite(self.judge_score_chosen) or not math.isfinite(
+                self.judge_score_rejected
+            ):
+                raise ValueError("judge scores must be finite floats")
+            assert self.mined_run_id is not None
+            if self.mined_run_id < 1:
+                raise ValueError("mined_run_id must be >= 1")
+
+        if self.auto_synth:
+            if self.type != SectionType.INSTRUCTION:
+                raise ValueError("auto_synth metadata is only valid on instruction sections")
+            missing = [
+                name
+                for name, value in (
+                    ("synth_teacher", self.synth_teacher),
+                    ("synth_strategy", self.synth_strategy),
+                    ("synth_at", self.synth_at),
+                    ("source_section_id", self.source_section_id),
+                )
+                if value is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"auto_synth instruction sections require metadata fields {missing!r}"
+                )
+            assert self.synth_teacher is not None
+            assert self.synth_strategy is not None
+            assert self.synth_at is not None
+            assert self.source_section_id is not None
+            if not self.synth_teacher:
+                raise ValueError("synth_teacher must be non-empty")
+            if not self.synth_strategy:
+                raise ValueError("synth_strategy must be non-empty")
+            if len(self.source_section_id) != _SECTION_ID_BYTES * 2 or any(
+                ch not in "0123456789abcdef" for ch in self.source_section_id
+            ):
+                raise ValueError("source_section_id must be a 16-char lowercase hex section id")
 
     @property
     def section_id(self) -> str:
