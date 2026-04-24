@@ -47,6 +47,12 @@ Trains via **supervised fine-tuning (SFT)**: the model sees `Q` text
 as the prompt, `A` text as the target. This is the pattern that
 produces "helpful assistant" behavior.
 
+`dlm synth instructions` can also write synthesized instruction
+sections back into the document. Those keep the same basic body grammar
+but add an HTML provenance marker immediately after the fence. See the
+[instruction section reference](instruction-section.md) for the full
+marker shape and validation rules.
+
 ### Preference (`::preference::`)
 
 Open with `::preference::`. Each record has three blocks:
@@ -159,6 +165,7 @@ being picked up as new?", the ID in `dlm show --json` is the answer.
 
 ## See also
 
+- [Instruction section reference](instruction-section.md)
 - [Preference section reference](preference-section.md)
 - [First train walkthrough](../getting-started/first-train.md)
 - [Cookbook: coding tutor](../cookbook/coding-tutor.md) — full

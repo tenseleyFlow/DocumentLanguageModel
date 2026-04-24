@@ -58,6 +58,7 @@ nav:
   - The .dlm format:
       - Frontmatter: format/frontmatter.md
       - Sections: format/sections.md
+      - Instruction sections: format/instruction-section.md
       - Preference sections: format/preference-section.md
       - Export manifest: format/export-manifest.md
       - .dlm/training.yaml: format/dlm-training-yaml.md
@@ -72,6 +73,8 @@ nav:
       - Sharing with pack: cookbook/sharing-with-pack.md
       - Quantization tradeoffs: cookbook/quantization-tradeoffs.md
       - Preference (DPO vs ORPO): cookbook/preference-dpo-vs-orpo.md
+      - Synthesize training data: cookbook/synthesize-training-data.md
+      - Bootstrap self-improving: cookbook/bootstrap-self-improving.md
       - Self-improving loop: cookbook/self-improving-loop.md
       - Reward-model integration: cookbook/reward-model-integration.md
       - Multi-adapter composition: cookbook/multi-adapter.md

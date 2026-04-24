@@ -23,6 +23,8 @@ as Ollama, `llama-server`, `vllm`, and `mlx-serve`.
   vision-language, and audio-language rows
 - **Replay-backed retraining** so edits accumulate instead of silently wiping
   prior state
+- **Synthetic data loops** through `dlm synth instructions` and
+  `dlm synth preferences`
 - **Multi-adapter docs + learned gating** for separating knowledge, tone, or
   persona lanes inside one project
 - **Local iteration UX** with `prompt`, `repl`, `train --watch`, `metrics`,
@@ -49,6 +51,7 @@ $ uv run dlm export tutor.dlm --target ollama --name my-tutor
 | Train across a real repo | [Training across codebases](cookbook/training-across-codebases.md) |
 | Use named adapters and routing | [Multi-adapter](cookbook/multi-adapter.md) and [Learned adapter gate](cookbook/learned-adapter-gate.md) |
 | Work with images or audio | [Multimodal training](cookbook/multimodal-training.md) and [Audio training](cookbook/audio-training.md) |
+| Turn prose into instruction data | [Synthesize training data](cookbook/synthesize-training-data.md) and [Bootstrap self-improving](cookbook/bootstrap-self-improving.md) |
 | Mine preference pairs from a live adapter | [Self-improving loop](cookbook/self-improving-loop.md) and [Reward-model integration](cookbook/reward-model-integration.md) |
 | Export or ship a model | [Multi-target export](cookbook/multi-target-export.md), [CLI reference](cli/reference.md), and [Determinism](determinism.md) |
 | Pull eval failures back into training | [Probe-driven training](cookbook/probe-driven-training.md) |
