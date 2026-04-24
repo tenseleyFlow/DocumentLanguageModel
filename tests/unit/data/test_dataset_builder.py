@@ -51,6 +51,23 @@ class TestBuildDataset:
         all_text = {r["text"] for r in list(train) + list(val)}
         assert {"source doc prose", "replay-1", "replay-2"}.issubset(all_text)
 
+    def test_preference_replay_rows_filtered(self) -> None:
+        sections = [_s(SectionType.PROSE, "source doc prose")]
+        replay = [
+            {"text": "sft-replay", "_dlm_section_id": "replay-sft"},
+            {
+                "prompt": "q",
+                "chosen": "good",
+                "rejected": "bad",
+                "_dlm_section_id": "replay-pref",
+            },
+        ]
+        train, val = build_dataset(sections, seed=0, val_frac=0.1, replay_rows=replay)
+        all_rows = list(train) + list(val)
+        all_text = {r.get("text") for r in all_rows if r.get("text")}
+        assert "sft-replay" in all_text
+        assert not any(r.get("prompt") == "q" for r in all_rows)
+
     def test_empty_rows_raises(self) -> None:
         sections = [_s(SectionType.PROSE, "   ")]
         with pytest.raises(ValueError, match="no trainable rows"):

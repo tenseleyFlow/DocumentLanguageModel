@@ -64,7 +64,7 @@ def build_dataset(
         audio_token=audio_token,
     )
     if replay_rows is not None:
-        rows.extend(replay_rows)
+        rows.extend(r for r in replay_rows if not _is_preference_row(r))
 
     if not rows:
         raise ValueError(
@@ -79,3 +79,11 @@ def build_dataset(
             )
 
     return split(rows, val_frac=val_frac, seed=seed)
+
+
+def _is_preference_row(row: Row) -> bool:
+    return (
+        row.get("prompt") is not None
+        and row.get("chosen") is not None
+        and row.get("rejected") is not None
+    )
