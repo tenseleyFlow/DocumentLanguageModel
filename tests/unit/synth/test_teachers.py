@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import builtins
+import json
+import sys
+import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -440,3 +444,289 @@ class TestTeacherHelpers:
         assert teachers_mod._openai_compat_chat_url("http://127.0.0.1:8000") == (
             "http://127.0.0.1:8000/v1/chat/completions"
         )
+
+
+class TestTeacherRuntimeHelpers:
+    def test_resolve_generation_device_prefers_requested_or_detected_backends(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        assert teachers_mod._resolve_generation_device("mps") == "mps"
+
+        monkeypatch.delitem(sys.modules, "torch", raising=False)
+        real_import = builtins.__import__
+
+        def _missing_torch(
+            name: str,
+            globals: dict[str, object] | None = None,
+            locals: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> object:
+            if name == "torch":
+                raise ImportError("no torch")
+            return real_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", _missing_torch)
+        assert teachers_mod._resolve_generation_device("auto") == "cpu"
+
+        monkeypatch.setattr(builtins, "__import__", real_import)
+        monkeypatch.setitem(
+            sys.modules,
+            "torch",
+            SimpleNamespace(
+                cuda=SimpleNamespace(is_available=lambda: True),
+                backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
+            ),
+        )
+        assert teachers_mod._resolve_generation_device("auto") == "cuda"
+
+        monkeypatch.setitem(
+            sys.modules,
+            "torch",
+            SimpleNamespace(
+                cuda=SimpleNamespace(is_available=lambda: False),
+                backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: True)),
+            ),
+        )
+        assert teachers_mod._resolve_generation_device("auto") == "mps"
+
+        monkeypatch.setitem(
+            sys.modules,
+            "torch",
+            SimpleNamespace(
+                cuda=SimpleNamespace(is_available=lambda: False),
+                backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
+            ),
+        )
+        assert teachers_mod._resolve_generation_device("auto") == "cpu"
+
+    def test_default_openai_client_validates_import_surface(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _raise_import(name: str) -> object:
+            raise ImportError(name)
+
+        monkeypatch.setattr("dlm.synth.teachers.importlib.import_module", _raise_import)
+        with pytest.raises(TeacherUnavailableError, match="requires the openai package"):
+            teachers_mod._default_openai_client("secret")
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.importlib.import_module", lambda _name: SimpleNamespace()
+        )
+        with pytest.raises(TeacherUnavailableError, match="does not expose OpenAI client"):
+            teachers_mod._default_openai_client("secret")
+
+        captured: list[str] = []
+
+        class _OpenAI:
+            def __init__(self, *, api_key: str) -> None:
+                captured.append(api_key)
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.importlib.import_module",
+            lambda _name: SimpleNamespace(OpenAI=_OpenAI),
+        )
+        client = teachers_mod._default_openai_client("secret")
+        assert isinstance(client, _OpenAI)
+        assert captured == ["secret"]
+
+    def test_default_anthropic_client_validates_import_surface(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _raise_import(name: str) -> object:
+            raise ImportError(name)
+
+        monkeypatch.setattr("dlm.synth.teachers.importlib.import_module", _raise_import)
+        with pytest.raises(TeacherUnavailableError, match="requires the anthropic package"):
+            teachers_mod._default_anthropic_client("secret")
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.importlib.import_module", lambda _name: SimpleNamespace()
+        )
+        with pytest.raises(TeacherUnavailableError, match="does not expose Anthropic client"):
+            teachers_mod._default_anthropic_client("secret")
+
+        captured: list[str] = []
+
+        class _Anthropic:
+            def __init__(self, *, api_key: str) -> None:
+                captured.append(api_key)
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.importlib.import_module",
+            lambda _name: SimpleNamespace(Anthropic=_Anthropic),
+        )
+        client = teachers_mod._default_anthropic_client("secret")
+        assert isinstance(client, _Anthropic)
+        assert captured == ["secret"]
+
+    def test_fetch_openai_compat_model_id_handles_success_empty_and_errors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class _Response:
+            def __init__(self, payload: object) -> None:
+                self._payload = payload
+
+            def __enter__(self) -> _Response:
+                return self
+
+            def __exit__(self, *_args: object) -> Literal[False]:
+                return False
+
+            def read(self) -> bytes:
+                return json.dumps(self._payload).encode("utf-8")
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.urllib.request.urlopen",
+            lambda *_args, **_kwargs: _Response({"data": [{"id": "demo-model"}]}),
+        )
+        assert (
+            teachers_mod._fetch_openai_compat_model_id(
+                "http://127.0.0.1:8000",
+                request_timeout=1.0,
+            )
+            == "demo-model"
+        )
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.urllib.request.urlopen",
+            lambda *_args, **_kwargs: _Response({"data": []}),
+        )
+        assert (
+            teachers_mod._fetch_openai_compat_model_id(
+                "http://127.0.0.1:8000",
+                request_timeout=1.0,
+            )
+            is None
+        )
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.urllib.request.urlopen",
+            lambda *_args, **_kwargs: _Response({"data": [{"id": "   "}]}),
+        )
+        assert (
+            teachers_mod._fetch_openai_compat_model_id(
+                "http://127.0.0.1:8000",
+                request_timeout=1.0,
+            )
+            is None
+        )
+
+        def _raise_url_error(*_args: object, **_kwargs: object) -> object:
+            raise urllib.error.URLError("boom")
+
+        monkeypatch.setattr("dlm.synth.teachers.urllib.request.urlopen", _raise_url_error)
+        with pytest.raises(TeacherUnavailableError, match="could not query models"):
+            teachers_mod._fetch_openai_compat_model_id(
+                "http://127.0.0.1:8000",
+                request_timeout=1.0,
+            )
+
+    def test_request_openai_compat_completion_handles_success_and_failures(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class _Response:
+            def __init__(self, payload: object) -> None:
+                self._payload = payload
+
+            def __enter__(self) -> _Response:
+                return self
+
+            def __exit__(self, *_args: object) -> Literal[False]:
+                return False
+
+            def read(self) -> bytes:
+                return json.dumps(self._payload).encode("utf-8")
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.urllib.request.urlopen",
+            lambda *_args, **_kwargs: _Response(
+                {"choices": [{"message": {"content": [{"text": " served "}]}}]}
+            ),
+        )
+        assert (
+            teachers_mod._request_openai_compat_completion(
+                "http://127.0.0.1:8000",
+                model_id="demo-model",
+                messages=[{"role": "user", "content": "hello"}],
+                max_new_tokens=11,
+                temperature=0.2,
+                top_p=0.8,
+                seed=5,
+                request_timeout=1.0,
+            )
+            == "served"
+        )
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.urllib.request.urlopen",
+            lambda *_args, **_kwargs: _Response({"choices": []}),
+        )
+        with pytest.raises(TeacherInvocationError, match="response missing choices"):
+            teachers_mod._request_openai_compat_completion(
+                "http://127.0.0.1:8000",
+                model_id=None,
+                messages=[{"role": "user", "content": "hello"}],
+                max_new_tokens=11,
+                temperature=0.2,
+                top_p=None,
+                seed=None,
+                request_timeout=1.0,
+            )
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.urllib.request.urlopen",
+            lambda *_args, **_kwargs: _Response({"choices": [{}]}),
+        )
+        with pytest.raises(
+            TeacherInvocationError, match="response missing choices\\[0\\]\\.message"
+        ):
+            teachers_mod._request_openai_compat_completion(
+                "http://127.0.0.1:8000",
+                model_id=None,
+                messages=[{"role": "user", "content": "hello"}],
+                max_new_tokens=11,
+                temperature=0.2,
+                top_p=None,
+                seed=None,
+                request_timeout=1.0,
+            )
+
+        monkeypatch.setattr(
+            "dlm.synth.teachers.urllib.request.urlopen",
+            lambda *_args, **_kwargs: _Response(
+                {"choices": [{"message": {"content": [{"text": "   "}]}}]}
+            ),
+        )
+        with pytest.raises(TeacherInvocationError, match="missing non-empty message content"):
+            teachers_mod._request_openai_compat_completion(
+                "http://127.0.0.1:8000",
+                model_id=None,
+                messages=[{"role": "user", "content": "hello"}],
+                max_new_tokens=11,
+                temperature=0.2,
+                top_p=None,
+                seed=None,
+                request_timeout=1.0,
+            )
+
+        def _raise_url_error(*_args: object, **_kwargs: object) -> object:
+            raise urllib.error.URLError("boom")
+
+        monkeypatch.setattr("dlm.synth.teachers.urllib.request.urlopen", _raise_url_error)
+        with pytest.raises(TeacherInvocationError, match="request to http://127.0.0.1:8000 failed"):
+            teachers_mod._request_openai_compat_completion(
+                "http://127.0.0.1:8000",
+                model_id=None,
+                messages=[{"role": "user", "content": "hello"}],
+                max_new_tokens=11,
+                temperature=0.2,
+                top_p=None,
+                seed=None,
+                request_timeout=1.0,
+            )
