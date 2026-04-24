@@ -15,7 +15,7 @@ from dlm.cli.app import app
 from dlm.doc.parser import parse_file
 from dlm.doc.sections import SectionType
 
-_DLM_ID = "01KSYNTHVLLM000000000000000"
+_DLM_ID = "01KPQ9X1000000000000000000"
 
 
 def _write_doc(path: Path) -> None:
