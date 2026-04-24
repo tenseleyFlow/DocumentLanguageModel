@@ -47,6 +47,10 @@ class TestParsePromptEvalCount:
         )
         assert parse_prompt_eval_count(stderr) == 7
 
+    def test_invalid_json_summary_line_is_skipped(self) -> None:
+        stderr = '{"prompt_eval_count": nope}\nprompt eval count: 9 token(s)\n'
+        assert parse_prompt_eval_count(stderr) == 9
+
     def test_no_counter_raises(self) -> None:
         with pytest.raises(VerificationError, match="telemetry parse"):
             parse_prompt_eval_count("random output\nno counter here\n")
@@ -132,6 +136,31 @@ class TestRunWithTelemetry:
         assert "demo:latest" in argv
         assert "--verbose" in argv
         assert "hello" in argv
+
+    def test_default_runner_uses_located_binary(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+            return subprocess.CompletedProcess(
+                args=cmd,
+                returncode=0,
+                stdout="",
+                stderr='{"prompt_eval_count": 3}',
+            )
+
+        monkeypatch.setattr("dlm.export.ollama.verify.locate_ollama", lambda: Path("/tmp/ollama"))
+        monkeypatch.setattr("dlm.export.ollama.verify.subprocess.run", _fake_run)
+
+        assert run_with_telemetry(ollama_name="demo:latest", prompt="hi", timeout=12.5) == 3
+        assert captured["cmd"] == ["/tmp/ollama", "run", "demo:latest", "--verbose", "hi"]
+        assert captured["kwargs"] == {
+            "capture_output": True,
+            "text": True,
+            "check": False,
+            "timeout": 12.5,
+        }
 
 
 # --- verify_token_count -----------------------------------------------------

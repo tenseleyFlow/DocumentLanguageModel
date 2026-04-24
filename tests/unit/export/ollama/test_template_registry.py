@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from dlm.export.ollama.errors import TemplateRegistryError
 from dlm.export.ollama.template_registry import (
+    DialectTemplate,
     get_template,
     load_template_text,
     registered_dialects,
@@ -95,6 +98,16 @@ class TestRegistryLookup:
     def test_load_template_text_is_file_bytes(self) -> None:
         text = load_template_text("chatml")
         assert "{{" in text  # Go template syntax present
+
+    def test_missing_template_file_raises(self, tmp_path: Path) -> None:
+        row = DialectTemplate(
+            dialect="chatml",
+            template_path=tmp_path / "missing.gotmpl",
+            default_stops=("<|im_end|>",),
+        )
+
+        with pytest.raises(TemplateRegistryError, match="template file missing"):
+            row.read_template()
 
 
 class TestDialectShapes:
