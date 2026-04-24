@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import dlm.train.preference.phase_orchestrator as phase_orchestrator
 from dlm.doc.schema import PreferenceConfig
 from dlm.doc.sections import Section, SectionType
 from dlm.train.preference.errors import (
@@ -175,6 +176,23 @@ class TestDispatcherSftOnly:
 
         _, kwargs = sft.call_args
         assert kwargs["strict_metrics"] is True
+
+    def test_sft_phase_forwards_world_size_to_sft_runner(self) -> None:
+        sft = MagicMock(return_value=_FakeRunResult(adapter_version=1))
+
+        run_phases(
+            store=MagicMock(),
+            parsed=_parsed([_prose()]),
+            spec=MagicMock(),
+            plan=MagicMock(),
+            phase="sft",
+            world_size=4,
+            sft_runner=sft,
+            dpo_runner=MagicMock(),
+        )
+
+        _, kwargs = sft.call_args
+        assert kwargs["world_size"] == 4
 
     def test_sft_phase_skips_when_no_sft_content(self) -> None:
         sft = MagicMock()
@@ -376,6 +394,16 @@ class TestPhaseResult:
         pr = PhaseResult(phase="sft", result=_FakeRunResult(adapter_version=1))
         with pytest.raises(dataclasses.FrozenInstanceError):
             pr.phase = "dpo"  # type: ignore[misc]
+
+
+class TestMethodRunner:
+    def test_method_runner_uses_registry_resolver(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = MagicMock()
+        monkeypatch.setattr(
+            "dlm.train.preference.method_registry.resolve",
+            lambda method: fake if method == "orpo" else None,
+        )
+        assert phase_orchestrator._method_runner("orpo") is fake
 
 
 class TestAutoEnableIntegration:
