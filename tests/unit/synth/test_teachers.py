@@ -7,7 +7,7 @@ import json
 import sys
 import urllib.error
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Any, Literal
 
 import pytest
@@ -25,6 +25,13 @@ from dlm.synth import (
     build_teacher,
     parse_teacher_ref,
 )
+
+
+def _module(name: str, **attrs: object) -> ModuleType:
+    module = ModuleType(name)
+    for key, value in attrs.items():
+        setattr(module, key, value)
+    return module
 
 
 class TestTeacherSelectorParsing:
@@ -730,3 +737,362 @@ class TestTeacherRuntimeHelpers:
                 seed=None,
                 request_timeout=1.0,
             )
+
+
+def _install_self_loader_modules(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    manifest_exists: bool = True,
+    license_acceptance: object | None = "accepted",
+    load_manifest_error: str | None = None,
+    resolve_error: str | None = None,
+    select_error: str | None = None,
+    backend_load_error: str | None = None,
+) -> dict[str, object]:
+    calls: dict[str, object] = {}
+    spec = object()
+    caps = object()
+    parsed = SimpleNamespace(
+        frontmatter=SimpleNamespace(
+            dlm_id="01KPQ9X1000000000000000000",
+            base_model="smollm2-135m",
+        )
+    )
+    manifest = SimpleNamespace(exists=lambda: manifest_exists)
+    store = SimpleNamespace(manifest=manifest)
+
+    class GatedModelError(Exception):
+        pass
+
+    class AdapterNotFoundError(Exception):
+        pass
+
+    class UnsupportedBackendError(Exception):
+        pass
+
+    class ManifestCorruptError(Exception):
+        pass
+
+    class _Backend:
+        def load(self, spec_arg: object, store_arg: object) -> None:
+            calls["load"] = (spec_arg, store_arg)
+            if backend_load_error is not None:
+                raise AdapterNotFoundError(backend_load_error)
+
+    backend = _Backend()
+
+    def _resolve(base_model: str, *, accept_license: bool) -> object:
+        calls["resolve"] = (base_model, accept_license)
+        if resolve_error is not None:
+            raise GatedModelError(resolve_error)
+        return spec
+
+    def _load_manifest(_path: object) -> object:
+        calls["load_manifest"] = True
+        if load_manifest_error is not None:
+            raise ManifestCorruptError(load_manifest_error)
+        return SimpleNamespace(license_acceptance=license_acceptance)
+
+    def _select_backend(backend_name: str, capabilities: object) -> str:
+        calls["select_backend"] = (backend_name, capabilities)
+        if select_error is not None:
+            raise UnsupportedBackendError(select_error)
+        return "stub-backend"
+
+    def _build_backend(name: str, capabilities: object) -> object:
+        calls["build_backend"] = (name, capabilities)
+        return backend
+
+    monkeypatch.setitem(
+        sys.modules, "dlm.base_models", _module("dlm.base_models", resolve=_resolve)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dlm.base_models.errors",
+        _module("dlm.base_models.errors", GatedModelError=GatedModelError),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dlm.doc.parser",
+        _module("dlm.doc.parser", parse_file=lambda _path: parsed),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dlm.hardware",
+        _module("dlm.hardware", doctor=lambda: SimpleNamespace(capabilities=caps)),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dlm.inference",
+        _module("dlm.inference", AdapterNotFoundError=AdapterNotFoundError),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dlm.inference.backends",
+        _module(
+            "dlm.inference.backends", build_backend=_build_backend, select_backend=_select_backend
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dlm.inference.backends.select",
+        _module("dlm.inference.backends.select", UnsupportedBackendError=UnsupportedBackendError),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dlm.store.errors",
+        _module("dlm.store.errors", ManifestCorruptError=ManifestCorruptError),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dlm.store.manifest",
+        _module("dlm.store.manifest", load_manifest=_load_manifest),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dlm.store.paths",
+        _module("dlm.store.paths", for_dlm=lambda _dlm_id: store),
+    )
+
+    calls["caps"] = caps
+    calls["store"] = store
+    calls["spec"] = spec
+    calls["errors"] = {
+        "gated": GatedModelError,
+        "adapter": AdapterNotFoundError,
+        "unsupported": UnsupportedBackendError,
+        "manifest": ManifestCorruptError,
+    }
+    return calls
+
+
+class TestTeacherLoaderHelpers:
+    def test_load_self_backend_wraps_import_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        real_import = builtins.__import__
+
+        def _raise_on_base_models(
+            name: str,
+            globals: dict[str, object] | None = None,
+            locals: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> object:
+            if name.startswith("dlm.base_models"):
+                raise ImportError("boom")
+            return real_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", _raise_on_base_models)
+        with pytest.raises(TeacherUnavailableError, match="requires the local inference stack"):
+            teachers_mod._load_self_backend(Path("/tmp/doc.dlm"), "auto")
+
+    def test_load_self_backend_uses_recorded_license_acceptance(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls = _install_self_loader_modules(monkeypatch, license_acceptance="accepted")
+
+        backend = teachers_mod._load_self_backend(Path("/tmp/doc.dlm"), "auto")
+
+        assert backend is not None
+        assert calls["resolve"] == ("smollm2-135m", True)
+        assert calls["select_backend"] == ("auto", calls["caps"])
+        assert calls["build_backend"] == ("stub-backend", calls["caps"])
+        assert calls["load"] == (calls["spec"], calls["store"])
+
+    def test_load_self_backend_tolerates_manifest_read_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls = _install_self_loader_modules(
+            monkeypatch,
+            load_manifest_error="bad manifest",
+        )
+
+        teachers_mod._load_self_backend(Path("/tmp/doc.dlm"), "auto")
+
+        assert calls["resolve"] == ("smollm2-135m", False)
+
+    def test_load_self_backend_wraps_gated_backend_and_adapter_failures(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _install_self_loader_modules(monkeypatch, resolve_error="gated")
+        with pytest.raises(TeacherUnavailableError, match="cannot resolve gated base"):
+            teachers_mod._load_self_backend(Path("/tmp/doc.dlm"), "auto")
+
+        _install_self_loader_modules(monkeypatch, select_error="unsupported backend")
+        with pytest.raises(TeacherUnavailableError, match="unsupported backend"):
+            teachers_mod._load_self_backend(Path("/tmp/doc.dlm"), "auto")
+
+        _install_self_loader_modules(monkeypatch, backend_load_error="missing adapter")
+        with pytest.raises(TeacherUnavailableError, match="requires a trained adapter"):
+            teachers_mod._load_self_backend(Path("/tmp/doc.dlm"), "auto")
+
+    def test_default_hf_loader_wraps_import_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        real_import = builtins.__import__
+
+        def _raise_transformers(
+            name: str,
+            globals: dict[str, object] | None = None,
+            locals: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> object:
+            if name == "transformers":
+                raise ImportError("boom")
+            return real_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", _raise_transformers)
+        with pytest.raises(TeacherUnavailableError, match="requires transformers"):
+            teachers_mod._default_hf_loader("hf/model", "cpu")
+
+    def test_default_hf_loader_moves_model_and_sets_eval(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: dict[str, object] = {}
+
+        class _Model:
+            def to(self, device: str) -> _Model:
+                seen["device"] = device
+                return self
+
+            def eval(self) -> None:
+                seen["eval"] = True
+
+        model = _Model()
+
+        class AutoModelForCausalLM:
+            @staticmethod
+            def from_pretrained(hf_id: str) -> _Model:
+                seen["model_id"] = hf_id
+                return model
+
+        class AutoTokenizer:
+            @staticmethod
+            def from_pretrained(hf_id: str) -> str:
+                seen["tokenizer_id"] = hf_id
+                return "tok"
+
+        monkeypatch.setitem(
+            sys.modules,
+            "transformers",
+            _module(
+                "transformers",
+                AutoModelForCausalLM=AutoModelForCausalLM,
+                AutoTokenizer=AutoTokenizer,
+            ),
+        )
+
+        loaded = teachers_mod._default_hf_loader("hf/model", "cuda")
+
+        assert loaded.model is model
+        assert loaded.tokenizer == "tok"
+        assert loaded.device == "cuda"
+        assert seen == {
+            "model_id": "hf/model",
+            "tokenizer_id": "hf/model",
+            "device": "cuda",
+            "eval": True,
+        }
+
+    def test_default_hf_generate_seeds_torch_and_calls_runner(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        manual: list[int] = []
+        manual_all: list[int] = []
+        calls: dict[str, object] = {}
+
+        def _generate(
+            model: object,
+            tokenizer: object,
+            prompt: str,
+            *,
+            max_new_tokens: int,
+            temperature: float,
+            top_p: float | None,
+        ) -> str:
+            calls["args"] = (model, tokenizer, prompt, max_new_tokens, temperature, top_p)
+            return "ok"
+
+        monkeypatch.setitem(
+            sys.modules,
+            "dlm.inference.generate",
+            _module("dlm.inference.generate", generate=_generate),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "torch",
+            SimpleNamespace(
+                manual_seed=lambda seed: manual.append(seed),
+                cuda=SimpleNamespace(
+                    is_available=lambda: True,
+                    manual_seed_all=lambda seed: manual_all.append(seed),
+                ),
+            ),
+        )
+
+        out = teachers_mod._default_hf_generate(
+            "model",
+            "tokenizer",
+            "prompt",
+            max_new_tokens=17,
+            temperature=0.3,
+            top_p=0.8,
+            seed=7,
+        )
+
+        assert out == "ok"
+        assert manual == [7]
+        assert manual_all == [7]
+        assert calls["args"] == ("model", "tokenizer", "prompt", 17, 0.3, 0.8)
+
+    def test_default_hf_generate_tolerates_missing_torch_when_seeding(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        real_import = builtins.__import__
+
+        def _generate(
+            model: object,
+            tokenizer: object,
+            prompt: str,
+            *,
+            max_new_tokens: int,
+            temperature: float,
+            top_p: float | None,
+        ) -> str:
+            _ = model, tokenizer, prompt, max_new_tokens, temperature, top_p
+            return "ok"
+
+        def _raise_torch(
+            name: str,
+            globals: dict[str, object] | None = None,
+            locals: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> object:
+            if name == "torch":
+                raise ImportError("no torch")
+            return real_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "dlm.inference.generate",
+            _module("dlm.inference.generate", generate=_generate),
+        )
+        monkeypatch.delitem(sys.modules, "torch", raising=False)
+        monkeypatch.setattr(builtins, "__import__", _raise_torch)
+
+        out = teachers_mod._default_hf_generate(
+            "model",
+            "tokenizer",
+            "prompt",
+            max_new_tokens=17,
+            temperature=0.3,
+            top_p=0.8,
+            seed=7,
+        )
+
+        assert out == "ok"
