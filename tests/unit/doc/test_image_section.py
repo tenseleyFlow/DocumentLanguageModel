@@ -21,7 +21,7 @@ from dlm.doc.serializer import serialize
 _FRONTMATTER = """\
 ---
 dlm_id: 01JZZZZZZZZZZZZZZZZZZZZZZZ
-dlm_version: 12
+dlm_version: 15
 base_model: smollm2-135m
 ---
 """

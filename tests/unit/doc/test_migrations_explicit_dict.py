@@ -16,6 +16,8 @@ from dlm.doc.migrations import (
     v10,
     v11,
     v12,
+    v13,
+    v14,
 )
 
 
@@ -33,4 +35,6 @@ def test_explicit_registry_points_at_shipped_modules() -> None:
         10: v10.migrate,
         11: v11.migrate,
         12: v12.migrate,
+        13: v13.migrate,
+        14: v14.migrate,
     } == MIGRATORS
