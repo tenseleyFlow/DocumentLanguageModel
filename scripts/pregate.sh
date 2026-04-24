@@ -12,8 +12,9 @@
 #   - tests pinning `dlm_version == N` for a stale N (schema bumps break these)
 #
 # Usage:
-#   ./scripts/pregate.sh          # runs the full gate
-#   ./scripts/pregate.sh --fast   # skip mypy + pytest, only ruff + pattern checks
+#   ./scripts/pregate.sh              # runs the full gate
+#   ./scripts/pregate.sh --fast       # skip mypy + pytest, only ruff + pattern checks
+#   ./scripts/pregate.sh --coverage   # also mirror the Ubuntu package coverage gates
 #
 # Wire as a git hook with:
 #   ln -s ../../scripts/pregate.sh .git/hooks/pre-push
@@ -21,11 +22,25 @@
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-.uv-cache}"
 
 fast=0
-if [[ "${1:-}" == "--fast" ]]; then
-    fast=1
-fi
+coverage=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --fast)
+            fast=1
+            ;;
+        --coverage)
+            coverage=1
+            ;;
+        *)
+            echo "usage: ./scripts/pregate.sh [--fast] [--coverage]" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
 
 echo "==> ruff check"
 uv run ruff check .
@@ -42,6 +57,11 @@ if [[ $fast -eq 0 ]]; then
 
     echo "==> pytest (unit; no slow marker)"
     uv run pytest tests/unit -q --no-header
+fi
+
+if [[ $coverage -eq 1 ]]; then
+    echo "==> coverage gates (Ubuntu mirror)"
+    ./scripts/coverage-gates.sh
 fi
 
 # --- Pattern checks that mirror known CI foot-guns --------------------
