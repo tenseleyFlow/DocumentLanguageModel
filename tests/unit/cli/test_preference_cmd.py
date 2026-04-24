@@ -109,10 +109,16 @@ class _FakeJudge:
         return PairScore(score_a=0.1, score_b=0.9)
 
 
+class _NamedFakeJudge(_FakeJudge):
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
 def _patch_text_mining(
     monkeypatch: pytest.MonkeyPatch,
     *,
     responses: dict[str, list[str]],
+    judge_names: dict[str, str] | None = None,
 ) -> None:
     monkeypatch.setattr("dlm.base_models.resolve", lambda *args, **kwargs: _spec())
     monkeypatch.setattr(
@@ -127,10 +133,17 @@ def _patch_text_mining(
         "dlm.inference.backends.build_backend",
         lambda *args, **kwargs: _FakeBackend(responses),
     )
-    monkeypatch.setattr(
-        "dlm.preference.build_judge",
-        lambda *args, **kwargs: _FakeJudge(),
-    )
+    if judge_names is None:
+        monkeypatch.setattr(
+            "dlm.preference.build_judge",
+            lambda *args, **kwargs: _FakeJudge(),
+        )
+        return
+
+    def _build_judge(ref: str, **_kwargs: object) -> _NamedFakeJudge:
+        return _NamedFakeJudge(judge_names[ref])
+
+    monkeypatch.setattr("dlm.preference.build_judge", _build_judge)
 
 
 class TestPreferenceCmd:
@@ -171,6 +184,52 @@ class TestPreferenceCmd:
         assert rows[0].mined_pairs == 1
         assert rows[0].skipped_prompts == 0
         assert rows[0].write_mode == "staged"
+
+    @pytest.mark.parametrize(
+        ("judge_ref", "expected_name"),
+        [
+            ("sway", "sway:preference_judge"),
+            ("hf:reward/model", "hf:reward/model"),
+            ("cli:judge-bin --json", "cli:judge-bin --json"),
+        ],
+    )
+    def test_mine_routes_explicit_judge_refs_through_cli_surface(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        judge_ref: str,
+        expected_name: str,
+    ) -> None:
+        home = tmp_path / "home"
+        doc = tmp_path / "doc.dlm"
+        _write_doc(doc)
+        _write_manifest(home, doc)
+        _patch_text_mining(
+            monkeypatch,
+            responses={"What is DGEMM?": ["bad answer", "good answer"]},
+            judge_names={judge_ref: expected_name},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "--home",
+                str(home),
+                "preference",
+                "mine",
+                str(doc),
+                "--samples",
+                "2",
+                "--judge",
+                judge_ref,
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        rows = preference_mining_for_run(for_dlm(_DLM_ID, home=home).root, run_id=7)
+        assert len(rows) == 1
+        assert rows[0].judge_name == expected_name
 
     def test_apply_writes_staged_preferences_and_clears_pending(
         self,
