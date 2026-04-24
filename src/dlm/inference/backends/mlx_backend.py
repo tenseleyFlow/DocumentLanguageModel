@@ -164,13 +164,13 @@ class MlxBackend(InferenceBackend):
         *,
         adapter_name: str | None = None,
     ) -> None:
-        from mlx_lm import load
-
         from dlm.inference.loader import resolve_adapter_path
 
         adapter_path = resolve_adapter_path(store, adapter_name=adapter_name)
         if not adapter_path.exists():
             raise AdapterNotFoundError(f"mlx backend: adapter dir {adapter_path} does not exist")
+
+        from mlx_lm import load
 
         # Stage both tensors + adapter_config.json into a scratch dir.
         # `stage_mlx_adapter_dir` performs the preflight PEFT-shape

@@ -128,7 +128,10 @@ class TestHfTeacher:
             "system", "user", max_new_tokens=21, temperature=0.5, top_p=0.8, seed=11
         )
         assert out == "hf output"
-        assert seen["loader"] == ("Qwen/Qwen2.5-1.5B-Instruct", "cpu")
+        assert seen["loader"] == (
+            "Qwen/Qwen2.5-1.5B-Instruct",
+            teachers_mod._resolve_generation_device("auto"),
+        )
         assert seen["runner"][3:] == (21, 0.5, 0.8, 11)
 
 

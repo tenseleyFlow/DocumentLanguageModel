@@ -45,7 +45,13 @@ class TestPrecisionPicker:
         with force_mps():
             caps = probe()
         with caplog.at_level(logging.WARNING, logger="dlm.hardware.plan"):  # type: ignore[attr-defined]
-            plan = resolve(_cfg(precision="fp16"), caps, base_params=8_000_000_000, seq_len=2048)
+            plan = resolve(
+                _cfg(precision="fp16"),
+                caps,
+                base_params=8_000_000_000,
+                seq_len=2048,
+                force=True,
+            )
         assert plan.precision == "fp16"
         # The caller must see the risk explicitly — silent fp16 on MPS
         # is what caused the original bug.
