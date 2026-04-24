@@ -12,12 +12,15 @@ from dlm.cli.app import app
 _RUNNER = CliRunner()
 _ROOT = Path(__file__).resolve().parents[3]
 _REFERENCE_DOC = (_ROOT / "docs" / "cli" / "reference.md").read_text(encoding="utf-8")
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 def _normalized_help(*argv: str) -> str:
     result = _RUNNER.invoke(app, [*argv, "--help"])
     assert result.exit_code == 0, result.output
-    return " ".join(result.output.split())
+    plain = _ANSI_RE.sub("", result.output)
+    tableless = plain.translate(str.maketrans(dict.fromkeys("│╭╮╰╯─", " ")))
+    return " ".join(tableless.split())
 
 
 def _section(name: str) -> str:

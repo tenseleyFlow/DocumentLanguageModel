@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from typer.testing import CliRunner
 
 from dlm.cli.app import app
 
 _RUNNER = CliRunner()
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 def _normalized_help(*argv: str) -> str:
     result = _RUNNER.invoke(app, [*argv, "--help"])
     assert result.exit_code == 0, result.output
-    tableless = result.output.translate(str.maketrans(dict.fromkeys("│╭╮╰╯─", " ")))
+    plain = _ANSI_RE.sub("", result.output)
+    tableless = plain.translate(str.maketrans(dict.fromkeys("│╭╮╰╯─", " ")))
     return " ".join(tableless.split())
 
 
@@ -31,7 +35,7 @@ def _normalized_help(*argv: str) -> str:
         (
             ("export",),
             (
-                "--target TEXT Export destination. Currently supported: ollama, llama-server.",
+                "--target TEXT Export destination. Currently supported: ollama, llama-server, vllm, mlx-serve.",
                 "--merged Merge the adapter into the base before export.",
                 "--dequantize Dequantize a QLoRA base to fp16 before merging.",
                 "--no-smoke Register the export but skip the smoke prompt.",

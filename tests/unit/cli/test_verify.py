@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import re
 import tarfile
 from pathlib import Path
 
@@ -11,6 +12,14 @@ from typer.testing import CliRunner
 
 from dlm.cli.app import app
 from dlm.pack.layout import PROVENANCE_FILENAME
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def _normalized_output(text: str) -> str:
+    plain = _ANSI_RE.sub("", text)
+    tableless = plain.translate(str.maketrans(dict.fromkeys("│╭╮╰╯─", " ")))
+    return " ".join(tableless.split())
 
 
 def _make_pack_with(payloads: dict[str, bytes], path: Path) -> None:
@@ -86,5 +95,6 @@ def test_verify_help_text_surfaces_flags() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["verify", "--help"])
     assert result.exit_code == 0
-    assert "--trust-on-first-use" in result.output
-    assert "provenance" in result.output.lower()
+    text = _normalized_output(result.output)
+    assert "--trust-on-first-use" in text
+    assert "provenance" in text.lower()

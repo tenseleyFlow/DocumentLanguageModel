@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,13 @@ from dlm.store.paths import for_dlm
 from tests.fixtures.hardware_mocks import force_mps
 
 _DLM_ID = "01TEST0" + "0" * 19
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def _normalized_output(text: str) -> str:
+    plain = _ANSI_RE.sub("", text)
+    tableless = plain.translate(str.maketrans(dict.fromkeys("│╭╮╰╯─", " ")))
+    return " ".join(tableless.split())
 
 
 def _write_minimal_dlm(path: Path, *, dlm_id: str = _DLM_ID) -> None:
@@ -87,4 +95,4 @@ class TestTrainNoMined:
     def test_flag_appears_in_help(self) -> None:
         result = CliRunner().invoke(app, ["train", "--help"])
         assert result.exit_code == 0
-        assert "--no-mined" in result.output
+        assert "--no-mined" in _normalized_output(result.output)
