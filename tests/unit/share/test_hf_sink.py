@@ -152,6 +152,27 @@ class TestPushHf:
         with pytest.raises(SinkError, match="upload failed"):
             push_hf(pack, "user/myadapter")
 
+    def test_readme_upload_failure_translates_to_sink_error(
+        self,
+        pack: Path,
+        patched_hub: dict[str, list[dict[str, object]]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import huggingface_hub
+
+        calls = {"count": 0}
+
+        def _boom_on_second_upload(**kwargs: object) -> str:
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise _FakeHfHubHTTPError("readme denied")
+            return f"https://huggingface.co/{kwargs['repo_id']}/blob/main/{kwargs['path_in_repo']}"
+
+        monkeypatch.setattr(huggingface_hub, "upload_file", _boom_on_second_upload, raising=False)
+
+        with pytest.raises(SinkError, match="README upload failed"):
+            push_hf(pack, "user/myadapter")
+
     def test_progress_fires_with_full_size(
         self, pack: Path, patched_hub: dict[str, list[dict[str, object]]]
     ) -> None:

@@ -124,6 +124,32 @@ class TestPushUrl:
         with pytest.raises(SinkError, match="network error"):
             push_url(pack, "https://example.com/upload")
 
+    def test_non_2xx_response_object_is_refused(
+        self, pack: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _fake_urlopen(req: urllib.request.Request, data: object, timeout: int) -> _FakeResponse:
+            return _FakeResponse(status=500)
+
+        monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
+
+        with pytest.raises(SinkError, match="HTTP 500"):
+            push_url(pack, "https://example.com/upload")
+
+    def test_io_error_reading_pack_is_translated(
+        self, pack: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real_open = Path.open
+
+        def _broken_open(self: Path, *args: object, **kwargs: object):
+            if self == pack:
+                raise OSError("disk error")
+            return real_open(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", _broken_open)
+
+        with pytest.raises(SinkError, match="I/O error reading"):
+            push_url(pack, "https://example.com/upload")
+
     def test_progress_called_at_start_and_end(
         self, pack: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -215,6 +241,61 @@ class TestPullUrl:
         monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
         with pytest.raises(SinkError, match="HTTP 404"):
             pull_url("https://example.com/p", tmp_path / "out.pack")
+
+    def test_non_2xx_response_object_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _fake_urlopen(req: urllib.request.Request, timeout: int) -> _FakeResponse:
+            return _FakeResponse(status=503, body=b"down")
+
+        monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
+        with pytest.raises(SinkError, match="HTTP 503"):
+            pull_url("https://example.com/p", tmp_path / "out.pack")
+
+    def test_network_error_is_translated(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _fake_urlopen(req: urllib.request.Request, timeout: int) -> _FakeResponse:
+            raise urllib.error.URLError("reset")
+
+        monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
+        with pytest.raises(SinkError, match="network error"):
+            pull_url("https://example.com/p", tmp_path / "out.pack")
+
+    def test_io_error_writing_is_translated(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out = tmp_path / "nested" / "out.pack"
+
+        def _fake_urlopen(req: urllib.request.Request, timeout: int) -> _FakeResponse:
+            return _FakeResponse(status=200, body=b"payload", headers={"Content-Length": "7"})
+
+        real_open = Path.open
+
+        def _broken_open(self: Path, *args: object, **kwargs: object):
+            if self == out:
+                raise OSError("read only")
+            return real_open(self, *args, **kwargs)
+
+        monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
+        monkeypatch.setattr(Path, "open", _broken_open)
+
+        with pytest.raises(SinkError, match="I/O error writing"):
+            pull_url("https://example.com/p", out)
+
+    def test_http_scheme_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        out = tmp_path / "fetched.pack"
+
+        def _fake_urlopen(req: urllib.request.Request, timeout: int) -> _FakeResponse:
+            return _FakeResponse(status=200, body=b"x", headers={"Content-Length": "1"})
+
+        monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
+        with caplog.at_level("WARNING", logger="dlm.share.url_sink"):
+            pull_url("http://example.com/p", out)
+
+        assert any("plaintext HTTP" in rec.message for rec in caplog.records)
 
     def test_creates_parent_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         out = tmp_path / "nested" / "dir" / "fetched.pack"
