@@ -15,6 +15,7 @@ from dlm.synth import (
     InvalidTeacherSpecError,
     OpenAiTeacher,
     SelfTeacher,
+    TeacherInvocationError,
     TeacherUnavailableError,
     VllmServerTeacher,
     build_teacher,
@@ -45,6 +46,19 @@ class TestTeacherSelectorParsing:
     def test_unknown_selector_refused(self) -> None:
         with pytest.raises(InvalidTeacherSpecError, match="unknown teacher selector"):
             parse_teacher_ref("mystery:thing")
+
+    @pytest.mark.parametrize(
+        ("raw", "message"),
+        [
+            ("hf:   ", "hf teacher selector must include a model id"),
+            ("openai:   ", "openai teacher selector must include a model id"),
+            ("anthropic:   ", "anthropic teacher selector must include a model id"),
+            ("vllm-server:   ", "vllm-server teacher selector must include a URL"),
+        ],
+    )
+    def test_missing_selector_targets_are_refused(self, raw: str, message: str) -> None:
+        with pytest.raises(InvalidTeacherSpecError, match=message):
+            parse_teacher_ref(raw)
 
 
 class TestBuildTeacher:
@@ -103,6 +117,10 @@ class TestSelfTeacher:
 
 
 class TestHfTeacher:
+    def test_blank_hf_id_refused(self) -> None:
+        with pytest.raises(InvalidTeacherSpecError, match="must include a model id"):
+            HfTeacher("   ")
+
     def test_hf_teacher_uses_loader_and_runner(self) -> None:
         seen: dict[str, Any] = {}
 
@@ -134,8 +152,31 @@ class TestHfTeacher:
         )
         assert seen["runner"][3:] == (21, 0.5, 0.8, 11)
 
+    def test_hf_teacher_reuses_loaded_bundle(self) -> None:
+        loads: list[tuple[str, str]] = []
+
+        def _loader(hf_id: str, device: str) -> teachers_mod._LoadedHfTeacher:
+            loads.append((hf_id, device))
+            return teachers_mod._LoadedHfTeacher(model="model", tokenizer="tok", device=device)
+
+        teacher = HfTeacher(
+            "Qwen/Qwen2.5-1.5B-Instruct",
+            loader=_loader,
+            runner=lambda *_args, **_kwargs: "ok",
+        )
+
+        assert teacher.generate("system", "user") == "ok"
+        assert teacher.generate("system", "user") == "ok"
+        assert loads == [
+            ("Qwen/Qwen2.5-1.5B-Instruct", teachers_mod._resolve_generation_device("auto"))
+        ]
+
 
 class TestOpenAiTeacher:
+    def test_blank_model_refused(self) -> None:
+        with pytest.raises(InvalidTeacherSpecError, match="must include a model id"):
+            OpenAiTeacher("   ")
+
     def test_missing_api_key_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         teacher = OpenAiTeacher("gpt-4o-mini")
@@ -145,13 +186,18 @@ class TestOpenAiTeacher:
     def test_openai_teacher_extracts_message_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "secret")
 
-        captured: dict[str, Any] = {}
+        payloads: list[dict[str, Any]] = []
+        factories: list[str] = []
 
         def _create(**kwargs: Any) -> Any:
-            captured["payload"] = kwargs
+            payloads.append(kwargs)
             return SimpleNamespace(
                 choices=[SimpleNamespace(message=SimpleNamespace(content=" generated "))]
             )
+
+        def _factory(api_key: str) -> Any:
+            factories.append(api_key)
+            return client
 
         client = SimpleNamespace(
             chat=SimpleNamespace(
@@ -159,14 +205,40 @@ class TestOpenAiTeacher:
             )
         )
 
-        teacher = OpenAiTeacher("gpt-4o-mini", client_factory=lambda api_key: client)
+        teacher = OpenAiTeacher(
+            "gpt-4o-mini",
+            client_factory=_factory,
+        )
         out = teacher.generate("sys", "usr", max_new_tokens=17, temperature=0.3, top_p=0.7, seed=5)
+        second = teacher.generate("sys", "usr")
         assert out == "generated"
-        assert captured["payload"]["model"] == "gpt-4o-mini"
-        assert captured["payload"]["seed"] == 5
+        assert second == "generated"
+        assert payloads[0]["model"] == "gpt-4o-mini"
+        assert payloads[0]["seed"] == 5
+        assert factories == ["secret"]
+
+    def test_openai_teacher_wraps_request_failures(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "secret")
+
+        def _create(**_kwargs: Any) -> Any:
+            raise RuntimeError("boom")
+
+        client = SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(create=_create),
+            )
+        )
+        teacher = OpenAiTeacher("gpt-4o-mini", client_factory=lambda _api_key: client)
+
+        with pytest.raises(TeacherInvocationError, match="openai:gpt-4o-mini request failed: boom"):
+            teacher.generate("sys", "usr")
 
 
 class TestAnthropicTeacher:
+    def test_blank_model_refused(self) -> None:
+        with pytest.raises(InvalidTeacherSpecError, match="must include a model id"):
+            AnthropicTeacher("   ")
+
     def test_missing_api_key_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         teacher = AnthropicTeacher("claude-3-5-haiku-latest")
@@ -176,6 +248,7 @@ class TestAnthropicTeacher:
     def test_anthropic_teacher_extracts_text_blocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "secret")
         captured: dict[str, Any] = {}
+        factories: list[str] = []
 
         class _Messages:
             @staticmethod
@@ -183,6 +256,7 @@ class TestAnthropicTeacher:
                 captured["payload"] = kwargs
                 return SimpleNamespace(
                     content=[
+                        SimpleNamespace(type="image", text="ignored"),
                         SimpleNamespace(type="text", text=" first "),
                         SimpleNamespace(type="text", text=" second "),
                     ]
@@ -191,16 +265,51 @@ class TestAnthropicTeacher:
         class _Client:
             messages = _Messages()
 
+        def _factory(api_key: str) -> _Client:
+            factories.append(api_key)
+            return _Client()
+
         teacher = AnthropicTeacher(
             "claude-3-5-haiku-latest",
-            client_factory=lambda api_key: _Client(),
+            client_factory=_factory,
         )
         out = teacher.generate("sys", "usr", max_new_tokens=19, temperature=0.2, top_p=0.6)
+        second = teacher.generate("sys", "usr")
         assert out == "first\nsecond"
+        assert second == "first\nsecond"
         assert captured["payload"]["model"] == "claude-3-5-haiku-latest"
+        assert factories == ["secret"]
+
+    def test_anthropic_teacher_wraps_request_failures(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "secret")
+
+        class _Messages:
+            @staticmethod
+            def create(**_kwargs: Any) -> Any:
+                raise RuntimeError("boom")
+
+        class _Client:
+            messages = _Messages()
+
+        teacher = AnthropicTeacher(
+            "claude-3-5-haiku-latest",
+            client_factory=lambda _api_key: _Client(),
+        )
+
+        with pytest.raises(
+            TeacherInvocationError,
+            match="anthropic:claude-3-5-haiku-latest request failed: boom",
+        ):
+            teacher.generate("sys", "usr")
 
 
 class TestVllmServerTeacher:
+    def test_blank_url_refused(self) -> None:
+        with pytest.raises(InvalidTeacherSpecError, match="must include a URL"):
+            VllmServerTeacher("   ")
+
     def test_invalid_url_refused(self) -> None:
         with pytest.raises(InvalidTeacherSpecError, match="http\\(s\\)"):
             VllmServerTeacher("localhost:8000")
@@ -208,10 +317,11 @@ class TestVllmServerTeacher:
     def test_vllm_teacher_queries_model_and_completion(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        calls: dict[str, Any] = {}
+        model_calls: list[tuple[str, float]] = []
+        completion_calls: list[tuple[Any, ...]] = []
 
         def _fake_models(base_url: str, *, request_timeout: float) -> str | None:
-            calls["models"] = (base_url, request_timeout)
+            model_calls.append((base_url, request_timeout))
             return "demo-model"
 
         def _fake_completion(
@@ -225,15 +335,17 @@ class TestVllmServerTeacher:
             seed: int | None,
             request_timeout: float,
         ) -> str:
-            calls["completion"] = (
-                base_url,
-                model_id,
-                messages,
-                max_new_tokens,
-                temperature,
-                top_p,
-                seed,
-                request_timeout,
+            completion_calls.append(
+                (
+                    base_url,
+                    model_id,
+                    messages,
+                    max_new_tokens,
+                    temperature,
+                    top_p,
+                    seed,
+                    request_timeout,
+                )
             )
             return " served "
 
@@ -242,8 +354,89 @@ class TestVllmServerTeacher:
 
         teacher = VllmServerTeacher("http://127.0.0.1:8000")
         out = teacher.generate("sys", "usr", max_new_tokens=29, temperature=0.4, top_p=0.75, seed=9)
+        second = teacher.generate("sys", "usr")
 
         assert out == "served"
-        assert calls["models"] == ("http://127.0.0.1:8000", 30.0)
-        assert calls["completion"][1] == "demo-model"
-        assert calls["completion"][3:] == (29, 0.4, 0.75, 9, 30.0)
+        assert second == "served"
+        assert model_calls == [("http://127.0.0.1:8000", 30.0)]
+        assert completion_calls[0][1] == "demo-model"
+        assert completion_calls[0][3:] == (29, 0.4, 0.75, 9, 30.0)
+
+
+class TestTeacherHelpers:
+    def test_flatten_teacher_prompt_handles_partial_inputs(self) -> None:
+        assert teachers_mod._flatten_teacher_prompt("system", "user").startswith("System:\n")
+        assert teachers_mod._flatten_teacher_prompt("", "user") == "user"
+        assert teachers_mod._flatten_teacher_prompt("system", "") == "system"
+
+    def test_require_non_empty_teacher_output_refuses_blank_text(self) -> None:
+        with pytest.raises(TeacherInvocationError, match="self returned empty output"):
+            teachers_mod._require_non_empty_teacher_output("   ", teacher="self")
+
+    def test_extract_openai_message_text_handles_list_content_and_errors(self) -> None:
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": [
+                            {"text": " first "},
+                            {"text": " second "},
+                        ]
+                    }
+                }
+            ]
+        }
+        assert teachers_mod._extract_openai_message_text(response) == "first\nsecond"
+
+        with pytest.raises(TeacherInvocationError, match="missing choices"):
+            teachers_mod._extract_openai_message_text({})
+
+        with pytest.raises(TeacherInvocationError, match="missing choices\\[0\\]\\.message"):
+            teachers_mod._extract_openai_message_text({"choices": [{}]})
+
+        with pytest.raises(TeacherInvocationError, match="missing non-empty message content"):
+            teachers_mod._extract_openai_message_text({"choices": [{"message": {"content": None}}]})
+
+    def test_extract_anthropic_text_handles_errors(self) -> None:
+        with pytest.raises(TeacherInvocationError, match="missing content blocks"):
+            teachers_mod._extract_anthropic_text({})
+
+        with pytest.raises(TeacherInvocationError, match="missing non-empty text blocks"):
+            teachers_mod._extract_anthropic_text(
+                {"content": [{"type": "image", "text": "ignored"}, {"type": "text", "text": "   "}]}
+            )
+
+    def test_normalize_chat_content_and_obj_get_helpers(self) -> None:
+        assert teachers_mod._normalize_chat_content(" hello ") == "hello"
+        assert (
+            teachers_mod._normalize_chat_content([{"text": " one "}, {"text": " two "}])
+            == "one\ntwo"
+        )
+        assert teachers_mod._normalize_chat_content([{"text": "   "}]) is None
+        assert teachers_mod._normalize_chat_content(123) is None
+        assert teachers_mod._obj_get({"name": "value"}, "name") == "value"
+        assert teachers_mod._obj_get(SimpleNamespace(name="value"), "name") == "value"
+
+    def test_openai_compat_url_helpers_normalize_suffixes(self) -> None:
+        assert (
+            teachers_mod._normalize_openai_compat_base_url(
+                "http://127.0.0.1:8000/v1/chat/completions"
+            )
+            == "http://127.0.0.1:8000"
+        )
+        assert (
+            teachers_mod._normalize_openai_compat_base_url("http://127.0.0.1:8000/chat/completions")
+            == "http://127.0.0.1:8000"
+        )
+        assert teachers_mod._openai_compat_models_url("http://127.0.0.1:8000/v1") == (
+            "http://127.0.0.1:8000/v1/models"
+        )
+        assert teachers_mod._openai_compat_models_url("http://127.0.0.1:8000") == (
+            "http://127.0.0.1:8000/v1/models"
+        )
+        assert teachers_mod._openai_compat_chat_url("http://127.0.0.1:8000/v1") == (
+            "http://127.0.0.1:8000/v1/chat/completions"
+        )
+        assert teachers_mod._openai_compat_chat_url("http://127.0.0.1:8000") == (
+            "http://127.0.0.1:8000/v1/chat/completions"
+        )
