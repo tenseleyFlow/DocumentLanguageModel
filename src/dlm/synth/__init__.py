@@ -6,6 +6,16 @@ from dlm.synth.errors import (
     TeacherInvocationError,
     TeacherUnavailableError,
 )
+from dlm.synth.filter import (
+    FilteredSynthInstruction,
+    FilteredSynthPlan,
+    FilteredSynthSection,
+    SynthFilterKind,
+    SynthFilterReport,
+    SynthFilterSkipReason,
+    filter_synth_plan,
+    render_filter_report,
+)
 from dlm.synth.prompts import (
     DEFAULT_PROMPT_TEMPLATES,
     PromptParserKind,
@@ -39,6 +49,9 @@ from dlm.synth.teachers import (
 __all__ = [
     "AnthropicTeacher",
     "DEFAULT_PROMPT_TEMPLATES",
+    "FilteredSynthInstruction",
+    "FilteredSynthPlan",
+    "FilteredSynthSection",
     "HfTeacher",
     "InvalidTeacherSpecError",
     "OpenAiTeacher",
@@ -47,6 +60,9 @@ __all__ = [
     "SelfTeacher",
     "SkippedSynthSection",
     "SynthError",
+    "SynthFilterKind",
+    "SynthFilterReport",
+    "SynthFilterSkipReason",
     "SynthPair",
     "SynthPromptTemplate",
     "SynthRunPlan",
@@ -61,7 +77,9 @@ __all__ = [
     "VllmServerTeacher",
     "build_synth_plan",
     "build_teacher",
+    "filter_synth_plan",
     "get_prompt_template",
     "parse_teacher_ref",
+    "render_filter_report",
     "render_synth_plan",
 ]
