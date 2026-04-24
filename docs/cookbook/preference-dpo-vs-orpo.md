@@ -122,5 +122,9 @@ self.
 
 - [First train walkthrough](../getting-started/first-train.md) for
   the single-phase flow this builds on
+- [Self-improving loop](self-improving-loop.md) for mining fresh
+  preference pairs from a trained adapter
+- [Reward-model integration](reward-model-integration.md) for
+  `hf:` and `cli:` judge flows
 - [Determinism](../determinism.md) — the preference method and
   hyperparams participate in the `dlm.lock` reproducibility record

@@ -71,6 +71,8 @@ nav:
       - Sharing with pack: cookbook/sharing-with-pack.md
       - Quantization tradeoffs: cookbook/quantization-tradeoffs.md
       - Preference (DPO vs ORPO): cookbook/preference-dpo-vs-orpo.md
+      - Self-improving loop: cookbook/self-improving-loop.md
+      - Reward-model integration: cookbook/reward-model-integration.md
       - Multi-adapter composition: cookbook/multi-adapter.md
       - Interactive sessions: cookbook/interactive-session.md
       - Save-to-train (--watch): cookbook/watch-mode.md
