@@ -15,12 +15,12 @@ A `.dlm` can be:
 
 DLM trains LoRA / QLoRA / DoRA adapters on real pretrained bases, keeps a replay
 history so retrains do not silently forget, and exports local runtimes such as
-Ollama and `llama-server`.
+Ollama, `llama-server`, `vllm`, and `mlx-serve`.
 
 **Status:** pre-v1.0, but far beyond the original MVP framing. The core
 author/train/prompt/export/pack/share loop is real, and newer runtime-target
 work is landing incrementally. Current export targets are `ollama`,
-`llama-server`, and `vllm`.
+`llama-server`, `vllm`, and `mlx-serve`.
 
 ## What A `.dlm` Actually Is
 
@@ -79,8 +79,8 @@ DLM sits in the gap:
   `dlm train --watch`, `dlm metrics`, and `dlm doctor` are all part of the
   normal workflow now.
 - **Export beyond the original Ollama-only story.** DLM still does explicit
-  Ollama exports with pinned templates, and now also emits `llama-server`
-  launch artifacts against the same GGUF path.
+  Ollama exports with pinned templates, and now also emits `llama-server`,
+  `vllm`, and `mlx-serve` launch artifacts for local runtime targets.
 - **Close the eval loop.** `dlm harvest` can pull failing `sway`-style probe
   reports back into the document as new training examples.
 - **Pack and share reproducibly.** `.dlm.pack`, verification, push/pull, and
@@ -90,10 +90,10 @@ DLM sits in the gap:
 
 | Tier | Training | Inference / export |
 |---|---|---|
-| NVIDIA CUDA (SM ≥ 8.0) | bf16 + QLoRA 4-bit + FlashAttention | Ollama, GGUF export, `llama-server` launch artifacts |
-| NVIDIA CUDA (SM < 8.0) | fp16 LoRA | Ollama, GGUF export, `llama-server` launch artifacts |
-| Apple Silicon (MPS) | fp16 or fp32 LoRA depending on doctor plan | Ollama, selected MLX inference paths, GGUF export |
-| CPU | inference-first; training refused above small bases unless forced | GGUF export, Ollama, `llama-server` launch artifacts |
+| NVIDIA CUDA (SM ≥ 8.0) | bf16 + QLoRA 4-bit + FlashAttention | Ollama, GGUF export, `llama-server`, `vllm` |
+| NVIDIA CUDA (SM < 8.0) | fp16 LoRA | Ollama, GGUF export, `llama-server`, `vllm` |
+| Apple Silicon (MPS) | fp16 or fp32 LoRA depending on doctor plan | Ollama, selected MLX inference paths, GGUF export, `vllm` (conservative Metal defaults), `mlx-serve` |
+| CPU | inference-first; training refused above small bases unless forced | GGUF export, Ollama, `llama-server` |
 | AMD ROCm | experimental | ROCm-oriented llama.cpp flows |
 
 See [docs/hardware](./docs/hardware/memory-estimates.md) and
@@ -132,6 +132,13 @@ scripts/bump-llama-cpp.sh build
 
 # If you want the llama.cpp HTTP target too:
 scripts/bump-llama-cpp.sh build --with-server
+
+# If you want the Apple Silicon MLX HTTP target:
+uv sync --extra mlx
+
+# If you want the vLLM HTTP target:
+# install a compatible vllm runtime separately; DLM writes launch artifacts
+# but does not bundle the server runtime itself.
 
 uv run dlm --help
 ```
@@ -276,6 +283,8 @@ uv run dlm metrics mydoc.dlm
 ```sh
 uv run dlm export mydoc.dlm --target ollama --name mydoc
 uv run dlm export mydoc.dlm --target llama-server --no-smoke
+uv run dlm export mydoc.dlm --target vllm --no-smoke
+uv run dlm export mydoc.dlm --target mlx-serve --no-smoke
 uv run dlm pack mydoc.dlm --include-exports
 uv run dlm verify mydoc.dlm.pack
 ```
@@ -319,6 +328,7 @@ See the [CLI reference](./docs/cli/reference.md) for the full flag surface.
 - [Multimodal training](./docs/cookbook/multimodal-training.md)
 - [Audio training](./docs/cookbook/audio-training.md)
 - [Probe-driven training / sway harvest](./docs/cookbook/probe-driven-training.md)
+- [Multi-target export](./docs/cookbook/multi-target-export.md)
 - [CLI reference](./docs/cli/reference.md)
 - [Architecture](./docs/architecture.md)
 - [Determinism](./docs/determinism.md)

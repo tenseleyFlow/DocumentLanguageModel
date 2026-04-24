@@ -52,6 +52,7 @@ class TestExportTargetFlag:
         assert "ollama" in text
         assert "llama-server" in text
         assert "vllm" in text
+        assert "mlx-serve" in text
 
     def test_ollama_target_reaches_existing_mutex_validation(self, tmp_path: Path) -> None:
         doc = _scaffold_doc(tmp_path)
@@ -105,6 +106,25 @@ class TestExportTargetFlag:
                 str(tmp_path / "ghost.dlm"),
                 "--target",
                 "vllm",
+                "--draft",
+                "qwen2.5:0.5b",
+                "--no-draft",
+            ],
+        )
+        assert result.exit_code == 2
+        assert "mutually exclusive" in _joined(result)
+
+    def test_mlx_serve_target_reaches_existing_mutex_validation(self, tmp_path: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "--home",
+                str(tmp_path / "home"),
+                "export",
+                str(tmp_path / "ghost.dlm"),
+                "--target",
+                "mlx-serve",
                 "--draft",
                 "qwen2.5:0.5b",
                 "--no-draft",

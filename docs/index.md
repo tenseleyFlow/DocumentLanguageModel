@@ -10,7 +10,7 @@ A `.dlm` can be a hand-authored training doc, a directive-driven entrypoint
 into a codebase, a multi-adapter project with learned routing, or a selected
 multimodal / audio-language document. DLM trains LoRA / QLoRA / DoRA adapters
 on real pretrained bases, keeps replay history, and exports local runtimes such
-as Ollama and `llama-server`.
+as Ollama, `llama-server`, `vllm`, and `mlx-serve`.
 
 ## What DLM Ships Today
 
@@ -27,7 +27,7 @@ as Ollama and `llama-server`.
   persona lanes inside one project
 - **Local iteration UX** with `prompt`, `repl`, `train --watch`, `metrics`,
   and `doctor`
-- **Runtime export** to `ollama` and `llama-server`
+- **Runtime export** to `ollama`, `llama-server`, `vllm`, and `mlx-serve`
 - **Probe-driven improvement** through `sway`-style harvest flows
 
 ## 30-Second Demo
@@ -49,7 +49,7 @@ $ uv run dlm export tutor.dlm --target ollama --name my-tutor
 | Train across a real repo | [Training across codebases](cookbook/training-across-codebases.md) |
 | Use named adapters and routing | [Multi-adapter](cookbook/multi-adapter.md) and [Learned adapter gate](cookbook/learned-adapter-gate.md) |
 | Work with images or audio | [Multimodal training](cookbook/multimodal-training.md) and [Audio training](cookbook/audio-training.md) |
-| Export or ship a model | [CLI reference](cli/reference.md) and [Determinism](determinism.md) |
+| Export or ship a model | [Multi-target export](cookbook/multi-target-export.md), [CLI reference](cli/reference.md), and [Determinism](determinism.md) |
 | Pull eval failures back into training | [Probe-driven training](cookbook/probe-driven-training.md) |
 
 ## Status

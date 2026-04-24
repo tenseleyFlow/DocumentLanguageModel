@@ -4,6 +4,11 @@
 Modelfile with an explicit Go `text/template` (no fuzzy matching),
 registers the model with `ollama create`, and runs a smoke prompt.
 
+That is still the default path, but it is no longer the only one. Sprint 41
+also adds local runtime targets such as `llama-server`, `vllm`, and
+`mlx-serve`; see the [multi-target export cookbook](../cookbook/multi-target-export.md)
+once you want an OpenAI-compatible local server instead of an Ollama model.
+
 ## Prerequisites
 
 - `vendor/llama.cpp` submodule is built:
@@ -79,6 +84,18 @@ $ uv run dlm export tutor.dlm --quant Q4_K_M --skip-ollama
 
 Useful on CI runners without the Ollama daemon installed. The GGUFs
 land in `exports/Q4_K_M/`; wire them into your own runtime.
+
+## Other runtime targets
+
+Once the basic GGUF/Ollama flow is familiar, the same store can export to:
+
+- `--target llama-server` for a vendored `llama.cpp` HTTP server
+- `--target vllm` for HF-snapshot + LoRA-module serving
+- `--target mlx-serve` for Apple Silicon text serving through `mlx_lm.server`
+
+Those targets have different prerequisites and artifact layouts, so they live
+in the [multi-target export cookbook](../cookbook/multi-target-export.md)
+instead of this first-run page.
 
 ## Next
 

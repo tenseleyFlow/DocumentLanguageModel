@@ -19,12 +19,13 @@ class TestRegistry:
         assert TARGETS["ollama"] is target
         assert "llama-server" in TARGETS
         assert "vllm" in TARGETS
-        assert available_targets() == ("ollama", "llama-server", "vllm")
+        assert "mlx-serve" in TARGETS
+        assert available_targets() == ("ollama", "llama-server", "vllm", "mlx-serve")
 
     def test_unknown_target_lists_available_targets(self) -> None:
         with pytest.raises(
             UnknownExportTargetError,
-            match="available targets: ollama, llama-server, vllm",
+            match="available targets: ollama, llama-server, vllm, mlx-serve",
         ):
             resolve_target("sglang")
 

@@ -1551,7 +1551,7 @@ def export_cmd(
         str,
         typer.Option(
             "--target",
-            help="Export destination. Currently supported: ollama, llama-server, vllm.",
+            help="Export destination. Currently supported: ollama, llama-server, vllm, mlx-serve.",
         ),
     ] = "ollama",
     quant: Annotated[
@@ -1679,8 +1679,10 @@ def export_cmd(
     )
     from dlm.export.quantize import run_checked
     from dlm.export.targets import (
+        finalize_mlx_serve_export,
         finalize_vllm_export,
         prepare_llama_server_export,
+        prepare_mlx_serve_export,
         prepare_vllm_export,
         resolve_target,
     )
@@ -1785,6 +1787,12 @@ def export_cmd(
             "documents yet; this Sprint 41 slice only supports text bases."
         )
         raise typer.Exit(code=2)
+    if resolved_target.name == "mlx-serve" and export_dispatch.accepts_audio:
+        console.print(
+            "[red]export:[/red] --target mlx-serve is not wired for audio-language "
+            "documents yet; this Sprint 41 slice only supports text bases."
+        )
+        raise typer.Exit(code=2)
     if export_dispatch.accepts_audio:
         try:
             dispatch_result = export_dispatch.dispatch_export(
@@ -1827,6 +1835,12 @@ def export_cmd(
     if resolved_target.name == "vllm" and export_dispatch.accepts_images:
         console.print(
             "[red]export:[/red] --target vllm is not wired for vision-language "
+            "documents yet; this Sprint 41 slice only supports text bases."
+        )
+        raise typer.Exit(code=2)
+    if resolved_target.name == "mlx-serve" and export_dispatch.accepts_images:
+        console.print(
+            "[red]export:[/red] --target mlx-serve is not wired for vision-language "
             "documents yet; this Sprint 41 slice only supports text bases."
         )
         raise typer.Exit(code=2)
@@ -1955,6 +1969,70 @@ def export_cmd(
         console.print(f"manifest: {manifest_path.name}")
         if vllm_smoke is not None and vllm_smoke.detail:
             console.print(f"smoke:   {vllm_smoke.detail}")
+        return
+
+    if resolved_target.name == "mlx-serve":
+        mlx_ignored_flags: list[str] = []
+        if quant is not None:
+            mlx_ignored_flags.append("--quant")
+        if merged:
+            mlx_ignored_flags.append("--merged")
+        if dequantize:
+            mlx_ignored_flags.append("--dequantize")
+        if name is not None:
+            mlx_ignored_flags.append("--name")
+        if no_template:
+            mlx_ignored_flags.append("--no-template")
+        if skip_ollama:
+            mlx_ignored_flags.append("--skip-ollama")
+        if no_imatrix:
+            mlx_ignored_flags.append("--no-imatrix")
+        if draft is not None:
+            mlx_ignored_flags.append("--draft")
+        if no_draft:
+            mlx_ignored_flags.append("--no-draft")
+        if mlx_ignored_flags:
+            console.print(
+                "[yellow]export:[/yellow] ignoring flags not applicable to "
+                f"`--target mlx-serve`: {', '.join(mlx_ignored_flags)}"
+            )
+
+        declared_adapter_names = tuple(adapters_declared.keys()) if adapters_declared else None
+        try:
+            mlx_serve_result = prepare_mlx_serve_export(
+                store=store,
+                spec=spec,
+                adapter_name=adapter,
+                adapter_path_override=adapter_path_override,
+                declared_adapter_names=declared_adapter_names,
+            )
+        except ExportError as exc:
+            console.print(f"[red]export:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
+
+        mlx_serve_smoke = None if no_smoke else resolved_target.smoke_test(mlx_serve_result)
+        if mlx_serve_smoke is not None and not mlx_serve_smoke.ok:
+            console.print(
+                f"[red]smoke:[/red] {mlx_serve_smoke.detail}\n"
+                "  re-run with `--no-smoke` to skip the smoke test."
+            )
+            raise typer.Exit(code=1)
+
+        manifest_path = finalize_mlx_serve_export(
+            store=store,
+            spec=spec,
+            prepared=mlx_serve_result,
+            smoke_output_first_line=None if mlx_serve_smoke is None else mlx_serve_smoke.detail,
+            adapter_name=adapter,
+            adapter_mix=mix_entries,
+        )
+        console.print(f"[green]exported:[/green] {mlx_serve_result.export_dir}")
+        console.print("target:  mlx-serve")
+        assert mlx_serve_result.launch_script_path is not None
+        console.print(f"launch:  {mlx_serve_result.launch_script_path.name}")
+        console.print(f"manifest: {manifest_path.name}")
+        if mlx_serve_smoke is not None and mlx_serve_smoke.detail:
+            console.print(f"smoke:   {mlx_serve_smoke.detail}")
         return
 
     try:

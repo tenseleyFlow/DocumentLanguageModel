@@ -58,6 +58,7 @@ nav:
   - The .dlm format:
       - Frontmatter: format/frontmatter.md
       - Sections: format/sections.md
+      - Export manifest: format/export-manifest.md
       - .dlm/training.yaml: format/dlm-training-yaml.md
       - .dlm/ignore: format/dlm-ignore.md
   - CLI reference: cli/reference.md
@@ -77,6 +78,7 @@ nav:
       - Template gallery: cookbook/template-gallery.md
       - Sharing adapters: cookbook/sharing.md
       - Multi-source training: cookbook/multi-source-training.md
+      - Multi-target export: cookbook/multi-target-export.md
       - Train from a folder: cookbook/train-from-folder.md
       - Training across codebases: cookbook/training-across-codebases.md
       - Tokenized-section cache: cookbook/directive-cache.md
