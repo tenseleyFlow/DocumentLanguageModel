@@ -11,8 +11,9 @@ from typer.testing import CliRunner
 from dlm.cli.app import app
 from dlm.doc import versioned as versioned_module
 from dlm.doc.errors import FrontmatterError
-from dlm.doc.migrate import migrate_file
+from dlm.doc.migrate import _rejoin, migrate_file
 from dlm.doc.migrations import MIGRATORS, register
+from dlm.doc.schema import DlmFrontmatter
 
 _VALID_ULID = "01JQ7Z0000000000000000000A"
 
@@ -167,6 +168,26 @@ class TestInvalidInputs:
         doc.write_text("---\ndlm_id: x\n", encoding="utf-8")
         with pytest.raises(FrontmatterError):
             migrate_file(doc)
+
+    def test_invalid_yaml_raises(self, tmp_path: Path) -> None:
+        doc = tmp_path / "bad-yaml.dlm"
+        doc.write_text("---\ndlm_id: [unclosed\n---\n", encoding="utf-8")
+        with pytest.raises(FrontmatterError, match="invalid YAML"):
+            migrate_file(doc)
+
+    def test_non_mapping_frontmatter_raises(self, tmp_path: Path) -> None:
+        doc = tmp_path / "list-frontmatter.dlm"
+        doc.write_text("---\n- just\n- a\n- list\n---\n", encoding="utf-8")
+        with pytest.raises(FrontmatterError, match="must be a mapping"):
+            migrate_file(doc)
+
+
+class TestInternals:
+    def test_rejoin_without_body_returns_header_only(self) -> None:
+        fm = DlmFrontmatter(dlm_id=_VALID_ULID, base_model="smollm2-135m")
+        rendered = _rejoin(fm, "\n\n")
+        assert rendered.endswith("\n\n")
+        assert "::instruction::" not in rendered
 
 
 # --- CLI surface ---------------------------------------------------------

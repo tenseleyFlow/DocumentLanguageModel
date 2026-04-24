@@ -9,6 +9,7 @@ for by Sprint 03's DoD (audit 02 finding M4).
 from __future__ import annotations
 
 import pytest
+from pydantic import BaseModel
 
 from dlm.doc.parser import ParsedDlm, parse_text
 from dlm.doc.schema import (
@@ -19,9 +20,11 @@ from dlm.doc.schema import (
 )
 from dlm.doc.sections import Section, SectionType
 from dlm.doc.serializer import (
+    _emit_nested_mapping,
     _format_list,
     _format_number,
     _format_string,
+    _marker_attr_value,
     _needs_quoting,
     _scalar,
     _serialize_section,
@@ -158,16 +161,14 @@ class TestSerializeSection:
 
 
 class TestSerializeTrailingNewline:
-    def test_output_always_ends_with_single_newline(self) -> None:
+    def test_output_always_ends_with_single_newline(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Covers the `if not rendered.endswith('\\n')` branch in serialize()."""
         fm = DlmFrontmatter(dlm_id=VALID_ULID, base_model="smollm2-135m")
-        # Manually construct a section whose content has no trailing newline;
-        # the section serializer already normalizes, so top-level tail
-        # normalization is the belt-and-braces branch under test.
         parsed = ParsedDlm(
             frontmatter=fm,
             sections=(Section(SectionType.PROSE, "content"),),
         )
+        monkeypatch.setattr("dlm.doc.serializer._serialize_frontmatter", lambda _fm: "---\n---")
         out = serialize(parsed)
         assert out.endswith("\n")
         assert not out.endswith("\n\n")
@@ -257,3 +258,84 @@ class TestPreferenceNestedBlock:
         # Idempotency contract: pipeline twice == pipeline once.
         rendered = serialize(parsed)
         assert serialize(parse_text(rendered)) == rendered
+
+
+class TestNestedModelCoverage:
+    def test_explicit_all_default_nested_model_is_suppressed(self) -> None:
+        class Child(BaseModel):
+            enabled: bool = False
+
+        class Parent(BaseModel):
+            child: Child
+
+        assert _emit_nested_mapping(Parent(child=Child()), indent=2) == []
+
+    def test_list_of_models_renders_nested_yaml_items(self) -> None:
+        class Item(BaseModel):
+            name: str
+            enabled: bool = False
+
+        class Parent(BaseModel):
+            items: list[Item]
+
+        lines = _emit_nested_mapping(
+            Parent(items=[Item(name="docs"), Item(name="blog", enabled=True)]),
+            indent=2,
+        )
+        assert lines == [
+            "  items:",
+            "    - name: docs",
+            "    - name: blog",
+            "      enabled: true",
+        ]
+
+    def test_list_of_all_default_models_emits_empty_mapping_item(self) -> None:
+        class Item(BaseModel):
+            enabled: bool = False
+
+        class Parent(BaseModel):
+            items: list[Item]
+
+        lines = _emit_nested_mapping(Parent(items=[Item()]), indent=2)
+        assert lines == ["  items:", "    - {}"]
+
+
+class TestMetadataMarkerCoverage:
+    def test_auto_mined_requires_full_metadata_at_serialize_time(self) -> None:
+        section = Section(
+            SectionType.PREFERENCE,
+            "### Prompt\np\n### Chosen\nc\n### Rejected\nr\n",
+            auto_mined=True,
+            judge_name="sway",
+            judge_score_chosen=1.0,
+            judge_score_rejected=0.0,
+            mined_at="2026-04-24T00:00:00Z",
+            mined_run_id=1,
+        )
+        object.__setattr__(section, "judge_name", None)
+        with pytest.raises(ValueError, match="missing required metadata"):
+            _serialize_section(section)
+
+    def test_auto_synth_requires_full_metadata_at_serialize_time(self) -> None:
+        section = Section(
+            SectionType.INSTRUCTION,
+            "### Q\nq\n### A\na\n",
+            auto_synth=True,
+            synth_teacher="self",
+            synth_strategy="extraction",
+            synth_at="2026-04-24T00:00:00Z",
+            source_section_id="0123456789abcdef",
+        )
+        object.__setattr__(section, "synth_teacher", None)
+        with pytest.raises(ValueError, match="missing required metadata"):
+            _serialize_section(section)
+
+    def test_marker_values_reject_unroundtrippable_content(self) -> None:
+        with pytest.raises(ValueError, match="cannot contain double-quotes or newlines"):
+            _marker_attr_value('bad"value')
+
+
+class TestTrainingConfigCoverage:
+    def test_explicit_none_adapters_is_allowed(self) -> None:
+        training = TrainingConfig(adapters=None)
+        assert training.adapters is None

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from dlm.doc.errors import (
     DlmVersionError,
@@ -12,7 +13,14 @@ from dlm.doc.errors import (
     FrontmatterError,
     SchemaValidationError,
 )
-from dlm.doc.parser import ParsedDlm, parse_file, parse_text
+from dlm.doc.parser import (
+    ParsedDlm,
+    _parse_auto_mined_marker,
+    _parse_auto_synth_marker,
+    _yaml_error_location,
+    parse_file,
+    parse_text,
+)
 from dlm.doc.sections import SectionType
 from dlm.doc.serializer import serialize
 from dlm.io.text import DlmEncodingError
@@ -103,6 +111,9 @@ class TestFrontmatterErrors:
         with pytest.raises(FrontmatterError, match="invalid YAML"):
             parse_text(text)
 
+    def test_yaml_error_without_marks_returns_zero_location(self) -> None:
+        assert _yaml_error_location(yaml.YAMLError("plain boom")) == (0, 0)
+
 
 class TestVersionGating:
     def test_future_version_refused(self) -> None:
@@ -161,6 +172,45 @@ class TestFenceGrammar:
         # Author the text manually so the factory doesn't terminate it.
         text = f"---\ndlm_id: {VALID_ULID}\nbase_model: smollm2-135m\n---\n\n```\nforever open\n"
         with pytest.raises(FenceError, match="unterminated"):
+            parse_text(text)
+
+    def test_whitespace_only_prose_between_fences_is_elided(self) -> None:
+        text = (
+            f"---\ndlm_id: {VALID_ULID}\nbase_model: smollm2-135m\n---\n\n"
+            "::instruction::\n"
+            "### Q\n"
+            "q\n"
+            "### A\n"
+            "a\n"
+            "\n \n\t\n\n"
+            "::preference::\n"
+            "### Prompt\n"
+            "p\n"
+            "### Chosen\n"
+            "c\n"
+            "### Rejected\n"
+            "r\n"
+        )
+        parsed = parse_text(text)
+        assert [section.type for section in parsed.sections] == [
+            SectionType.INSTRUCTION,
+            SectionType.PREFERENCE,
+        ]
+
+    def test_unknown_attribute_fence_raises(self) -> None:
+        text = (
+            f"---\ndlm_id: {VALID_ULID}\nbase_model: smollm2-135m\n---\n\n"
+            '::widget path="image.png"::\n'
+        )
+        with pytest.raises(FenceError, match="unknown attribute fence"):
+            parse_text(text)
+
+    def test_non_attribute_fence_rejects_attribute_form(self) -> None:
+        text = (
+            f"---\ndlm_id: {VALID_ULID}\nbase_model: smollm2-135m\n---\n\n"
+            '::instruction path="nope"::\n'
+        )
+        with pytest.raises(FenceError, match="does not take attributes"):
             parse_text(text)
 
 
@@ -266,3 +316,82 @@ class TestEncodingContract:
         lf_ids = [s.section_id for s in lf_parsed.sections]
         crlf_ids = [s.section_id for s in crlf_parsed.sections]
         assert lf_ids == crlf_ids
+
+
+class TestAutoMarkerValidation:
+    @pytest.mark.parametrize(
+        ("blob", "message"),
+        [
+            (' judge_name="sway', "invalid dlm-auto-mined marker syntax"),
+            (
+                ' judge_name="sway" judge_name="other" '
+                'judge_score_chosen="1.0" judge_score_rejected="0.5" '
+                'mined_at="2026-04-24T00:00:00Z" mined_run_id="1"',
+                "repeats attribute",
+            ),
+            (
+                ' judge_name="sway" judge_score_chosen="1.0" judge_score_rejected="0.5" '
+                'mined_at="2026-04-24T00:00:00Z" mined_run_id="1" extra="nope"',
+                "unknown attribute",
+            ),
+            (
+                ' judge_name="sway" judge_score_chosen="1.0" '
+                'judge_score_rejected="0.5" mined_at="2026-04-24T00:00:00Z"',
+                "missing required attribute",
+            ),
+            (
+                ' judge_name="sway" judge_score_chosen="nope" '
+                'judge_score_rejected="0.5" mined_at="2026-04-24T00:00:00Z" mined_run_id="1"',
+                "judge scores must be floats",
+            ),
+            (
+                ' judge_name="sway" judge_score_chosen="1.0" '
+                'judge_score_rejected="0.5" mined_at="not-a-date" mined_run_id="1"',
+                "mined_at must be ISO-8601",
+            ),
+            (
+                ' judge_name="sway" judge_score_chosen="1.0" '
+                'judge_score_rejected="0.5" mined_at="2026-04-24T00:00:00Z" mined_run_id="abc"',
+                "mined_run_id must be an integer",
+            ),
+            (
+                ' judge_name="sway" judge_score_chosen="1.0" '
+                'judge_score_rejected="0.5" mined_at="2026-04-24T00:00:00Z" mined_run_id="0"',
+                "mined_run_id must be >= 1",
+            ),
+        ],
+    )
+    def test_auto_mined_marker_validation_errors(self, blob: str, message: str) -> None:
+        with pytest.raises(FenceError, match=message):
+            _parse_auto_mined_marker(blob, path=None, line=7)
+
+    @pytest.mark.parametrize(
+        ("blob", "message"),
+        [
+            (' synth_teacher="self', "invalid dlm-auto-synth marker syntax"),
+            (
+                ' synth_teacher="self" synth_teacher="other" '
+                'synth_strategy="extraction" synth_at="2026-04-24T00:00:00Z" '
+                'source_section_id="0123456789abcdef"',
+                "repeats attribute",
+            ),
+            (
+                ' synth_teacher="self" synth_strategy="extraction" '
+                'synth_at="2026-04-24T00:00:00Z" source_section_id="0123456789abcdef" '
+                'extra="nope"',
+                "unknown attribute",
+            ),
+            (
+                ' synth_teacher="self" synth_strategy="extraction" synth_at="2026-04-24T00:00:00Z"',
+                "missing required attribute",
+            ),
+            (
+                ' synth_teacher="self" synth_strategy="extraction" '
+                'synth_at="not-a-date" source_section_id="0123456789abcdef"',
+                "synth_at must be ISO-8601",
+            ),
+        ],
+    )
+    def test_auto_synth_marker_validation_errors(self, blob: str, message: str) -> None:
+        with pytest.raises(FenceError, match=message):
+            _parse_auto_synth_marker(blob, path=None, line=11)
