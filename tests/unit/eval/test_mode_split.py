@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dlm.eval.mode_split import compute_val_loss_by_mode
+from dlm.eval.mode_split import _safe_eval_loss, compute_val_loss_by_mode
 
 
 class _FakeDataset:
@@ -66,6 +66,14 @@ class TestEmptyOrMissing:
     def test_empty_val_ds_returns_both_none(self) -> None:
         trainer = MagicMock()
         assert compute_val_loss_by_mode(trainer, _FakeDataset([])) == (None, None)
+        trainer.evaluate.assert_not_called()
+
+    def test_non_sized_dataset_returns_both_none(self) -> None:
+        trainer = MagicMock()
+        assert compute_val_loss_by_mode(trainer, _NonSizedDataset([{"text": "prose"}])) == (
+            None,
+            None,
+        )
         trainer.evaluate.assert_not_called()
 
 
@@ -149,6 +157,14 @@ class TestEvalFailures:
         assert cpt is None
         assert sft is None
 
+    def test_non_numeric_eval_loss_yields_none(self) -> None:
+        trainer = MagicMock()
+        trainer.evaluate.return_value = {"eval_loss": object()}
+        val = _FakeDataset([{"text": "a"}])
+        cpt, sft = compute_val_loss_by_mode(trainer, val)
+        assert cpt is None
+        assert sft is None
+
     def test_select_failure_yields_none(
         self,
         caplog: pytest.LogCaptureFixture,
@@ -174,3 +190,23 @@ class _NoSelectDataset:
 
     def __iter__(self):  # type: ignore[no-untyped-def]
         return iter(self._rows)
+
+
+class _NonSizedDataset:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        return iter(self._rows)
+
+
+def test_safe_eval_loss_value_error_yields_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING, logger="dlm.eval.mode_split")
+    trainer = MagicMock()
+    trainer.evaluate.side_effect = ValueError("bad eval")
+    val = _FakeDataset([{"text": "a"}])
+
+    assert _safe_eval_loss(trainer, val, [0], mode="cpt") is None
+    assert "val-loss split skipped cpt evaluation" in caplog.text
