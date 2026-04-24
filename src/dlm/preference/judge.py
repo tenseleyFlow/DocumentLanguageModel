@@ -8,7 +8,7 @@ import shlex
 import subprocess  # nosec B404
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from dlm.preference.errors import (
     InvalidJudgeSpecError,
@@ -186,9 +186,8 @@ def build_judge(raw: str | JudgeRef) -> PreferenceJudge:
         assert ref.target is not None
         return CliJudge(ref.target)
     if ref.kind == "hf":
-        raise JudgeUnavailableError(
-            f"hf reward-model judge {ref.target!r} is not wired yet in this slice"
-        )
+        assert ref.target is not None
+        return HfRewardModelJudge(ref.target)
     raise JudgeUnavailableError("sway preference judge is not wired yet in this slice")
 
 
@@ -248,3 +247,152 @@ def _combine_reasoning(left: str | None, right: str | None) -> str | None:
     if right:
         parts.append(f"b: {right}")
     return " | ".join(parts) if parts else None
+
+
+RewardModelLoader = Callable[[str, str], "_LoadedRewardJudge"]
+
+
+@dataclass(frozen=True)
+class _LoadedRewardJudge:
+    """Loaded HF reward-model bundle cached inside the judge."""
+
+    model: Any
+    tokenizer: Any
+    device: str
+
+
+class HfRewardModelJudge:
+    """HF reward-model backed preference judge."""
+
+    suggested_threshold = 1.0
+
+    def __init__(
+        self,
+        hf_id: str,
+        *,
+        device: str = "auto",
+        loader: RewardModelLoader | None = None,
+    ) -> None:
+        spec = hf_id.strip()
+        if not spec:
+            raise InvalidJudgeSpecError("hf judge selector must include a model id")
+        self.hf_id = spec
+        self.name = f"hf:{spec}"
+        self._requested_device = device
+        self._loader = loader
+        self._loaded: _LoadedRewardJudge | None = None
+
+    def score_pair(self, prompt: str, candidate_a: str, candidate_b: str) -> PairScore:
+        score_a = self._score_candidate(prompt, candidate_a)
+        score_b = self._score_candidate(prompt, candidate_b)
+        return PairScore(score_a=score_a, score_b=score_b)
+
+    def _score_candidate(self, prompt: str, candidate: str) -> float:
+        loaded = self._ensure_loaded()
+        try:
+            import torch
+        except ImportError as exc:
+            raise JudgeUnavailableError("hf reward-model judge requires torch") from exc
+
+        encoded = _encode_reward_input(loaded.tokenizer, prompt, candidate)
+        moved = _move_to_device(encoded, loaded.device)
+        with torch.inference_mode():
+            output = loaded.model(**moved)
+        logits = getattr(output, "logits", None)
+        if logits is None:
+            raise JudgeInvocationError("hf reward model returned no `.logits`")
+        return _extract_reward_scalar(logits)
+
+    def _ensure_loaded(self) -> _LoadedRewardJudge:
+        if self._loaded is not None:
+            return self._loaded
+        device = _resolve_reward_device(self._requested_device)
+        if self._loader is not None:
+            loaded = self._loader(self.hf_id, device)
+            self._loaded = loaded
+            return loaded
+        loaded = _default_reward_loader(self.hf_id, device)
+        self._loaded = loaded
+        return loaded
+
+
+def _default_reward_loader(hf_id: str, device: str) -> _LoadedRewardJudge:
+    try:
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    except ImportError as exc:
+        raise JudgeUnavailableError(
+            "hf reward-model judge requires transformers to be installed"
+        ) from exc
+
+    model = AutoModelForSequenceClassification.from_pretrained(hf_id)
+    tokenizer = AutoTokenizer.from_pretrained(hf_id)
+    if hasattr(model, "to"):
+        model = model.to(device)
+    if hasattr(model, "eval"):
+        model.eval()
+    return _LoadedRewardJudge(model=model, tokenizer=tokenizer, device=device)
+
+
+def _resolve_reward_device(requested: str) -> str:
+    if requested != "auto":
+        return requested
+    try:
+        import torch
+    except ImportError:
+        return "cpu"
+    if torch.cuda.is_available():
+        return "cuda"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def _encode_reward_input(tokenizer: Any, prompt: str, candidate: str) -> Any:
+    if getattr(tokenizer, "chat_template", None):
+        try:
+            rendered = tokenizer.apply_chat_template(
+                [
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": candidate},
+                ],
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+            if isinstance(rendered, str):
+                return tokenizer(rendered, return_tensors="pt", truncation=True)
+        except Exception:
+            pass
+    return tokenizer(prompt, text_pair=candidate, return_tensors="pt", truncation=True)
+
+
+def _move_to_device(encoded: Any, device: str) -> Any:
+    if hasattr(encoded, "to"):
+        return encoded.to(device)
+    if isinstance(encoded, dict):
+        moved: dict[str, Any] = {}
+        for key, value in encoded.items():
+            moved[key] = value.to(device) if hasattr(value, "to") else value
+        return moved
+    return encoded
+
+
+def _extract_reward_scalar(logits: Any) -> float:
+    if hasattr(logits, "numel") and callable(logits.numel):
+        numel = int(logits.numel())
+        if numel != 1:
+            raise JudgeInvocationError(
+                f"hf reward model must return a single scalar logit, got {numel} values"
+            )
+        if hasattr(logits, "reshape"):
+            flat = logits.reshape(-1)
+            if hasattr(flat, "__getitem__"):
+                value = flat[0]
+                if hasattr(value, "item"):
+                    scalar = float(value.item())
+                    if math.isfinite(scalar):
+                        return scalar
+        if hasattr(logits, "item"):
+            scalar = float(logits.item())
+            if math.isfinite(scalar):
+                return scalar
+    raise JudgeInvocationError("hf reward model returned an unreadable scalar logit")

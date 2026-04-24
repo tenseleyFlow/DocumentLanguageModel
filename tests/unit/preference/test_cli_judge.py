@@ -9,6 +9,7 @@ import pytest
 
 from dlm.preference import (
     CliJudge,
+    HfRewardModelJudge,
     JudgeInvocationError,
     JudgeUnavailableError,
     build_judge,
@@ -119,13 +120,12 @@ class TestBuildJudge:
         assert isinstance(judge, CliJudge)
         assert judge.name == "cli:judge-bin --json"
 
-    @pytest.mark.parametrize(
-        ("raw", "pattern"),
-        [
-            ("sway", "sway preference judge"),
-            ("hf:reward/model", "hf reward-model judge"),
-        ],
-    )
-    def test_unimplemented_refs_raise_unavailable(self, raw: str, pattern: str) -> None:
-        with pytest.raises(JudgeUnavailableError, match=pattern):
-            build_judge(raw)
+    def test_hf_ref_builds_concrete_hf_judge(self) -> None:
+        judge = build_judge("hf:reward/model")
+
+        assert isinstance(judge, HfRewardModelJudge)
+        assert judge.name == "hf:reward/model"
+
+    def test_sway_ref_still_raises_unavailable(self) -> None:
+        with pytest.raises(JudgeUnavailableError, match="sway preference judge"):
+            build_judge("sway")

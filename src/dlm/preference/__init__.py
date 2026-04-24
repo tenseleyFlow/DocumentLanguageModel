@@ -24,6 +24,7 @@ from dlm.preference.errors import (
 )
 from dlm.preference.judge import (
     CliJudge,
+    HfRewardModelJudge,
     JudgeRef,
     PairScore,
     PreferenceJudge,
@@ -46,6 +47,7 @@ __all__ = [
     "JudgeInvocationError",
     "JudgeRef",
     "CliJudge",
+    "HfRewardModelJudge",
     "PlannedPreferenceAddition",
     "PlannedMinedPreference",
     "PreferenceApplyPlan",
