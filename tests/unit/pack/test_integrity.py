@@ -64,6 +64,14 @@ class TestReadChecksums:
         with pytest.raises(PackIntegrityError):
             read_checksums(tmp_path)
 
+    def test_blank_lines_are_ignored(self, tmp_path: Path) -> None:
+        (tmp_path / "CHECKSUMS.sha256").write_text(
+            f"\n{'a' * 64}  a.txt\n\n",
+            encoding="utf-8",
+        )
+
+        assert read_checksums(tmp_path) == {"a.txt": "a" * 64}
+
     def test_malformed_line_raises(self, tmp_path: Path) -> None:
         (tmp_path / "CHECKSUMS.sha256").write_text("not a valid line\n")
         with pytest.raises(PackIntegrityError):

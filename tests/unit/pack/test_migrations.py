@@ -11,6 +11,7 @@ from dlm.pack.errors import PackFormatVersionError
 from dlm.pack.format import CURRENT_PACK_FORMAT_VERSION
 from dlm.pack.migrations import PACK_MIGRATORS, register
 from dlm.pack.migrations.dispatch import apply_pending
+from dlm.pack.migrations.v1 import migrate as migrate_v1
 
 
 @pytest.fixture
@@ -99,3 +100,8 @@ class TestCoverageEnforcement:
             f"expected range [1, {CURRENT_PACK_FORMAT_VERSION}). Register a "
             "migrator under src/dlm/pack/migrations/ when bumping the version."
         )
+
+
+class TestV1IdentityMigrator:
+    def test_v1_identity_migrator_returns_same_root(self, tmp_path: Path) -> None:
+        assert migrate_v1(tmp_path) == tmp_path

@@ -58,6 +58,14 @@ def _tar_members(pack_path: Path) -> list[tuple[str, int]]:
             return [(m.name, m.size) for m in tar]
 
 
+def _store_root_for(doc: Path) -> Path:
+    from dlm.doc.parser import parse_file
+    from dlm.store.paths import for_dlm
+
+    parsed = parse_file(doc)
+    return for_dlm(parsed.frontmatter.dlm_id).root
+
+
 class TestPackShape:
     def test_contains_required_entries(self, tmp_path: Path) -> None:
         doc = _scaffold_doc_and_store(tmp_path)
@@ -82,6 +90,20 @@ class TestPackShape:
         result = pack(doc, out=custom)
         assert result.path == custom
         assert custom.is_file()
+
+    def test_default_pack_excludes_exports_and_cache_trees(self, tmp_path: Path) -> None:
+        doc = _scaffold_doc_and_store(tmp_path)
+        store_root = _store_root_for(doc)
+        (store_root / "exports").mkdir(exist_ok=True)
+        (store_root / "cache").mkdir(exist_ok=True)
+        (store_root / "exports" / "artifact.txt").write_text("export", encoding="utf-8")
+        (store_root / "cache" / "base.bin").write_text("base", encoding="utf-8")
+
+        result = pack(doc)
+
+        names = {name for name, _size in _tar_members(result.path)}
+        assert "store/exports/artifact.txt" not in names
+        assert "store/cache/base.bin" not in names
 
 
 class TestContentTypeLabel:

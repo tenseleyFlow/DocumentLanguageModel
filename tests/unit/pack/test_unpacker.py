@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import zstandard as zstd
 
+import dlm.pack.unpacker as unpacker_mod
 from dlm.pack.errors import (
     PackFormatVersionError,
     PackIntegrityError,
@@ -96,6 +97,22 @@ class TestHappyPath:
         assert (result.store_path / "manifest.json").exists()
         assert result.dlm_path == tmp_path / "out" / "mydoc.dlm"
         assert result.dlm_path.read_text().startswith("---")
+
+    def test_existing_quarantine_is_removed_before_force_install(self, tmp_path: Path) -> None:
+        import os
+
+        pack_path = _synth_pack(tmp_path)
+        home = tmp_path / "home"
+        unpack(pack_path, home=home, out_dir=tmp_path / "out1")
+        target = home / "store" / "01TEST"
+        quarantine = target.parent / f".{target.name}.old-{os.getpid()}"
+        quarantine.mkdir(parents=True)
+        (quarantine / "stale.txt").write_text("stale", encoding="utf-8")
+
+        unpack(pack_path, home=home, force=True, out_dir=tmp_path / "out2")
+
+        assert target.exists()
+        assert not quarantine.exists()
 
 
 class TestVersionGate:
@@ -389,6 +406,92 @@ class TestLayoutGate:
                     tar.addfile(info, src)
         with pytest.raises(PackLayoutError):
             unpack(out, home=tmp_path / "home")
+
+
+class TestReadPackMemberBytes:
+    def test_reads_named_member_bytes(self, tmp_path: Path) -> None:
+        pack_path = _synth_pack(tmp_path)
+
+        data = unpacker_mod.read_pack_member_bytes(pack_path, "dlm/mydoc.dlm")
+
+        assert data is not None
+        assert data.startswith(b"---")
+
+    def test_missing_member_returns_none(self, tmp_path: Path) -> None:
+        pack_path = _synth_pack(tmp_path)
+
+        assert unpacker_mod.read_pack_member_bytes(pack_path, "provenance.json") is None
+
+    def test_unsafe_member_is_refused(self, tmp_path: Path) -> None:
+        payload = tmp_path / "payload.txt"
+        payload.write_text("evil", encoding="utf-8")
+        out = tmp_path / "unsafe.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                tar.add(payload, arcname="../escape")
+
+        with pytest.raises(PackLayoutError, match="unsafe tar entry"):
+            unpacker_mod.read_pack_member_bytes(out, "../escape")
+
+    def test_oversized_member_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(unpacker_mod, "_MAX_TAR_MEMBER_BYTES", 10)
+        payload = tmp_path / "big.bin"
+        payload.write_bytes(b"x" * 100)
+        out = tmp_path / "big.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                tar.add(payload, arcname="big.bin")
+
+        with pytest.raises(PackLayoutError, match="per-member cap"):
+            unpacker_mod.read_pack_member_bytes(out, "big.bin")
+
+    def test_directory_member_returns_none(self, tmp_path: Path) -> None:
+        out = tmp_path / "dir-only.pack"
+        cctx = zstd.ZstdCompressor(level=1)
+        with out.open("wb") as fh, cctx.stream_writer(fh) as compressor:
+            with tarfile.open(fileobj=compressor, mode="w|") as tar:
+                info = tarfile.TarInfo(name="folder")
+                info.type = tarfile.DIRTYPE
+                tar.addfile(info)
+
+        assert unpacker_mod.read_pack_member_bytes(out, "folder") is None
+
+
+class TestUnpackerInternals:
+    def test_is_unsafe_member_rejects_absolute_and_parent_paths(self) -> None:
+        assert unpacker_mod._is_unsafe_member("/abs/path") is True
+        assert unpacker_mod._is_unsafe_member("\\windows") is True
+        assert unpacker_mod._is_unsafe_member("../escape") is True
+        assert unpacker_mod._is_unsafe_member("safe/path") is False
+
+    def test_read_header_malformed_raises(self, tmp_path: Path) -> None:
+        (tmp_path / HEADER_FILENAME).write_text("{not json", encoding="utf-8")
+
+        with pytest.raises(PackLayoutError, match=f"cannot read {HEADER_FILENAME}"):
+            unpacker_mod._read_header(tmp_path)
+
+    def test_read_manifest_malformed_raises(self, tmp_path: Path) -> None:
+        (tmp_path / MANIFEST_FILENAME).write_text("{not json", encoding="utf-8")
+
+        with pytest.raises(PackLayoutError, match=f"cannot read {MANIFEST_FILENAME}"):
+            unpacker_mod._read_manifest(tmp_path)
+
+    def test_find_dlm_file_requires_exactly_one_file(self, tmp_path: Path) -> None:
+        dlm_dir = tmp_path / "dlm"
+        dlm_dir.mkdir()
+
+        with pytest.raises(PackLayoutError, match="expected exactly one .dlm file"):
+            unpacker_mod._find_dlm_file(dlm_dir)
+
+        (dlm_dir / "a.dlm").write_text("a", encoding="utf-8")
+        (dlm_dir / "b.dlm").write_text("b", encoding="utf-8")
+
+        with pytest.raises(PackLayoutError, match="expected exactly one .dlm file"):
+            unpacker_mod._find_dlm_file(dlm_dir)
 
 
 class TestForce:
