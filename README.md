@@ -280,6 +280,12 @@ uv run dlm pack mydoc.dlm --include-exports
 uv run dlm verify mydoc.dlm.pack
 ```
 
+On Apple Silicon, `--target vllm` now emits conservative `vllm-metal`
+defaults in the launch script: it pins the server to the MLX KV path
+(`VLLM_METAL_USE_PAGED_ATTENTION=0`, `VLLM_METAL_MEMORY_FRACTION=auto`)
+and caps `--max-model-len` to the document's `training.sequence_len`
+instead of blindly asking `vllm` for the base model's full context.
+
 ### 6. Pull eval failures back into training
 
 ```sh
