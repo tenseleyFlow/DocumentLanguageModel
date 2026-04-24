@@ -18,10 +18,18 @@ from dlm.preference.apply import (
 )
 from dlm.preference.errors import (
     InvalidJudgeSpecError,
+    JudgeInvocationError,
     JudgeUnavailableError,
     PreferenceMiningError,
 )
-from dlm.preference.judge import JudgeRef, PairScore, PreferenceJudge, parse_judge_ref
+from dlm.preference.judge import (
+    CliJudge,
+    JudgeRef,
+    PairScore,
+    PreferenceJudge,
+    build_judge,
+    parse_judge_ref,
+)
 from dlm.preference.mine import (
     PlannedMinedPreference,
     PreferenceMinePlan,
@@ -35,7 +43,9 @@ from dlm.preference.mine import (
 
 __all__ = [
     "InvalidJudgeSpecError",
+    "JudgeInvocationError",
     "JudgeRef",
+    "CliJudge",
     "PlannedPreferenceAddition",
     "PlannedMinedPreference",
     "PreferenceApplyPlan",
@@ -52,6 +62,7 @@ __all__ = [
     "SkippedPreferenceSection",
     "apply_plan",
     "build_apply_plan",
+    "build_judge",
     "build_mine_plan",
     "parse_judge_ref",
     "render_apply_plan",

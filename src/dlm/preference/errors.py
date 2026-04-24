@@ -13,3 +13,7 @@ class JudgeUnavailableError(PreferenceMiningError):
 
 class InvalidJudgeSpecError(PreferenceMiningError):
     """A CLI/user judge selector string was malformed."""
+
+
+class JudgeInvocationError(PreferenceMiningError):
+    """A concrete judge ran but returned an unusable result."""
