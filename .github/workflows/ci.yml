@@ -286,8 +286,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: vendor/llama.cpp/build
-          # Cache key: submodule HEAD sha. Bumping llama.cpp invalidates the cache.
-          key: llama-cpp-build-${{ hashFiles('.gitmodules', 'vendor/llama.cpp/VERSION') }}
+          # Cache key: submodule HEAD sha + build profile. CI uses a
+          # portable CPU build so cached binaries stay runnable across
+          # heterogeneous ubuntu runner hosts.
+          key: llama-cpp-build-portable-v1-${{ runner.os }}-${{ hashFiles('.gitmodules', 'vendor/llama.cpp/VERSION') }}
 
       - name: Build llama-quantize (if not cached)
         if: steps.llama-cpp-cache.outputs.cache-hit != 'true'
@@ -295,7 +297,7 @@ jobs:
           set -euxo pipefail
           # ubuntu-latest ships cmake; `sudo apt-get install -y cmake` is a no-op fallback.
           command -v cmake >/dev/null 2>&1 || sudo apt-get install -y cmake
-          scripts/bump-llama-cpp.sh build
+          scripts/bump-llama-cpp.sh build --portable
 
       - name: Run slow tests
         env:

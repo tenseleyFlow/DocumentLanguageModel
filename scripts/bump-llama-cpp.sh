@@ -8,8 +8,13 @@
 #       stage changes.
 #   scripts/bump-llama-cpp.sh build
 #       Build `llama-quantize` (+ siblings) via cmake. Idempotent.
+#   scripts/bump-llama-cpp.sh build --portable
+#       Build portable CPU binaries (`GGML_NATIVE=OFF`) suitable for CI
+#       caches or redistribution across heterogeneous hosts.
 #   scripts/bump-llama-cpp.sh build --with-server
 #       Also build `llama-server` for Sprint 41's local HTTP target.
+#   scripts/bump-llama-cpp.sh build --portable --with-server
+#       Portable build plus `llama-server`.
 #   scripts/bump-llama-cpp.sh refresh-labels
 #       Regenerate vendor/llama_cpp_pretokenizer_hashes.json from the
 #       current submodule contents. Does not touch the submodule itself.
@@ -149,23 +154,37 @@ EOF
 
 do_build() {
   local with_server=0
-  case "${1:-}" in
-    "")
-      ;;
-    --with-server)
-      with_server=1
-      ;;
-    *)
-      echo "usage: scripts/bump-llama-cpp.sh build [--with-server]" >&2
-      exit 2
-      ;;
-  esac
+  local portable=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --with-server)
+        with_server=1
+        ;;
+      --portable)
+        portable=1
+        ;;
+      *)
+        echo "usage: scripts/bump-llama-cpp.sh build [--portable] [--with-server]" >&2
+        exit 2
+        ;;
+    esac
+    shift
+  done
   if [ ! -d "$VENDOR_DIR" ]; then
     echo "error: $VENDOR_DIR missing — run 'bump <tag>' first" >&2
     exit 1
   fi
   echo "--> configuring llama.cpp via cmake"
-  cmake -S "$VENDOR_DIR" -B "$VENDOR_DIR/build" -DCMAKE_BUILD_TYPE=Release
+  local cmake_args=(
+    -S "$VENDOR_DIR"
+    -B "$VENDOR_DIR/build"
+    -DCMAKE_BUILD_TYPE=Release
+  )
+  if [ "$portable" -eq 1 ]; then
+    echo "--> portable build: forcing GGML_NATIVE=OFF for cross-runner compatibility"
+    cmake_args+=(-DGGML_NATIVE=OFF)
+  fi
+  cmake "${cmake_args[@]}"
   # `llama-quantize` does the actual per-tensor quantization; `llama-imatrix`
   # produces the importance-matrix file we feed to quantize for k-quant
   # calibration (Sprint 11.6). Both are required for the full export
