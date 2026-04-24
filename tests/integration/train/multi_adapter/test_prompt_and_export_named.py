@@ -191,6 +191,7 @@ def test_export_named_adapter_records_adapter_name(
             "knowledge",
             "--skip-ollama",
             "--no-imatrix",
+            "--no-template",
         ],
     )
     assert result.exit_code == 0, result.output
