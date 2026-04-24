@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 
 from dlm.doc.parser import ParsedDlm
 from dlm.doc.schema import AdapterConfig, DlmFrontmatter, GateConfig, TrainingConfig
 from dlm.doc.sections import Section, SectionType
-from dlm.export.gate_fallback import resolve_gate_mix
+from dlm.export.gate_fallback import resolve_and_announce, resolve_gate_mix
 from dlm.metrics.events import GateEvent, RunStart
 from dlm.metrics.recorder import MetricsRecorder
 from dlm.store.paths import StorePath
@@ -71,6 +72,23 @@ def test_no_gate_config_returns_none(tmp_path: Path) -> None:
     store = StorePath(root=tmp_path)
     store.ensure_layout()
     assert resolve_gate_mix(store, _parsed()) is None
+
+
+def test_single_adapter_returns_none(tmp_path: Path) -> None:
+    store = StorePath(root=tmp_path)
+    store.ensure_layout()
+    parsed = _parsed(gate_enabled=False, adapters=("solo",))
+    single_adapter_training = parsed.frontmatter.training.model_copy(
+        update={"gate": GateConfig(enabled=True)}
+    )
+    single_adapter_frontmatter = parsed.frontmatter.model_copy(
+        update={"training": single_adapter_training}
+    )
+    assert resolve_gate_mix(store, replace(parsed, frontmatter=single_adapter_frontmatter)) is None
+
+
+def test_non_store_or_non_parsed_returns_none() -> None:
+    assert resolve_gate_mix(object(), object()) is None
 
 
 def test_uniform_mode_returns_uniform_mix(tmp_path: Path) -> None:
@@ -152,3 +170,35 @@ def test_preserves_declared_adapter_order(tmp_path: Path) -> None:
     mix = resolve_gate_mix(store, _parsed(adapters=("zeta", "alpha")))
     # Order must match the config's adapter_names tuple, not alphabetic.
     assert mix == [("zeta", 0.4), ("alpha", 0.6)]
+
+
+def test_resolve_and_announce_no_substitution(tmp_path: Path) -> None:
+    store = StorePath(root=tmp_path)
+    store.ensure_layout()
+
+    resolution = resolve_and_announce(store, _parsed(gate_enabled=False))
+
+    assert resolution.entries is None
+    assert resolution.banner_lines == []
+
+
+def test_resolve_and_announce_substitution_banner(tmp_path: Path) -> None:
+    store = StorePath(root=tmp_path)
+    store.ensure_layout()
+    _write_gate_config(
+        store,
+        GateMetadata(
+            input_dim=576,
+            hidden_proj_dim=64,
+            adapter_names=("a", "b"),
+            mode="uniform",
+        ),
+    )
+
+    resolution = resolve_and_announce(store, _parsed())
+
+    assert resolution.entries == [("a", 0.5), ("b", 0.5)]
+    assert resolution.banner_lines == [
+        "[dim]export: substituting learned gate weights for "
+        "--adapter-mix (gate_mode=static).[/dim]"
+    ]

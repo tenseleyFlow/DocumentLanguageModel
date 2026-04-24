@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,7 +13,9 @@ from dlm.export.errors import PreflightError
 from dlm.export.preflight import (
     check_adapter_config,
     check_chat_template,
+    check_pretokenizer_fingerprint,
     check_tokenizer_vocab,
+    check_vl_target_modules_lm_only,
     check_was_adapter_qlora,
 )
 
@@ -90,6 +93,12 @@ class TestTokenizerVocab:
         with pytest.raises(PreflightError, match="cannot determine vocab"):
             check_tokenizer_vocab(tmp_path)
 
+    def test_malformed_tokenizer_json_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "tokenizer_config.json").write_text(json.dumps({"chat_template": "{{messages}}"}))
+        (tmp_path / "tokenizer.json").write_text("not json {{{")
+        with pytest.raises(PreflightError, match="cannot parse"):
+            check_tokenizer_vocab(tmp_path)
+
 
 class TestChatTemplate:
     def test_present_ok(self, tmp_path: Path) -> None:
@@ -112,6 +121,11 @@ class TestChatTemplate:
 
     def test_missing_file_raises_when_required(self, tmp_path: Path) -> None:
         with pytest.raises(PreflightError, match="missing"):
+            check_chat_template(tmp_path, required=True)
+
+    def test_malformed_config_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "tokenizer_config.json").write_text("not json {{{")
+        with pytest.raises(PreflightError, match="cannot parse"):
             check_chat_template(tmp_path, required=True)
 
 
@@ -137,3 +151,32 @@ class TestQloraFlag:
         (tmp_path / "training_run.json").write_text("not json")
         with pytest.raises(PreflightError, match="training_run_json"):
             check_was_adapter_qlora(tmp_path)
+
+
+class TestPretokenizerFingerprint:
+    def test_failed_probe_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "dlm.base_models.probes.probe_pretokenizer_hash",
+            lambda _spec: SimpleNamespace(skipped=False, passed=False, detail="mismatch"),
+        )
+
+        with pytest.raises(PreflightError, match="pre-tokenizer fingerprint mismatch"):
+            check_pretokenizer_fingerprint(_SPEC)
+
+
+class TestVlTargetModulesLmOnly:
+    def test_missing_config_is_noop(self, tmp_path: Path) -> None:
+        check_vl_target_modules_lm_only(tmp_path)
+
+    def test_malformed_config_is_noop(self, tmp_path: Path) -> None:
+        (tmp_path / "adapter_config.json").write_text("not json {{{")
+        check_vl_target_modules_lm_only(tmp_path)
+
+    def test_string_pattern_target_modules_is_noop(self, tmp_path: Path) -> None:
+        _write_adapter_config(tmp_path, target_modules=".*q_proj.*")
+        check_vl_target_modules_lm_only(tmp_path)
+
+    def test_vision_targets_raise(self, tmp_path: Path) -> None:
+        _write_adapter_config(tmp_path, target_modules=["q_proj", "vision_tower.block.0"])
+        with pytest.raises(PreflightError, match="vision-tower modules"):
+            check_vl_target_modules_lm_only(tmp_path)
