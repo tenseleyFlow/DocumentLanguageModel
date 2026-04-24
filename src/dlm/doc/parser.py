@@ -16,8 +16,10 @@ Errors are always typed (`DlmParseError` subclasses) and carry
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Final
 
@@ -38,6 +40,17 @@ from dlm.io.text import read_text
 # `Section.harvest_source`; it is not user-authored content.
 _HARVEST_MARKER_RE: Final[re.Pattern[str]] = re.compile(
     r'^<!-- dlm-auto-harvest: source="([^"]*)" -->$'
+)
+_AUTO_MINED_MARKER_RE: Final[re.Pattern[str]] = re.compile(r"^<!-- dlm-auto-mined:(.*) -->$")
+_MARKER_ATTR_BLOB_RE: Final[re.Pattern[str]] = re.compile(r'(?:\s+[a-z][a-z0-9_]*="[^"\n]*")+')
+_AUTO_MINED_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "judge_name",
+        "judge_score_chosen",
+        "judge_score_rejected",
+        "mined_at",
+        "mined_run_id",
+    }
 )
 
 # --- public surface -----------------------------------------------------------
@@ -224,13 +237,43 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
         lines_for_content = list(current_lines)
         auto_harvest = False
         harvest_source: str | None = None
+        auto_mined = False
+        judge_name: str | None = None
+        judge_score_chosen: float | None = None
+        judge_score_rejected: float | None = None
+        mined_at: str | None = None
+        mined_run_id: int | None = None
         media_types = (SectionType.PROSE, SectionType.IMAGE, SectionType.AUDIO)
-        if current_type not in media_types and lines_for_content:
-            marker_match = _HARVEST_MARKER_RE.match(lines_for_content[0])
-            if marker_match:
-                auto_harvest = True
-                harvest_source = marker_match.group(1)
-                lines_for_content = lines_for_content[1:]
+        if current_type not in media_types:
+            while lines_for_content:
+                first = lines_for_content[0]
+                marker_match = _HARVEST_MARKER_RE.match(first)
+                if marker_match:
+                    auto_harvest = True
+                    harvest_source = marker_match.group(1)
+                    lines_for_content = lines_for_content[1:]
+                    continue
+                mined_match = (
+                    _AUTO_MINED_MARKER_RE.match(first)
+                    if current_type == SectionType.PREFERENCE
+                    else None
+                )
+                if mined_match:
+                    (
+                        judge_name,
+                        judge_score_chosen,
+                        judge_score_rejected,
+                        mined_at,
+                        mined_run_id,
+                    ) = _parse_auto_mined_marker(
+                        mined_match.group(1),
+                        path=path,
+                        line=current_start_line,
+                    )
+                    auto_mined = True
+                    lines_for_content = lines_for_content[1:]
+                    continue
+                break
         content = "\n".join(lines_for_content)
         # Elide empty PROSE sections (no content at all).
         if current_type == SectionType.PROSE and not content.strip() and not current_lines:
@@ -246,6 +289,12 @@ def _tokenize_body(body: str, *, body_start_line: int, path: Path | None) -> lis
                 adapter=current_adapter,
                 auto_harvest=auto_harvest,
                 harvest_source=harvest_source,
+                auto_mined=auto_mined,
+                judge_name=judge_name,
+                judge_score_chosen=judge_score_chosen,
+                judge_score_rejected=judge_score_rejected,
+                mined_at=mined_at,
+                mined_run_id=mined_run_id,
                 media_path=current_media_path,
                 media_alt=current_media_alt,
                 media_transcript=current_media_transcript,
@@ -417,3 +466,100 @@ def _resolve_fence_type(name: str, line: int, path: Path | None) -> tuple[Sectio
             col=1,
         ) from exc
     return section_type, adapter or None
+
+
+def _parse_auto_mined_marker(
+    attr_blob: str, *, path: Path | None, line: int
+) -> tuple[str, float, float, str, int]:
+    """Parse the Sprint 42 auto-mined metadata marker on preference sections."""
+    if not _MARKER_ATTR_BLOB_RE.fullmatch(attr_blob):
+        raise FenceError(
+            "invalid dlm-auto-mined marker syntax",
+            path=path,
+            line=line,
+            col=1,
+        )
+
+    attrs: dict[str, str] = {}
+    for kv in _ATTR_KV_RE.finditer(attr_blob):
+        key = kv.group(1)
+        value = kv.group(2)
+        if key in attrs:
+            raise FenceError(
+                f"dlm-auto-mined marker repeats attribute {key!r}",
+                path=path,
+                line=line,
+                col=1,
+            )
+        if key not in _AUTO_MINED_KEYS:
+            raise FenceError(
+                f"dlm-auto-mined marker has unknown attribute {key!r} "
+                f"(allowed: {sorted(_AUTO_MINED_KEYS)})",
+                path=path,
+                line=line,
+                col=1,
+            )
+        attrs[key] = value
+
+    missing = _AUTO_MINED_KEYS - attrs.keys()
+    if missing:
+        raise FenceError(
+            f"dlm-auto-mined marker is missing required attribute(s) {sorted(missing)}",
+            path=path,
+            line=line,
+            col=1,
+        )
+
+    try:
+        score_chosen = float(attrs["judge_score_chosen"])
+        score_rejected = float(attrs["judge_score_rejected"])
+    except ValueError as exc:
+        raise FenceError(
+            "dlm-auto-mined marker judge scores must be floats",
+            path=path,
+            line=line,
+            col=1,
+        ) from exc
+    if not math.isfinite(score_chosen) or not math.isfinite(score_rejected):
+        raise FenceError(
+            "dlm-auto-mined marker judge scores must be finite",
+            path=path,
+            line=line,
+            col=1,
+        )
+
+    mined_at = attrs["mined_at"]
+    try:
+        datetime.fromisoformat(mined_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise FenceError(
+            "dlm-auto-mined marker mined_at must be ISO-8601",
+            path=path,
+            line=line,
+            col=1,
+        ) from exc
+
+    try:
+        mined_run_id = int(attrs["mined_run_id"])
+    except ValueError as exc:
+        raise FenceError(
+            "dlm-auto-mined marker mined_run_id must be an integer",
+            path=path,
+            line=line,
+            col=1,
+        ) from exc
+    if mined_run_id < 1:
+        raise FenceError(
+            "dlm-auto-mined marker mined_run_id must be >= 1",
+            path=path,
+            line=line,
+            col=1,
+        )
+
+    return (
+        attrs["judge_name"],
+        score_chosen,
+        score_rejected,
+        mined_at,
+        mined_run_id,
+    )

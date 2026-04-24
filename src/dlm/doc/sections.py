@@ -37,6 +37,7 @@ the training row for image uses the image-token placeholder and caption.
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -91,6 +92,13 @@ class Section:
     ("run_N_sway"-style opaque token) for provenance. Like `tags`,
     neither field participates in `section_id`.
 
+    `auto_mined` marks a `::preference::` section as synthesized by
+    Sprint 42's preference-mining loop rather than hand-authored. The
+    accompanying judge metadata (`judge_name`, `judge_score_chosen`,
+    `judge_score_rejected`, `mined_at`, `mined_run_id`) captures
+    provenance for review, metrics, and revert flows. Like harvest
+    metadata, these fields do not participate in `section_id`.
+
     `media_path` / `media_alt` / `media_blob_sha` are media-section
     fields (IMAGE + AUDIO) populated from the fence attributes and
     the content-addressed blob store (after ingestion). Non-media
@@ -108,10 +116,44 @@ class Section:
     tags: Mapping[str, str] = field(default_factory=lambda: _EMPTY_TAGS)
     auto_harvest: bool = False
     harvest_source: str | None = None
+    auto_mined: bool = False
+    judge_name: str | None = None
+    judge_score_chosen: float | None = None
+    judge_score_rejected: float | None = None
+    mined_at: str | None = None
+    mined_run_id: int | None = None
     media_path: str | None = None
     media_alt: str | None = None
     media_blob_sha: str | None = None
     media_transcript: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.auto_mined:
+            return
+        if self.type != SectionType.PREFERENCE:
+            raise ValueError("auto_mined metadata is only valid on preference sections")
+        missing = [
+            name
+            for name, value in (
+                ("judge_name", self.judge_name),
+                ("judge_score_chosen", self.judge_score_chosen),
+                ("judge_score_rejected", self.judge_score_rejected),
+                ("mined_at", self.mined_at),
+                ("mined_run_id", self.mined_run_id),
+            )
+            if value is None
+        ]
+        if missing:
+            raise ValueError(f"auto_mined preference sections require metadata fields {missing!r}")
+        assert self.judge_score_chosen is not None
+        assert self.judge_score_rejected is not None
+        if not math.isfinite(self.judge_score_chosen) or not math.isfinite(
+            self.judge_score_rejected
+        ):
+            raise ValueError("judge scores must be finite floats")
+        assert self.mined_run_id is not None
+        if self.mined_run_id < 1:
+            raise ValueError("mined_run_id must be >= 1")
 
     @property
     def section_id(self) -> str:

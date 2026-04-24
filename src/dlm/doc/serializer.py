@@ -288,12 +288,38 @@ def _serialize_section(section: Section) -> str:
     body = section.content
     if body and not body.endswith("\n"):
         body += "\n"
+    markers: list[str] = []
     # Schema v7: auto-harvested sections carry a magic-comment marker
     # immediately after the fence. Parser lifts it back into
     # `Section.auto_harvest` + `Section.harvest_source`; emitting it
     # here keeps the round-trip symmetric.
     if section.auto_harvest:
         source = section.harvest_source or ""
-        marker = f'<!-- dlm-auto-harvest: source="{source}" -->\n'
-        return fence + marker + body
-    return fence + body
+        markers.append(f'<!-- dlm-auto-harvest: source="{source}" -->\n')
+    if section.auto_mined:
+        if (
+            section.judge_name is None
+            or section.judge_score_chosen is None
+            or section.judge_score_rejected is None
+            or section.mined_at is None
+            or section.mined_run_id is None
+        ):
+            raise ValueError("auto_mined section is missing required metadata fields")
+        attr_blob = " ".join(
+            [
+                f'judge_name="{_marker_attr_value(section.judge_name)}"',
+                f'judge_score_chosen="{_format_number(section.judge_score_chosen)}"',
+                f'judge_score_rejected="{_format_number(section.judge_score_rejected)}"',
+                f'mined_at="{_marker_attr_value(section.mined_at)}"',
+                f'mined_run_id="{section.mined_run_id}"',
+            ]
+        )
+        markers.append(f"<!-- dlm-auto-mined: {attr_blob} -->\n")
+    return fence + "".join(markers) + body
+
+
+def _marker_attr_value(value: str) -> str:
+    """Reject metadata values the marker grammar cannot round-trip."""
+    if '"' in value or "\n" in value:
+        raise ValueError("metadata marker values cannot contain double-quotes or newlines")
+    return value
