@@ -20,6 +20,7 @@ _DEFAULT_STARTUP_TIMEOUT_SECONDS = 30.0
 _DEFAULT_REQUEST_TIMEOUT_SECONDS = 5.0
 _DEFAULT_POLL_INTERVAL_SECONDS = 0.1
 _DEFAULT_PROMPT = "Hello."
+_DEFAULT_STARTUP_ATTEMPTS = 2
 
 
 def reserve_local_port(host: str = _DEFAULT_HOST) -> int:
@@ -39,44 +40,58 @@ def smoke_openai_compat_server(
     request_timeout: float = _DEFAULT_REQUEST_TIMEOUT_SECONDS,
     poll_interval: float = _DEFAULT_POLL_INTERVAL_SECONDS,
     prompt: str = _DEFAULT_PROMPT,
+    startup_attempts: int = _DEFAULT_STARTUP_ATTEMPTS,
 ) -> str:
     """Start a local OpenAI-compatible server, wait for readiness, then chat."""
+    if startup_attempts < 1:
+        raise ValueError(f"startup_attempts must be >= 1, got {startup_attempts}")
 
-    real_port = port if port is not None else reserve_local_port(host)
-    argv = _replace_or_append_flag(list(command), "--host", host)
-    argv = _replace_or_append_flag(argv, "--port", str(real_port))
+    last_error: TargetSmokeError | None = None
+    for _attempt in range(startup_attempts):
+        real_port = port if port is not None else reserve_local_port(host)
+        argv = _replace_or_append_flag(list(command), "--host", host)
+        argv = _replace_or_append_flag(argv, "--port", str(real_port))
 
-    with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as log:
-        proc = subprocess.Popen(  # nosec B603
-            argv,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env=_merged_env(env),
-        )
-        try:
-            model_id = _wait_for_models(
-                proc,
-                log,
-                host=host,
-                port=real_port,
-                startup_timeout=startup_timeout,
-                request_timeout=request_timeout,
-                poll_interval=poll_interval,
+        with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as log:
+            proc = subprocess.Popen(  # nosec B603
+                argv,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env=_merged_env(env),
             )
-            content = _chat_completion(
-                host=host,
-                port=real_port,
-                model_id=model_id,
-                prompt=prompt,
-                request_timeout=request_timeout,
-            )
-            first = _first_non_empty_line(content)
-            if not first:
-                raise TargetSmokeError("openai-compatible smoke returned empty assistant content")
-            return first
-        finally:
-            _stop_process(proc)
+            try:
+                model_id = _wait_for_models(
+                    proc,
+                    log,
+                    host=host,
+                    port=real_port,
+                    startup_timeout=startup_timeout,
+                    request_timeout=request_timeout,
+                    poll_interval=poll_interval,
+                )
+                content = _chat_completion(
+                    host=host,
+                    port=real_port,
+                    model_id=model_id,
+                    prompt=prompt,
+                    request_timeout=request_timeout,
+                )
+                first = _first_non_empty_line(content)
+                if not first:
+                    raise TargetSmokeError(
+                        "openai-compatible smoke returned empty assistant content"
+                    )
+                return first
+            except TargetSmokeError as exc:
+                last_error = exc
+                if port is not None:
+                    raise
+            finally:
+                _stop_process(proc)
+
+    assert last_error is not None
+    raise last_error
 
 
 def _wait_for_models(

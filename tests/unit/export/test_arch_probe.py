@@ -26,6 +26,7 @@ from dlm.export.arch_probe import (
     probe_gguf_arch,
 )
 from dlm.export.errors import VendoringError
+from dlm.export.vendoring import llama_cpp_root
 
 
 @pytest.fixture(autouse=True)
@@ -244,13 +245,23 @@ class TestLiveVendoredTree:
     """
 
     def test_paligemma_unsupported(self) -> None:
+        _require_live_vendored_tree()
         result = probe_gguf_arch("PaliGemmaForConditionalGeneration")
         assert result.support is SupportLevel.UNSUPPORTED
 
     def test_qwen2vl_supported(self) -> None:
+        _require_live_vendored_tree()
         result = probe_gguf_arch("Qwen2VLForConditionalGeneration")
         assert result.support is SupportLevel.SUPPORTED
 
     def test_internvl2_unsupported(self) -> None:
+        _require_live_vendored_tree()
         result = probe_gguf_arch("InternVLChatModel")
         assert result.support is SupportLevel.UNSUPPORTED
+
+
+def _require_live_vendored_tree() -> None:
+    try:
+        llama_cpp_root()
+    except VendoringError as exc:
+        pytest.skip(f"live vendored llama.cpp tree unavailable: {exc}")

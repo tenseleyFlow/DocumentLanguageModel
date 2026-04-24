@@ -159,6 +159,7 @@ def run_vl_gguf_export(
     training_sequence_len: int | None = None,
     subprocess_runner: SubprocessRunner | None = None,
     merge_runner: Callable[..., None] | None = None,
+    llama_cpp_root_override: Path | None = None,
 ) -> VlGgufResult:
     """Orchestrate merge → convert → quantize → Modelfile for a VL base.
 
@@ -201,8 +202,21 @@ def run_vl_gguf_export(
 
         do_merge(adapter_path, merged_hf, cached_base_dir=cached_base_dir)
 
-        run(base_gguf.build_convert_hf_args(merged_hf, out_fp16=fp16_gguf))
-        run(base_gguf.build_quantize_args(fp16_gguf, out_quant=gguf_path, quant=plan.quant))
+        run(
+            base_gguf.build_convert_hf_args(
+                merged_hf,
+                out_fp16=fp16_gguf,
+                script_override=llama_cpp_root_override,
+            )
+        )
+        run(
+            base_gguf.build_quantize_args(
+                fp16_gguf,
+                out_quant=gguf_path,
+                quant=plan.quant,
+                bin_override=llama_cpp_root_override,
+            )
+        )
 
     if not gguf_path.exists():
         raise ExportError(

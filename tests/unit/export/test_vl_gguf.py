@@ -63,6 +63,14 @@ def _supported_verdict() -> ArchProbeResult:
     )
 
 
+def _fixture_llama_cpp_root(tmp_path: Path) -> Path:
+    root = tmp_path / "llama.cpp"
+    (root / "build" / "bin").mkdir(parents=True)
+    (root / "convert_hf_to_gguf.py").write_text("# fake converter\n", encoding="utf-8")
+    (root / "build" / "bin" / "llama-quantize").write_text("# fake quantize\n", encoding="utf-8")
+    return root
+
+
 def _unsupported_verdict() -> ArchProbeResult:
     return ArchProbeResult(
         arch_class="PaliGemmaForConditionalGeneration",
@@ -214,6 +222,7 @@ class TestHappyPath:
         adapter_dir = _populate_adapter(store)
         cached_base = tmp_path / "base-cache"
         cached_base.mkdir()
+        llama_cpp_root = _fixture_llama_cpp_root(tmp_path)
 
         recorded_argv: list[list[str]] = []
 
@@ -241,6 +250,7 @@ class TestHappyPath:
             subprocess_runner=_recorder,
             merge_runner=_merge,
             dlm_version="test",
+            llama_cpp_root_override=llama_cpp_root,
         )
         # Merge is invoked exactly once, against the current adapter.
         assert len(merge_calls) == 1
