@@ -13,12 +13,17 @@ from dlm.store.layout import (
     LOGS_DIR,
     MANIFEST_FILENAME,
 )
-from dlm.store.paths import StorePath, dlm_home, ensure_home, for_dlm
+from dlm.store.paths import StorePath, _current_os_name, dlm_home, ensure_home, for_dlm
 
 VALID_ID = "01HZ4X7TGZM3J1A2B3C4D5E6F7"
 
 
 class TestDlmHome:
+    def test_current_os_name_passthrough(self) -> None:
+        import os
+
+        assert _current_os_name() == os.name
+
     def test_override_takes_precedence(self, tmp_path: Path) -> None:
         assert dlm_home(override=tmp_path / "custom") == (tmp_path / "custom").resolve()
 
@@ -38,6 +43,12 @@ class TestDlmHome:
         monkeypatch.setattr("dlm.store.paths._current_os_name", lambda: "posix")
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "u")
         assert dlm_home() == tmp_path / "u" / ".dlm"
+
+    def test_default_on_nt_prefers_appdata(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.delenv("DLM_HOME", raising=False)
+        monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
+        monkeypatch.setattr("dlm.store.paths._current_os_name", lambda: "nt")
+        assert dlm_home() == (tmp_path / "AppData" / "Roaming").resolve() / "dlm"
 
 
 class TestEnsureHome:
@@ -69,6 +80,10 @@ class TestStorePathAccessors:
     def test_lock_path(self, store: StorePath) -> None:
         assert store.lock.name == LOCK_FILENAME
 
+    def test_training_state_paths(self, store: StorePath) -> None:
+        assert store.training_state.name == "training_state.pt"
+        assert store.training_state_sha.name == "training_state.pt.sha256"
+
     def test_adapter_subpaths(self, store: StorePath) -> None:
         assert store.adapter.name == ADAPTER_DIR
         assert store.adapter_versions.parent == store.adapter
@@ -77,6 +92,10 @@ class TestStorePathAccessors:
 
     def test_logs_dir(self, store: StorePath) -> None:
         assert store.logs.name == LOGS_DIR
+
+    def test_replay_paths(self, store: StorePath) -> None:
+        assert store.replay_corpus.name == "corpus.zst"
+        assert store.replay_index.name == "index.json"
 
     def test_adapter_version_zero_rejected(self, store: StorePath) -> None:
         with pytest.raises(ValueError, match="1-indexed"):
@@ -104,11 +123,25 @@ class TestStorePathAccessors:
         assert store.vl_cache_dir.name == "vl-cache"
         assert store.vl_cache_dir.parent == store.root
 
+    def test_other_lazy_dirs(self, store: StorePath) -> None:
+        assert store.tokenized_cache_dir.name == "tokenized-cache"
+        assert store.audio_cache_dir.name == "audio-cache"
+        assert store.audio_waveform_cache_dir.name == "audio-waveform-cache"
+        assert store.controls_dir.name == "controls"
+        assert store.control_file("demo").name == "demo.safetensors"
+        assert store.control_meta("demo").name == "demo.meta.json"
+
     def test_blob_and_vl_cache_lazy(self, tmp_path: Path) -> None:
         sp = for_dlm(VALID_ID, home=tmp_path)
         sp.ensure_layout()
         assert not sp.blob_dir.exists()
         assert not sp.vl_cache_dir.exists()
+
+    def test_exists_reflects_store_root(self, tmp_path: Path) -> None:
+        sp = for_dlm(VALID_ID, home=tmp_path)
+        assert sp.exists() is False
+        sp.ensure_layout()
+        assert sp.exists() is True
 
 
 class TestEnsureLayout:

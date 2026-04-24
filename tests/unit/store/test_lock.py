@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import multiprocessing
 import os
 import time
@@ -121,3 +122,27 @@ class TestStaleLock:
         with pytest.raises(StaleLockError) as exc, lock.exclusive(lock_path, timeout=0.0):
             pass
         assert exc.value.holder_pid is None
+
+
+class TestProcessProbeEdges:
+    def test_permission_error_treated_as_alive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(lock.os, "kill", lambda _pid, _sig: (_ for _ in ()).throw(PermissionError()))
+        assert lock._is_alive(123) is True
+
+    def test_generic_oserror_treated_as_alive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _raise(_pid: int, _sig: int) -> None:
+            err = OSError("io")
+            err.errno = errno.EIO
+            raise err
+
+        monkeypatch.setattr(lock.os, "kill", _raise)
+        assert lock._is_alive(123) is True
+
+    def test_esrch_oserror_treated_as_dead(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _raise(_pid: int, _sig: int) -> None:
+            err = OSError("missing")
+            err.errno = errno.ESRCH
+            raise err
+
+        monkeypatch.setattr(lock.os, "kill", _raise)
+        assert lock._is_alive(123) is False

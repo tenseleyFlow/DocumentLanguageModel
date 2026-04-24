@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from dlm.store.inspect import inspect_store
+from dlm.store.inspect import _directory_size, _discover_named_adapters, _max_version, inspect_store
 from dlm.store.manifest import Manifest, TrainingRunSummary, save_manifest
 from dlm.store.paths import StorePath, for_dlm
 from tests.fixtures.dlm_factory import make_dlm
@@ -203,3 +203,56 @@ class TestTimelineEdges:
         save_manifest(store.manifest, manifest)
         result = inspect_store(store)
         assert result.last_trained_at == base + timedelta(minutes=5)
+
+
+class TestInspectCoverageEdges:
+    def test_discover_named_adapters_on_missing_adapter_dir(self, tmp_path: Path) -> None:
+        store = for_dlm(VALID_ID, home=tmp_path)
+        assert _discover_named_adapters(store) == []
+
+    def test_directory_size_ignores_stat_errors(self, tmp_path: Path) -> None:
+        path = tmp_path / "root"
+        path.mkdir()
+        good = path / "good.bin"
+        good.write_bytes(b"1234")
+
+        class _BadPath:
+            def is_file(self) -> bool:
+                return True
+
+            def stat(self):  # type: ignore[no-untyped-def]
+                raise OSError("transient")
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(Path, "rglob", lambda self, _pattern: iter([good, _BadPath()]))
+        try:
+            assert _directory_size(path) == 4
+        finally:
+            monkeypatch.undo()
+
+    def test_discover_named_adapters_tolerates_pointer_probe_errors(self, tmp_path: Path) -> None:
+        store = for_dlm(VALID_ID, home=tmp_path)
+        store.ensure_layout()
+        named = store.adapter / "knowledge"
+        (named / "versions" / "v0002").mkdir(parents=True)
+
+        def _boom(_name: str) -> None:
+            raise OSError("pointer unreadable")
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(StorePath, "resolve_current_adapter_for", lambda self, _name: _boom(_name))
+        try:
+            states = _discover_named_adapters(store)
+        finally:
+            monkeypatch.undo()
+
+        assert states == [type(states[0])(name="knowledge", has_current=False, latest_version=2)]
+
+    def test_max_version_ignores_non_version_entries(self, tmp_path: Path) -> None:
+        versions = tmp_path / "versions"
+        versions.mkdir()
+        (versions / "v0002").mkdir()
+        (versions / "vbad").mkdir()
+        (versions / "notes").mkdir()
+        (versions / "v0009").write_text("not a dir", encoding="utf-8")
+        assert _max_version(versions) == 2
