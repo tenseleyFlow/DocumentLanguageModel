@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import dlm.train.checkpoint_commit as checkpoint_commit
 from dlm.store.paths import for_dlm
 from dlm.train.checkpoint_commit import (
     _uniquify_rejected,
@@ -14,6 +15,7 @@ from dlm.train.checkpoint_commit import (
     fsync_dir,
     list_pending_versions,
 )
+from dlm.train.integrity import NaNWeightsError
 
 
 def _store(home: Path):
@@ -44,6 +46,12 @@ class TestAllocation:
         store = _store(tmp_path)
         (store.adapter_versions / "scratch").mkdir()
         (store.adapter_versions / "v-not-a-number").mkdir()
+        v1 = allocate_next_version(store)
+        assert v1.name == "v0001"
+
+    def test_ignores_non_dir_entries(self, tmp_path: Path) -> None:
+        store = _store(tmp_path)
+        (store.adapter_versions / "v0009").write_text("not a directory")
         v1 = allocate_next_version(store)
         assert v1.name == "v0001"
 
@@ -97,6 +105,56 @@ class TestCommitVersion:
         v2 = allocate_next_version(store)
         assert v2.name == "v0002"
 
+    def test_nonfinite_writer_uniquify_failure_leaves_pending(self, tmp_path: Path, monkeypatch) -> None:
+        store = _store(tmp_path)
+
+        def bad_writer(p: Path) -> None:
+            (p / "weights.safetensors").write_text("bad")
+            raise NaNWeightsError(["adapter.lora_A"])
+
+        def boom(_: Path) -> Path:
+            raise RuntimeError("no rejected slot")
+
+        monkeypatch.setattr(checkpoint_commit, "_uniquify_rejected", boom)
+
+        with pytest.raises(RuntimeError, match="no rejected slot"):
+            commit_version(store, bad_writer)
+
+        assert store.adapter_version(1).exists()
+        assert store.resolve_current_adapter() is None
+
+    def test_nonfinite_writer_rename_failure_still_reraises(self, tmp_path: Path, monkeypatch) -> None:
+        store = _store(tmp_path)
+
+        def bad_writer(p: Path) -> None:
+            (p / "weights.safetensors").write_text("bad")
+            raise NaNWeightsError(["adapter.lora_B"])
+
+        def bad_rename(self: Path, target: Path) -> Path:
+            raise OSError("rename blocked")
+
+        monkeypatch.setattr(Path, "rename", bad_rename)
+
+        with pytest.raises(NaNWeightsError, match="NaN/inf"):
+            commit_version(store, bad_writer)
+
+        assert store.adapter_version(1).exists()
+        assert store.resolve_current_adapter() is None
+
+    def test_nonfinite_writer_renames_to_rejected_path(self, tmp_path: Path) -> None:
+        store = _store(tmp_path)
+
+        def bad_writer(p: Path) -> None:
+            (p / "weights.safetensors").write_text("bad")
+            raise NaNWeightsError(["adapter.lora_B"])
+
+        with pytest.raises(NaNWeightsError, match="NaN/inf"):
+            commit_version(store, bad_writer)
+
+        assert not store.adapter_version(1).exists()
+        assert (store.adapter_versions / "v0001-rejected").exists()
+        assert store.resolve_current_adapter() is None
+
 
 class TestListPending:
     def test_no_pending_when_all_committed(self, tmp_path: Path) -> None:
@@ -115,6 +173,19 @@ class TestListPending:
         pending = list_pending_versions(store)
         assert [p.name for p in pending] == [v1.name]
 
+    def test_named_adapter_pending_versions_report_orphans(self, tmp_path: Path) -> None:
+        store = _store(tmp_path)
+        orphan = allocate_next_version(store, adapter_name="writer")
+        commit_version(store, lambda p: (p / "a").write_text("a"), adapter_name="writer")
+        pending = list_pending_versions(store, adapter_name="writer")
+        assert [p.name for p in pending] == [orphan.name]
+
+    def test_named_adapter_pending_versions_without_current(self, tmp_path: Path) -> None:
+        store = _store(tmp_path)
+        orphan = allocate_next_version(store, adapter_name="writer")
+        pending = list_pending_versions(store, adapter_name="writer")
+        assert pending == [orphan]
+
 
 class TestFsyncDir:
     def test_fsync_no_error_on_real_dir(self, tmp_path: Path) -> None:
@@ -123,6 +194,13 @@ class TestFsyncDir:
 
 
 class TestRejectedPathAllocation:
+    def test_returns_first_available_suffix(self, tmp_path: Path) -> None:
+        pending = tmp_path / "v0001"
+        pending.mkdir()
+        (tmp_path / "v0001-rejected").mkdir()
+        (tmp_path / "v0001-rejected-1").mkdir()
+        assert _uniquify_rejected(pending) == tmp_path / "v0001-rejected-2"
+
     def test_raises_after_1000_collisions(self, tmp_path: Path) -> None:
         pending = tmp_path / "v0001"
         pending.mkdir()
