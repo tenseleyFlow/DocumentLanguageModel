@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from dlm.cli.reporter import report_exception, run_with_reporter
+from dlm.cli.reporter import _prefix_for, report_exception, run_with_reporter
 
 
 class TestTier1ParseError:
@@ -43,6 +43,22 @@ class TestTier2DomainError:
         assert code == 1
         err = capsys.readouterr().err
         assert "export:" in err
+
+    def test_typed_error_verbose_env_surfaces_traceback(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from dlm.export.errors import UnsafeMergeError
+
+        monkeypatch.setenv("DLM_VERBOSE", "1")
+        exc = UnsafeMergeError("needs --dequantize")
+        code = report_exception(exc)
+
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "export:" in err
+        assert "UnsafeMergeError" in err
 
 
 class TestPrefixMapping:
@@ -90,6 +106,16 @@ class TestPrefixMapping:
         report_exception(exc)
         err = capsys.readouterr().err
         assert "base_model:" in err
+
+    def test_doc_prefix_branch_is_mapped(self) -> None:
+        doc_error = type("DocError", (Exception,), {"__module__": "dlm.doc.custom"})("boom")
+
+        assert _prefix_for(doc_error) == "doc"
+
+    def test_hardware_prefix_branch_is_mapped(self) -> None:
+        from dlm.hardware.refusals import ResolutionError
+
+        assert _prefix_for(ResolutionError("no plan")) == "doctor"
 
 
 class TestTier3Uncaught:
