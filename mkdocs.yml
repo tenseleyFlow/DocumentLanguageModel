@@ -58,6 +58,7 @@ nav:
   - The .dlm format:
       - Frontmatter: format/frontmatter.md
       - Sections: format/sections.md
+      - Preference sections: format/preference-section.md
       - Export manifest: format/export-manifest.md
       - .dlm/training.yaml: format/dlm-training-yaml.md
       - .dlm/ignore: format/dlm-ignore.md

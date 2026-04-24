@@ -159,6 +159,7 @@ being picked up as new?", the ID in `dlm show --json` is the answer.
 
 ## See also
 
+- [Preference section reference](preference-section.md)
 - [First train walkthrough](../getting-started/first-train.md)
 - [Cookbook: coding tutor](../cookbook/coding-tutor.md) — full
   example of instruction-heavy authoring
