@@ -12,11 +12,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
+import numpy as np
 import pytest
 from transformers import PreTrainedTokenizerBase
 
 from dlm.directives.cache import TokenizedCache
 from dlm.train.tokenization import (
+    _as_int_list,
     TokenizationStats,
     pretokenize_rows,
 )
@@ -232,3 +234,19 @@ class TestStatsDataclass:
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             s.total_sections = 3  # type: ignore[misc]
+
+
+class TestAsIntList:
+    def test_numpy_batch_of_one_is_flattened(self) -> None:
+        arr = np.asarray([[1, 2, 3]], dtype=np.int64)
+        assert _as_int_list(arr) == [1, 2, 3]
+
+    def test_tolist_like_object_is_flattened(self) -> None:
+        class _FakeTensor:
+            def tolist(self) -> list[list[int]]:
+                return [[4, 5, 6]]
+
+        assert _as_int_list(_FakeTensor()) == [4, 5, 6]
+
+    def test_plain_iterable_falls_back_to_iteration(self) -> None:
+        assert _as_int_list((7, 8, 9)) == [7, 8, 9]
