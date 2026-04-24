@@ -31,6 +31,7 @@ class TestOpen:
 
     def test_empty_cache(self, tmp_path: Path) -> None:
         cache = TokenizedCache.open(tmp_path / "c")
+        assert cache.root == tmp_path / "c"
         assert cache.entry_count == 0
         assert cache.total_bytes == 0
 
@@ -46,6 +47,94 @@ class TestOpen:
         cache = TokenizedCache.open(root)
         assert cache.entry_count == 0
         assert any("unreadable" in rec.message for rec in caplog.records)
+
+    def test_manifest_version_mismatch_starts_fresh(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import json
+        import logging
+
+        root = tmp_path / "c"
+        root.mkdir()
+        (root / "manifest.json").write_text(
+            json.dumps({"version": 999, "entries": {}}),
+            encoding="utf-8",
+        )
+        caplog.set_level(logging.WARNING, logger="dlm.directives.cache")
+        cache = TokenizedCache.open(root)
+        assert cache.entry_count == 0
+        assert "version mismatch" in caplog.text
+
+    def test_non_mapping_entries_starts_fresh(self, tmp_path: Path) -> None:
+        import json
+
+        root = tmp_path / "c"
+        root.mkdir()
+        (root / "manifest.json").write_text(
+            json.dumps({"version": 1, "entries": []}),
+            encoding="utf-8",
+        )
+        cache = TokenizedCache.open(root)
+        assert cache.entry_count == 0
+
+    def test_malformed_manifest_entry_is_skipped(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import json
+        import logging
+
+        root = tmp_path / "c"
+        root.mkdir()
+        (root / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "entries": {
+                        "good": {
+                            "size": 4,
+                            "last_access_ts": 1.0,
+                            "shard": "aa",
+                            "filename": "good.npz",
+                            "tokenizer_sha": "a" * 64,
+                        },
+                        "bad": {
+                            "size": "not-an-int",
+                            "last_access_ts": 1.0,
+                            "shard": "bb",
+                            "filename": "bad.npz",
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        caplog.set_level(logging.WARNING, logger="dlm.directives.cache")
+        cache = TokenizedCache.open(root)
+        assert cache.entry_count == 1
+        assert "skipping malformed entry" in caplog.text
+
+    def test_non_mapping_manifest_entry_is_ignored(self, tmp_path: Path) -> None:
+        import json
+
+        root = tmp_path / "c"
+        root.mkdir()
+        (root / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "entries": {
+                        "bad": "not-a-dict",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        cache = TokenizedCache.open(root)
+        assert cache.entry_count == 0
 
 
 class TestGetPut:
@@ -80,6 +169,68 @@ class TestGetPut:
         cache2 = TokenizedCache.open(root)
         assert cache2.entry_count == 1
         assert cache2.get(key) is not None
+
+    def test_hit_rate_zero_when_no_lookups(self, tmp_path: Path) -> None:
+        cache = TokenizedCache.open(tmp_path / "c")
+        assert cache.hit_rate == 0.0
+
+    def test_corrupt_entry_recovers(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        cache = TokenizedCache.open(tmp_path / "c")
+        key = _key()
+        cache.put(key, _tokens(4))
+        entry_file = next((tmp_path / "c" / "entries").rglob("*.npz"))
+        entry_file.write_bytes(b"not a real npz")
+
+        caplog.set_level(logging.WARNING, logger="dlm.directives.cache")
+        assert cache.get(key) is None
+        assert cache.entry_count == 0
+        assert "corrupt entry" in caplog.text
+
+    def test_put_write_failure_drops_entry(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        cache = TokenizedCache.open(tmp_path / "c")
+
+        def _boom(*_args: object, **_kwargs: object) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr("numpy.savez_compressed", _boom)
+        caplog.set_level(logging.WARNING, logger="dlm.directives.cache")
+        cache.put(_key(), _tokens(4))
+
+        assert cache.entry_count == 0
+        assert list((tmp_path / "c" / "entries").rglob("*.tmp")) == []
+        assert "write failed" in caplog.text
+
+    def test_put_stat_failure_records_zero_sized_entry(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        cache = TokenizedCache.open(tmp_path / "c")
+        real_stat = Path.stat
+
+        def _patched_stat(path: Path, *, follow_symlinks: bool = True) -> object:
+            if path.suffix == ".tmp":
+                raise OSError("no stat")
+            return real_stat(path, follow_symlinks=follow_symlinks)
+
+        monkeypatch.setattr(Path, "stat", _patched_stat)
+        cache.put(_key(), _tokens(4))
+
+        assert cache.entry_count == 1
+        assert cache.total_bytes == 0
 
 
 class TestInvalidation:
@@ -149,6 +300,29 @@ class TestLRUEviction:
         # Both were put in this run — both must still resolve
         assert cache.get(key_a) is not None
         assert cache.get(key_b) is not None
+
+    def test_eviction_stops_once_under_budget(self, tmp_path: Path) -> None:
+        import time
+
+        cache = TokenizedCache.open(tmp_path / "c", max_bytes=10_000_000)
+        key_a = _key("aa" * 8)
+        key_b = _key("bb" * 8)
+        key_c = _key("cc" * 8)
+
+        cache.put(key_a, _tokens(20))
+        size_a = next(entry.size for entry in cache._manifest.values() if entry.filename == key_a.as_filename())
+        cache._touched_this_run.clear()
+        time.sleep(0.01)
+        cache.put(key_b, _tokens(20))
+        size_b = next(entry.size for entry in cache._manifest.values() if entry.filename == key_b.as_filename())
+        cache._touched_this_run.clear()
+
+        cache._max_bytes = size_a + size_b
+        cache.put(key_c, _tokens(20))
+
+        assert cache.get(key_a) is None
+        assert cache.get(key_b) is not None
+        assert cache.get(key_c) is not None
 
 
 class TestPruneClear:

@@ -7,14 +7,17 @@ directives fast-path.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 from dlm.directives import expand_sources
 from dlm.directives.errors import DirectivePathError, DirectivePolicyError
+from dlm.directives.expand import _iter_candidates
 from dlm.doc.parser import parse_text
 from dlm.doc.sections import SectionType
+from dlm.store.blobs import BlobStore
 
 _VALID_ULID = "01ABCDEFGHJKMNPQRSTVWXYZ00"
 
@@ -180,3 +183,64 @@ def test_single_file_directive(tmp_path: Path) -> None:
     result = expand_sources(parsed, base_path=tmp_path)  # type: ignore[arg-type]
     assert len(result.sections) == 1
     assert result.sections[0].content.startswith("# source: notes.md")
+
+
+def test_stat_failure_skips_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    target = src / "a.py"
+    target.write_text("print(1)\n", encoding="utf-8")
+    body = "  sources:\n    - path: src\n      include: ['**/*.py']\n"
+    parsed, _ = _make_parsed(body, tmp_path)
+    real_stat = Path.stat
+    seen_target = 0
+
+    def _patched_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        nonlocal seen_target
+        if path == target:
+            seen_target += 1
+            if seen_target >= 2:
+                raise OSError("no stat")
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", _patched_stat)
+    result = expand_sources(parsed, base_path=tmp_path)  # type: ignore[arg-type]
+    assert result.sections == ()
+
+
+def test_read_bytes_failure_skips_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    target = src / "a.py"
+    target.write_text("print(1)\n", encoding="utf-8")
+    body = "  sources:\n    - path: src\n      include: ['**/*.py']\n"
+    parsed, _ = _make_parsed(body, tmp_path)
+    real_read_bytes = Path.read_bytes
+
+    def _patched_read_bytes(path: Path, *args: object, **kwargs: object) -> bytes:
+        if path == target:
+            raise OSError("no read")
+        return real_read_bytes(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", _patched_read_bytes)
+    result = expand_sources(parsed, base_path=tmp_path)  # type: ignore[arg-type]
+    assert result.sections == ()
+
+
+def test_audio_transcript_unreadable_skips_audio(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "clip.wav").write_bytes(b"RIFF....fake wav")
+    (corpus / "clip.txt").write_bytes(b"bad-\xff\n")
+    parsed, _ = _make_parsed(
+        '  sources:\n    - path: corpus\n      include: ["**/*.wav"]\n',
+        tmp_path,
+    )
+    blob_store = BlobStore(tmp_path / "blobs")
+    result = expand_sources(parsed, base_path=tmp_path, blob_store=blob_store)  # type: ignore[arg-type]
+    assert result.sections == ()
+    assert result.provenance[0].skipped_audio_no_transcript == 1
+
+
+def test_iter_candidates_non_file_non_dir_yields_nothing(tmp_path: Path) -> None:
+    assert list(_iter_candidates(tmp_path / "missing")) == []
