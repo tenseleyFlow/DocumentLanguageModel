@@ -75,6 +75,9 @@ DLM sits in the gap:
 - **Compose multiple adapters in one document.** Named adapters, weighted export
   mixes, and learned adapter gates let one `.dlm` separate knowledge, tone, or
   persona lanes.
+- **Mine preference pairs from a live adapter.** `dlm preference mine` can use
+  `sway`, HF reward models, or external CLI judges to write auto-mined
+  `::preference::` sections back into the document.
 - **Stay in a local iteration loop.** `dlm prompt`, `dlm repl`,
   `dlm train --watch`, `dlm metrics`, and `dlm doctor` are all part of the
   normal workflow now.
@@ -282,9 +285,9 @@ uv run dlm metrics mydoc.dlm
 
 ```sh
 uv run dlm export mydoc.dlm --target ollama --name mydoc
-uv run dlm export mydoc.dlm --target llama-server --no-smoke
-uv run dlm export mydoc.dlm --target vllm --no-smoke
-uv run dlm export mydoc.dlm --target mlx-serve --no-smoke
+uv run dlm export mydoc.dlm --target llama-server
+uv run dlm export mydoc.dlm --target vllm
+uv run dlm export mydoc.dlm --target mlx-serve
 uv run dlm pack mydoc.dlm --include-exports
 uv run dlm verify mydoc.dlm.pack
 ```
@@ -295,7 +298,34 @@ defaults in the launch script: it pins the server to the MLX KV path
 and caps `--max-model-len` to the document's `training.sequence_len`
 instead of blindly asking `vllm` for the base model's full context.
 
-### 6. Pull eval failures back into training
+### 6. Mine preference pairs and retrain
+
+```sh
+uv run dlm preference mine mydoc.dlm --samples 4 --max-pairs 8
+uv run dlm preference list mydoc.dlm
+uv run dlm preference apply mydoc.dlm
+uv run dlm train mydoc.dlm --phase preference
+
+# A/B check against hand-authored pairs only:
+uv run dlm train mydoc.dlm --phase preference --no-mined
+
+# Use a different judge when bootstrap self-judging is not enough:
+uv run dlm preference mine mydoc.dlm --judge hf:YourOrg/reward-model --apply
+```
+
+### 7. Scaffold multimodal or audio docs
+
+```sh
+uv run dlm init diagrams.dlm --multimodal --base qwen2-vl-2b-instruct
+uv run dlm train diagrams.dlm
+uv run dlm prompt diagrams.dlm --image figures/system.png "What is happening here?"
+
+uv run dlm init calls.dlm --audio
+uv run dlm train calls.dlm
+uv run dlm prompt calls.dlm --audio clips/example.wav "Summarize the clip"
+```
+
+### 8. Pull eval failures back into training
 
 ```sh
 uv run dlm harvest mydoc.dlm --sway-json sway-report.json --apply
@@ -303,6 +333,16 @@ uv run dlm harvest mydoc.dlm --sway-json sway-report.json --apply
 
 That is the probe-driven loop: evaluation finds a miss, DLM turns it into
 document-level training data, and the next train closes the gap.
+
+### 9. Inspect store state and reproducibility
+
+```sh
+uv run dlm doctor
+uv run dlm show mydoc.dlm --json
+uv run dlm metrics mydoc.dlm --run-id 7 --json
+uv run dlm pack mydoc.dlm --include-exports
+uv run dlm verify mydoc.dlm.pack
+```
 
 ## Command Surface
 
@@ -312,6 +352,7 @@ The CLI is broader than the original MVP now. A useful mental map:
 |---|---|---|
 | Author | `init`, `templates`, `show`, `migrate`, `cache` | Create docs, inspect them, migrate schema, manage cache state |
 | Train | `train`, `doctor`, `metrics`, `harvest` | Run training, inspect plans, observe runs, pull eval misses back in |
+| Align | `preference` | Mine, stage, apply, revert, and inspect auto-mined preference sections |
 | Infer | `prompt`, `repl` | Local interactive and one-shot inference |
 | Ship | `export`, `pack`, `unpack`, `verify`, `push`, `pull`, `serve` | Export to runtimes, bundle, verify, and move artifacts |
 
@@ -322,13 +363,20 @@ See the [CLI reference](./docs/cli/reference.md) for the full flag surface.
 - [Getting started](./docs/getting-started/install.md)
 - [Frontmatter reference](./docs/format/frontmatter.md)
 - [Section grammar](./docs/format/sections.md)
+- [Preference section reference](./docs/format/preference-section.md)
 - [Training across codebases](./docs/cookbook/training-across-codebases.md)
+- [Train from a folder](./docs/cookbook/train-from-folder.md)
+- [Multi-source training](./docs/cookbook/multi-source-training.md)
+- [Tokenized-section cache](./docs/cookbook/directive-cache.md)
 - [Multi-adapter composition](./docs/cookbook/multi-adapter.md)
 - [Learned adapter gate](./docs/cookbook/learned-adapter-gate.md)
+- [Self-improving loop / preference mining](./docs/cookbook/self-improving-loop.md)
+- [Reward-model integration](./docs/cookbook/reward-model-integration.md)
 - [Multimodal training](./docs/cookbook/multimodal-training.md)
 - [Audio training](./docs/cookbook/audio-training.md)
 - [Probe-driven training / sway harvest](./docs/cookbook/probe-driven-training.md)
 - [Multi-target export](./docs/cookbook/multi-target-export.md)
+- [Sharing adapters and packs](./docs/cookbook/sharing.md)
 - [CLI reference](./docs/cli/reference.md)
 - [Architecture](./docs/architecture.md)
 - [Determinism](./docs/determinism.md)
