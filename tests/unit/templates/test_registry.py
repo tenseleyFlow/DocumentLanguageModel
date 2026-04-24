@@ -73,6 +73,22 @@ def test_registry_drops_template_with_malformed_meta(tmp_path: Path) -> None:
     assert list_bundled(gallery_dir=tmp_path) == []
 
 
+def test_load_template_rejects_non_mapping_meta(tmp_path: Path) -> None:
+    (tmp_path / "broken.dlm").write_text("---\ndlm_id: 01AAAA\nbase_model: foo\n---\n# body\n")
+    (tmp_path / "broken.meta.yaml").write_text("- not\n- a\n- mapping\n")
+
+    with pytest.raises(TemplateMetaError, match="meta must be a YAML mapping"):
+        load_template("broken", gallery_dir=tmp_path)
+
+
+def test_load_template_rejects_schema_invalid_meta(tmp_path: Path) -> None:
+    (tmp_path / "broken.dlm").write_text("---\ndlm_id: 01AAAA\nbase_model: foo\n---\n# body\n")
+    (tmp_path / "broken.meta.yaml").write_text("name: broken\ntitle: Broken\nsummary: hi\n")
+
+    with pytest.raises(TemplateMetaError, match="failed schema validation"):
+        load_template("broken", gallery_dir=tmp_path)
+
+
 def test_load_template_with_mismatched_name_raises(tmp_path: Path) -> None:
     (tmp_path / "fine.dlm").write_text("---\ndlm_id: 01AAAA\nbase_model: foo\n---\n# body\n")
     # meta.name doesn't match the filename stem.
