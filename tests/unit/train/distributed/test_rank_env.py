@@ -50,6 +50,10 @@ class TestDetectRank:
         monkeypatch.setenv("LOCAL_RANK", "2")
         assert detect_rank() == 2
 
+    def test_negative_rank_clamped_to_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RANK", "-3")
+        assert detect_rank() == 0
+
     def test_malformed_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("RANK", "oops")
         with pytest.raises(ValueError, match="RANK"):

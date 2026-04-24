@@ -87,6 +87,9 @@ class TestAssertEvalFinite:
         # "check iff eval ran", so no eval entries means nothing to check.
         assert_eval_finite([{"loss": 2.0, "step": 1}, {"loss": 1.5, "step": 2}])
 
+    def test_non_dict_entries_ignored(self) -> None:
+        assert_eval_finite([{"loss": 2.0, "step": 1}, "not-a-dict"])
+
     def test_finite_eval_does_not_raise(self) -> None:
         assert_eval_finite([{"eval_loss": 1.8, "step": 10}])
 

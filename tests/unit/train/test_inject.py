@@ -37,6 +37,10 @@ class TestQueue:
         with pytest.raises(ValueError, match="capacity must be positive"):
             InjectedProbeQueue(capacity=0)
 
+    def test_capacity_property_reflects_configured_limit(self) -> None:
+        q = InjectedProbeQueue(capacity=8)
+        assert q.capacity == 8
+
     def test_depth_reports_current(self) -> None:
         q = InjectedProbeQueue(capacity=8)
         assert q.depth() == 0

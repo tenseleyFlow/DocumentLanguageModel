@@ -14,6 +14,7 @@ from dlm.train.gate import (
     load_gate,
     train_gate,
 )
+from dlm.train.gate.errors import GateTrainingError
 from dlm.train.gate.paths import gate_config_path, gate_save_path
 
 
@@ -161,6 +162,23 @@ class TestConvergence:
             on_step=lambda step, loss, entropy: seen.append((step, loss, entropy)),
         )
         assert len(seen) == 7
+
+    def test_non_finite_loss_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import torch
+
+        store = _store(tmp_path)
+        samples = _synthetic_samples(per_class=5, input_dim=4, seed=0)
+        monkeypatch.setattr(torch, "isfinite", lambda value: torch.tensor(False))
+        with pytest.raises(GateTrainingError, match="non-finite"):
+            train_gate(
+                store,  # type: ignore[arg-type]
+                samples,
+                adapter_names=["a", "b"],
+                input_dim=4,
+                steps=1,
+                cold_start_floor=1,
+                batch_size=4,
+            )
 
 
 class TestLoadGateErrors:

@@ -108,3 +108,8 @@ class TestGatherMetrics:
         out = gather_metrics(acc, {"loss": 2.0})
         # mean of [2.0, 3.0] = 2.5
         assert out["loss"] == pytest.approx(2.5)
+
+    def test_gather_none_falls_back_to_original_value(self) -> None:
+        acc = SimpleNamespace(gather_for_metrics=lambda tensor: None, is_main_process=True)
+        out = gather_metrics(acc, {"loss": 2.0})
+        assert out == {"loss": 2.0}

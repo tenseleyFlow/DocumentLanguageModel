@@ -125,6 +125,70 @@ class TestSingleAdapterPassthrough:
         # Flat layout: version dir lives under adapter/versions/, not a named subdir.
         assert store.adapter_version(1).is_dir()
 
+    def test_one_named_adapter_still_passthroughs(self, tmp_path: Path) -> None:
+        dlm_id = "01HZ4X7TGZM3J1A2B3C4D5E6FZ"
+        store = _seed_store(tmp_path, dlm_id)
+        parsed = ParsedDlm(
+            frontmatter=DlmFrontmatter(
+                dlm_id=dlm_id,
+                base_model="smollm2-135m",
+                training=TrainingConfig(
+                    seed=42,
+                    adapters={"knowledge": AdapterConfig()},
+                ),
+            ),
+            sections=(
+                Section(type=SectionType.PROSE, content="Shared domain prose."),
+                Section(
+                    type=SectionType.INSTRUCTION,
+                    content="### Q\nfacts?\n### A\nfacts.",
+                    adapter="knowledge",
+                ),
+            ),
+        )
+        results = run_all(
+            store,
+            parsed,
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            mode="fresh",
+            trainer_factory=_mock_trainer_factory,
+        )
+        assert len(results) == 1
+
+    def test_gate_enabled_with_one_named_adapter_still_returns_one_result(self, tmp_path: Path) -> None:
+        dlm_id = "01HZ4X7TGZM3J1A2B3C4D5E6FY"
+        store = _seed_store(tmp_path, dlm_id)
+        parsed = ParsedDlm(
+            frontmatter=DlmFrontmatter(
+                dlm_id=dlm_id,
+                base_model="smollm2-135m",
+                training=TrainingConfig(
+                    seed=42,
+                    adapters={"knowledge": AdapterConfig()},
+                    gate=GateConfig(enabled=False),
+                ),
+            ),
+            sections=(
+                Section(type=SectionType.PROSE, content="Shared domain prose."),
+                Section(
+                    type=SectionType.INSTRUCTION,
+                    content="### Q\nfacts?\n### A\nfacts.",
+                    adapter="knowledge",
+                ),
+            ),
+        )
+        object.__setattr__(parsed.frontmatter.training.gate, "enabled", True)
+        results = run_all(
+            store,
+            parsed,
+            BASE_MODELS["smollm2-135m"],
+            _plan(),
+            mode="fresh",
+            trainer_factory=_mock_trainer_factory,
+        )
+        assert len(results) == 1
+
 
 class TestMultiAdapterOrchestration:
     def test_trains_each_declared_adapter(self, tmp_path: Path) -> None:

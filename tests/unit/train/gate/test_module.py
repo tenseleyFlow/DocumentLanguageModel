@@ -81,3 +81,26 @@ class TestGateMetadataJson:
                     "mode": "trained",
                 }
             )
+
+    def test_non_integer_dims_rejected(self) -> None:
+        with pytest.raises(GateConfigError, match="input_dim/hidden_proj_dim"):
+            GateMetadata.from_json(
+                {
+                    "input_dim": "8",
+                    "hidden_proj_dim": 4,
+                    "adapter_names": ["a", "b"],
+                    "mode": "trained",
+                }
+            )
+
+    def test_non_numeric_entropy_rejected(self) -> None:
+        with pytest.raises(GateConfigError, match="entropy_lambda"):
+            GateMetadata.from_json(
+                {
+                    "input_dim": 8,
+                    "hidden_proj_dim": 4,
+                    "adapter_names": ["a", "b"],
+                    "mode": "trained",
+                    "entropy_lambda": "high",
+                }
+            )

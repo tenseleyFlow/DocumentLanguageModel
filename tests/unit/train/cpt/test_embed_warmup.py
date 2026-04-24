@@ -35,6 +35,22 @@ def _model(*, embed_frozen: bool = True, head_frozen: bool = True, tied: bool = 
 
 
 class TestUnfreezeContextManager:
+    def test_missing_embedding_modules_yield_empty_list(self) -> None:
+        model = SimpleNamespace(
+            get_input_embeddings=lambda: None,
+            get_output_embeddings=lambda: None,
+        )
+        with unfreeze_embeddings_for(model) as weights:
+            assert weights == []
+
+    def test_modules_without_weight_are_skipped(self) -> None:
+        model = SimpleNamespace(
+            get_input_embeddings=lambda: SimpleNamespace(weight=None),
+            get_output_embeddings=lambda: SimpleNamespace(weight=None),
+        )
+        with unfreeze_embeddings_for(model) as weights:
+            assert weights == []
+
     def test_unfreezes_both_embeddings(self) -> None:
         model = _model(embed_frozen=True, head_frozen=True)
         with unfreeze_embeddings_for(model) as weights:
