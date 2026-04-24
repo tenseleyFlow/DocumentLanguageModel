@@ -13,10 +13,12 @@ from dlm.base_models import BaseModelSpec, GatedModelError
 from dlm.base_models.probes import (
     _LLAMA_CPP_CHKTXT,
     probe_architecture,
+    probe_audio_token,
     probe_chat_template,
     probe_gguf_arch_supported,
     probe_pretokenizer_hash,
     probe_pretokenizer_label,
+    probe_vl_image_token,
     run_all,
 )
 
@@ -39,6 +41,37 @@ def _spec() -> BaseModelSpec:
             "size_gb_fp16": 2.0,
             "context_length": 4096,
             "recommended_seq_len": 2048,
+        }
+    )
+
+
+def _vl_spec() -> BaseModelSpec:
+    return BaseModelSpec.model_validate(
+        {
+            **_spec().model_dump(),
+            "key": "demo-vl",
+            "modality": "vision-language",
+            "vl_preprocessor_plan": {
+                "target_size": [224, 224],
+                "image_token": "<image>",
+                "num_image_tokens": 256,
+            },
+        }
+    )
+
+
+def _audio_spec() -> BaseModelSpec:
+    return BaseModelSpec.model_validate(
+        {
+            **_spec().model_dump(),
+            "key": "demo-audio",
+            "modality": "audio-language",
+            "audio_preprocessor_plan": {
+                "sample_rate": 16000,
+                "audio_token": "<audio>",
+                "num_audio_tokens": 64,
+                "max_length_seconds": 30.0,
+            },
         }
     )
 
@@ -104,6 +137,20 @@ class TestProbeChatTemplate:
         ):
             result = probe_chat_template(_spec())
         assert result.passed is False
+
+    def test_gated_repo_raises_gated_model_error(self) -> None:
+        from unittest.mock import Mock
+
+        from huggingface_hub.errors import GatedRepoError
+
+        with (
+            patch(
+                "transformers.AutoTokenizer.from_pretrained",
+                side_effect=GatedRepoError("gated", response=Mock()),
+            ),
+            pytest.raises(GatedModelError),
+        ):
+            probe_chat_template(_spec())
 
 
 class TestProbeGgufArch:
@@ -182,6 +229,16 @@ class TestProbeGgufArch:
         result = probe_gguf_arch_supported(_spec(), vendor_path=vendor)
         assert result.passed is True
 
+    def test_read_error_fails(self, tmp_path: Path) -> None:
+        vendor = tmp_path / "llama.cpp"
+        vendor.mkdir()
+        script = vendor / "convert_hf_to_gguf.py"
+        script.write_text('@Model.register("DemoForCausalLM")\n', encoding="utf-8")
+        with patch.object(Path, "read_text", side_effect=OSError("boom")):
+            result = probe_gguf_arch_supported(_spec(), vendor_path=vendor)
+        assert result.passed is False
+        assert "read failed" in result.detail
+
 
 class TestProbePretokenizerLabel:
     def test_skips_when_table_missing(self, tmp_path: Path) -> None:
@@ -207,6 +264,14 @@ class TestProbePretokenizerLabel:
         hashes.write_text("not json", encoding="utf-8")
         result = probe_pretokenizer_label(_spec(), hashes_path=hashes)
         assert result.passed is False
+
+    def test_wrong_shape_table_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        hashes = tmp_path / "h.json"
+        hashes.write_text("[]", encoding="utf-8")
+        monkeypatch.setattr("dlm.base_models.probes.json.loads", lambda _text: [["nested"]])
+        result = probe_pretokenizer_label(_spec(), hashes_path=hashes)
+        assert result.passed is False
+        assert "wrong shape" in result.detail
 
 
 class TestProbePretokenizerHash:
@@ -325,6 +390,127 @@ class TestProbePretokenizerHash:
         assert result.passed is False
         assert "wrong shape" in result.detail
 
+    def test_tokenizer_encode_failure_fails(self, tmp_path: Path) -> None:
+        table = tmp_path / "fp.json"
+        table.write_text(json.dumps({"demo": "a" * 64}), encoding="utf-8")
+
+        with patch(
+            "transformers.AutoTokenizer.from_pretrained",
+            return_value=SimpleNamespace(
+                encode=lambda _text: (_ for _ in ()).throw(ValueError("boom"))
+            ),
+        ):
+            result = probe_pretokenizer_hash(_spec(), fingerprints_path=table)
+
+        assert result.passed is False
+        assert "tokenizer.encode failed" in result.detail
+
+
+class TestProbeVlImageToken:
+    def test_non_vl_spec_skips(self) -> None:
+        result = probe_vl_image_token(_spec())
+        assert result.skipped is True
+
+    def test_gated_processor_raises(self) -> None:
+        from unittest.mock import Mock
+
+        from huggingface_hub.errors import GatedRepoError
+
+        with (
+            patch(
+                "dlm.base_models._typed_shims.load_auto_processor",
+                side_effect=GatedRepoError("gated", response=Mock()),
+            ),
+            pytest.raises(GatedModelError),
+        ):
+            probe_vl_image_token(_vl_spec())
+
+    def test_missing_tokenizer_fails(self) -> None:
+        with patch(
+            "dlm.base_models._typed_shims.load_auto_processor",
+            return_value=SimpleNamespace(),
+        ):
+            result = probe_vl_image_token(_vl_spec())
+        assert result.passed is False
+        assert "no `.tokenizer`" in result.detail
+
+    def test_tokenizer_encode_error_fails(self) -> None:
+        tokenizer = SimpleNamespace(
+            encode=lambda _placeholder, add_special_tokens=False: (_ for _ in ()).throw(
+                ValueError("boom")
+            )
+        )
+        with patch(
+            "dlm.base_models._typed_shims.load_auto_processor",
+            return_value=SimpleNamespace(tokenizer=tokenizer),
+        ):
+            result = probe_vl_image_token(_vl_spec())
+        assert result.passed is False
+        assert "tokenizer rejected placeholder" in result.detail
+
+    def test_multi_token_placeholder_fails(self) -> None:
+        tokenizer = SimpleNamespace(encode=lambda _placeholder, add_special_tokens=False: [1, 2])
+        with patch(
+            "dlm.base_models._typed_shims.load_auto_processor",
+            return_value=SimpleNamespace(tokenizer=tokenizer),
+        ):
+            result = probe_vl_image_token(_vl_spec())
+        assert result.passed is False
+        assert "expected 1" in result.detail
+
+
+class TestProbeAudioToken:
+    def test_non_audio_spec_skips(self) -> None:
+        result = probe_audio_token(_spec())
+        assert result.skipped is True
+
+    def test_gated_processor_raises(self) -> None:
+        from unittest.mock import Mock
+
+        from huggingface_hub.errors import GatedRepoError
+
+        with (
+            patch(
+                "dlm.base_models._typed_shims.load_auto_processor",
+                side_effect=GatedRepoError("gated", response=Mock()),
+            ),
+            pytest.raises(GatedModelError),
+        ):
+            probe_audio_token(_audio_spec())
+
+    def test_missing_tokenizer_fails(self) -> None:
+        with patch(
+            "dlm.base_models._typed_shims.load_auto_processor",
+            return_value=SimpleNamespace(),
+        ):
+            result = probe_audio_token(_audio_spec())
+        assert result.passed is False
+        assert "no `.tokenizer`" in result.detail
+
+    def test_tokenizer_encode_error_fails(self) -> None:
+        tokenizer = SimpleNamespace(
+            encode=lambda _placeholder, add_special_tokens=False: (_ for _ in ()).throw(
+                ValueError("boom")
+            )
+        )
+        with patch(
+            "dlm.base_models._typed_shims.load_auto_processor",
+            return_value=SimpleNamespace(tokenizer=tokenizer),
+        ):
+            result = probe_audio_token(_audio_spec())
+        assert result.passed is False
+        assert "tokenizer rejected placeholder" in result.detail
+
+    def test_multi_token_placeholder_fails(self) -> None:
+        tokenizer = SimpleNamespace(encode=lambda _placeholder, add_special_tokens=False: [1, 2])
+        with patch(
+            "dlm.base_models._typed_shims.load_auto_processor",
+            return_value=SimpleNamespace(tokenizer=tokenizer),
+        ):
+            result = probe_audio_token(_audio_spec())
+        assert result.passed is False
+        assert "expected 1" in result.detail
+
 
 class TestRunAll:
     def test_aggregates_all_five_probes(self) -> None:
@@ -344,3 +530,33 @@ class TestRunAll:
             "pretokenizer_label",
             "pretokenizer_hash",
         }
+
+    def test_vl_run_all_uses_vl_probe_and_skips_export_checks(self) -> None:
+        spec = _vl_spec()
+        fake_cfg = SimpleNamespace(architectures=["DemoForCausalLM"])
+        tokenizer = SimpleNamespace(encode=lambda _placeholder, add_special_tokens=False: [7])
+        with (
+            patch("transformers.AutoConfig.from_pretrained", return_value=fake_cfg),
+            patch(
+                "dlm.base_models._typed_shims.load_auto_processor",
+                return_value=SimpleNamespace(tokenizer=tokenizer),
+            ),
+        ):
+            report = run_all(spec)
+        names = {r.name for r in report.results}
+        assert names == {"architecture", "vl_image_token"}
+
+    def test_audio_run_all_uses_audio_probe_and_skips_export_checks(self) -> None:
+        spec = _audio_spec()
+        fake_cfg = SimpleNamespace(architectures=["DemoForCausalLM"])
+        tokenizer = SimpleNamespace(encode=lambda _placeholder, add_special_tokens=False: [9])
+        with (
+            patch("transformers.AutoConfig.from_pretrained", return_value=fake_cfg),
+            patch(
+                "dlm.base_models._typed_shims.load_auto_processor",
+                return_value=SimpleNamespace(tokenizer=tokenizer),
+            ),
+        ):
+            report = run_all(spec)
+        names = {r.name for r in report.results}
+        assert names == {"architecture", "audio_token"}

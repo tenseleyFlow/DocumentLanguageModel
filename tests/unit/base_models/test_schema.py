@@ -55,7 +55,7 @@ class TestRevisionValidator:
 
 
 class TestHfIdValidator:
-    @pytest.mark.parametrize("bad_id", ["", "no-slash", "trailing/"])
+    @pytest.mark.parametrize("bad_id", ["", "no-slash", "trailing/", "org/name/extra"])
     def test_invalid_hf_id_rejected(self, bad_id: str) -> None:
         # `trailing/` passes the `/ in value` gate but leading slash doesn't.
         # Pydantic's min_length catches empty. Bad ones without `/` raise.

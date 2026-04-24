@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from dlm.base_models import BaseModelSpec, GatedModelError, download_spec, sha256_of_directory
+from dlm.base_models.downloader import _resolve_revision
 
 
 def _spec() -> BaseModelSpec:
@@ -139,3 +140,24 @@ class TestDownloadSpec:
             pytest.raises(RuntimeError, match="offline"),
         ):
             download_spec(_spec(), local_files_only=True)
+
+    def test_repository_not_found_raises_runtime_error(self) -> None:
+        from unittest.mock import Mock
+
+        from huggingface_hub.errors import RepositoryNotFoundError
+
+        with (
+            patch(
+                "huggingface_hub.snapshot_download",
+                side_effect=RepositoryNotFoundError("missing", response=Mock()),
+            ),
+            pytest.raises(RuntimeError, match="HF repository not found"),
+        ):
+            download_spec(_spec())
+
+    def test_resolve_revision_falls_back_to_expected_outside_snapshot_layout(
+        self, tmp_path: Path
+    ) -> None:
+        local_copy = tmp_path / "local-model"
+        local_copy.mkdir()
+        assert _resolve_revision(local_copy, "a" * 40) == "a" * 40

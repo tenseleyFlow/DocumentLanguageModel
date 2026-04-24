@@ -8,6 +8,7 @@ import pytest
 
 from dlm.base_models import BASE_MODELS, GatedModelError, LicenseAcceptance
 from dlm.base_models.license import is_gated, require_acceptance
+from dlm.base_models.schema import BaseModelSpec
 
 
 def _non_gated_spec() -> object:
@@ -80,6 +81,30 @@ class TestRequireAcceptance:
         )
         assert acc is not None
         assert acc.via == via
+
+    def test_gated_spec_without_license_url_fails_loudly(self) -> None:
+        spec = BaseModelSpec.model_validate(
+            {
+                "key": "broken-gated",
+                "hf_id": "org/broken",
+                "revision": "0" * 40,
+                "architecture": "DemoForCausalLM",
+                "params": 1_000_000_000,
+                "target_modules": ["q_proj"],
+                "template": "chatml",
+                "gguf_arch": "demo",
+                "tokenizer_pre": "demo",
+                "license_spdx": "Other",
+                "license_url": None,
+                "requires_acceptance": True,
+                "redistributable": False,
+                "size_gb_fp16": 2.0,
+                "context_length": 4096,
+                "recommended_seq_len": 2048,
+            }
+        )
+        with pytest.raises(GatedModelError):
+            require_acceptance(spec, accept_license=True, via="cli_flag")
 
 
 class TestAcceptanceModel:
