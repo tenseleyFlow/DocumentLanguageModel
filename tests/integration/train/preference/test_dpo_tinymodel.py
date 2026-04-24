@@ -24,11 +24,10 @@ pytestmark = pytest.mark.slow
 
 @pytest.mark.slow
 def test_dpo_phase_writes_second_adapter_version(trained_store) -> None:  # type: ignore[no-untyped-def]
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
-    from dlm.hardware import doctor
     from dlm.store.manifest import load_manifest
     from dlm.train.preference.phase_orchestrator import run_phases
+    from tests.fixtures.planning import resolve_spec_and_plan
 
     store = trained_store.store
     dlm_path = trained_store.doc
@@ -37,10 +36,11 @@ def test_dpo_phase_writes_second_adapter_version(trained_store) -> None:  # type
     _append_preference_section(dlm_path, terse_preferences)
 
     parsed = parse_file(dlm_path)
-    spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
-    plan = doctor().plan
-    if plan is None:
-        pytest.skip("no viable plan on this host — DPO body needs a real trainer")
+    spec, plan, capabilities = resolve_spec_and_plan(
+        parsed,
+        accept_license=True,
+        skip_reason="no viable plan on this host — DPO body needs a real trainer",
+    )
 
     prior_manifest = load_manifest(store.manifest)
     assert prior_manifest.adapter_version == 1
@@ -51,7 +51,7 @@ def test_dpo_phase_writes_second_adapter_version(trained_store) -> None:  # type
         spec,
         plan,
         phase="preference",
-        capabilities=doctor().capabilities,
+        capabilities=capabilities,
     )
     assert [r.phase for r in results] == ["preference"]
     dpo_result = results[0].result

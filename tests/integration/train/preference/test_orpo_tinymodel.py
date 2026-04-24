@@ -17,12 +17,11 @@ pytestmark = pytest.mark.slow
 
 @pytest.mark.slow
 def test_orpo_phase_writes_second_adapter_version(trained_store) -> None:  # type: ignore[no-untyped-def]
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
     from dlm.doc.serializer import serialize
-    from dlm.hardware import doctor
     from dlm.store.manifest import load_manifest
     from dlm.train.preference.phase_orchestrator import run_phases
+    from tests.fixtures.planning import resolve_spec_and_plan
 
     store = trained_store.store
     dlm_path = trained_store.doc
@@ -45,10 +44,11 @@ def test_orpo_phase_writes_second_adapter_version(trained_store) -> None:  # typ
     parsed = parse_file(dlm_path)
     assert parsed.frontmatter.training.preference.method == "orpo"
 
-    spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
-    plan = doctor().plan
-    if plan is None:
-        pytest.skip("no viable plan on this host — ORPO body needs a real trainer")
+    spec, plan, capabilities = resolve_spec_and_plan(
+        parsed,
+        accept_license=True,
+        skip_reason="no viable plan on this host — ORPO body needs a real trainer",
+    )
 
     prior_manifest = load_manifest(store.manifest)
     prior_runs = len(prior_manifest.training_runs)
@@ -62,7 +62,7 @@ def test_orpo_phase_writes_second_adapter_version(trained_store) -> None:  # typ
         spec,
         plan,
         phase="preference",
-        capabilities=doctor().capabilities,
+        capabilities=capabilities,
         lock_mode="ignore",
     )
     assert [r.phase for r in results] == ["preference"]

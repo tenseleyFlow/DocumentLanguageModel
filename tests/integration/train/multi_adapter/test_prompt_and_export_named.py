@@ -57,17 +57,12 @@ def _skip_if_tiny_model_unavailable() -> None:
 
 def _train_two(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Train knowledge + tone on a prose doc; return the .dlm path."""
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
-    from dlm.hardware import doctor
     from dlm.store.manifest import Manifest, save_manifest
     from dlm.store.paths import for_dlm
     from dlm.train.multi_adapter.trainer import run_all
     from tests.fixtures.dlm_factory import make_dlm, prose
-
-    plan = doctor().plan
-    if plan is None:
-        pytest.skip("doctor() returned no viable training plan on this host")
+    from tests.fixtures.planning import resolve_spec_and_plan
 
     for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE"):
         os.environ.pop(key, None)
@@ -96,7 +91,7 @@ def _train_two(tmp_path_factory: pytest.TempPathFactory) -> Path:
     doc.write_text(raw[:fm_end] + "\n" + _PROSE, encoding="utf-8")
 
     parsed = parse_file(doc)
-    spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
+    spec, plan, _caps = resolve_spec_and_plan(parsed, accept_license=True)
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
     save_manifest(
@@ -134,11 +129,10 @@ def test_load_for_inference_resolves_each_named_adapter(
     _skip_if_deps_missing()
     _skip_if_tiny_model_unavailable()
 
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
-    from dlm.hardware import doctor
     from dlm.inference.loader import load_for_inference, resolve_adapter_path
     from dlm.store.paths import for_dlm
+    from tests.fixtures.planning import resolve_spec_and_plan
 
     doc = _train_two(tmp_path_factory)
     parsed = parse_file(doc)
@@ -151,8 +145,7 @@ def test_load_for_inference_resolves_each_named_adapter(
     assert k_path.is_dir()
     assert t_path.is_dir()
 
-    spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
-    caps = doctor().capabilities
+    spec, _plan, caps = resolve_spec_and_plan(parsed, accept_license=True)
 
     # Full load exercises the PEFT adapter-load path on both names.
     loaded_k = load_for_inference(store, spec, caps, adapter_name="knowledge")
@@ -171,9 +164,9 @@ def test_export_named_adapter_records_adapter_name(
     _skip_if_tiny_model_unavailable()
 
     try:
-        from dlm.export.vendoring import resolve_llama_cpp_paths
+        from dlm.export.vendoring import llama_quantize_bin
 
-        resolve_llama_cpp_paths()  # probes the submodule; raises if missing
+        llama_quantize_bin()  # probes the vendored quantize binary; raises if missing
     except Exception as exc:
         pytest.skip(f"llama.cpp vendoring unavailable: {exc}")
 

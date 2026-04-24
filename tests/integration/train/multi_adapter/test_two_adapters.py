@@ -60,17 +60,12 @@ def test_two_adapters_each_get_their_own_version_history(
     except Exception as exc:
         pytest.skip(f"tiny-model fixture unavailable: {exc}")
 
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
-    from dlm.hardware import doctor
     from dlm.store.manifest import Manifest, load_manifest, save_manifest
     from dlm.store.paths import for_dlm
     from dlm.train.multi_adapter.trainer import run_all
     from tests.fixtures.dlm_factory import make_dlm, prose
-
-    plan = doctor().plan
-    if plan is None:
-        pytest.skip("doctor() returned no viable training plan on this host")
+    from tests.fixtures.planning import resolve_spec_and_plan
 
     # Unset offline env so weights can download on cold caches.
     for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE"):
@@ -108,7 +103,7 @@ def test_two_adapters_each_get_their_own_version_history(
     assert parsed.frontmatter.training.adapters is not None
     assert set(parsed.frontmatter.training.adapters) == {"knowledge", "tone"}
 
-    spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
+    spec, plan, _caps = resolve_spec_and_plan(parsed, accept_license=True)
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
     save_manifest(

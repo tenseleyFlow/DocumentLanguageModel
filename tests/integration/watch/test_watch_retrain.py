@@ -36,13 +36,12 @@ def test_watch_cycle_detects_new_content_and_retrains(  # pragma: no cover - slo
     tmp_path: Path,
 ) -> None:
     """`do_one_cycle` on a doc with new content runs the trainer and bumps version."""
-    from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.parser import parse_file
-    from dlm.hardware import doctor
     from dlm.train.trainer import run as trainer_run
     from dlm.watch.loop import do_one_cycle
+    from tests.fixtures.planning import resolve_spec_and_plan
 
-    doc_path = trained_store.doc_path
+    doc_path = trained_store.doc
     store = trained_store.store
     initial_adapter = store.resolve_current_adapter()
     assert initial_adapter is not None
@@ -50,15 +49,21 @@ def test_watch_cycle_detects_new_content_and_retrains(  # pragma: no cover - slo
     # Append a new section to the doc so the ChangeSet sees `new`.
     original = doc_path.read_text(encoding="utf-8")
     doc_path.write_text(
-        original + "\n\n## Added by watch test\n\nThis is new content.\n",
+        original
+        + "\n\n::instruction::\n"
+        + "### Q\n"
+        + "What changed in the watch test?\n"
+        + "### A\n"
+        + "A new instruction section was appended.\n",
         encoding="utf-8",
     )
 
     parsed = parse_file(doc_path)
-    spec = resolve_base_model(parsed.frontmatter.base_model, accept_license=True)
-    plan = doctor(training_config=parsed.frontmatter.training).plan
-    if plan is None:
-        pytest.skip("no viable plan on this host — watch retrain needs a real trainer")
+    spec, plan, _caps = resolve_spec_and_plan(
+        parsed,
+        accept_license=True,
+        skip_reason="no viable plan on this host — watch retrain needs a real trainer",
+    )
 
     result = do_one_cycle(
         doc_path=doc_path,
