@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import pytest
+
 from dlm.doc.schema import TrainingConfig
 from dlm.hardware.capabilities import probe
-from dlm.hardware.plan import resolve
+from dlm.hardware.plan import _build_reason, resolve
 from tests.fixtures.hardware_mocks import force_cpu, force_cuda, force_mps
 
 
@@ -102,6 +106,15 @@ class TestAttentionPicker:
         plan = resolve(_cfg(), caps, base_params=135_000_000, seq_len=1024)
         assert plan.attn_implementation == "sdpa"
 
+    def test_flash_attention_selected_when_available(self) -> None:
+        with (
+            patch("dlm.hardware.capabilities._module_available", lambda name: name == "flash_attn"),
+            force_cuda(sm=(8, 0)),
+        ):
+            caps = probe()
+        plan = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048)
+        assert plan.attn_implementation == "flash_attention_2"
+
 
 class TestQloraGating:
     def test_qlora_requested_on_cuda_without_bnb_raises(self) -> None:
@@ -169,6 +182,12 @@ class TestBatchAndGradAccumResolution:
         tight_plan = resolve(_cfg(), tight_caps, base_params=1_500_000_000, seq_len=2048)
         loose_plan = resolve(_cfg(), loose_caps, base_params=1_500_000_000, seq_len=2048)
         assert tight_plan.micro_batch_size <= loose_plan.micro_batch_size
+
+    def test_tiny_budget_breaks_auto_micro_batch_at_one(self) -> None:
+        with force_cuda(sm=(8, 0), vram_gb=2.0):
+            caps = probe()
+        plan = resolve(_cfg(), caps, base_params=3_000_000_000, seq_len=4096)
+        assert plan.micro_batch_size == 1
 
 
 class TestGradientCheckpointing:
@@ -248,3 +267,35 @@ class TestPlanSerialization:
         plan = resolve(_cfg(), caps, base_params=1_500_000_000, seq_len=2048)
         assert "precision=bf16" in plan.reason
         assert "attn=" in plan.reason
+
+
+class TestResolverCoverageEdges:
+    def test_world_size_must_be_positive(self) -> None:
+        with force_cuda(sm=(8, 0)):
+            caps = probe()
+        with pytest.raises(ValueError, match="world_size must be >= 1"):
+            resolve(_cfg(), caps, base_params=135_000_000, seq_len=512, world_size=0)
+
+    def test_multi_gpu_refusals_checked_when_world_size_gt_one(self) -> None:
+        with force_cuda(sm=(8, 0)):
+            caps = probe()
+        with (
+            patch("dlm.hardware.plan.check_multi_gpu_refusals") as multi_gpu,
+            patch("dlm.hardware.plan.check_refusals"),
+        ):
+            resolve(_cfg(), caps, base_params=135_000_000, seq_len=512, world_size=2)
+        multi_gpu.assert_called_once_with(caps, 2)
+
+    def test_build_reason_records_dora_and_galore_warning(self) -> None:
+        reason = _build_reason(
+            "bf16",
+            "sdpa",
+            False,
+            True,
+            adapter="dora",
+            optimizer="galore_adamw",
+            base_params=500_000_000,
+        )
+        assert "adapter=dora" in reason
+        assert "optim=galore_adamw" in reason
+        assert "warn=galore-small-base(500M<1B)" in reason

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 
 from dlm.hardware.backend import Backend
-from dlm.hardware.capabilities import probe
+from dlm.hardware.capabilities import _accelerate_version, _rocm_arch_supports_bf16, probe
 from tests.fixtures.hardware_mocks import force_cpu, force_cuda, force_mps, force_rocm
 
 
@@ -30,6 +33,26 @@ class TestProbeCuda:
         # flash_attn gated on SM>=8.0 regardless of package availability
         assert caps.has_flash_attention is False
 
+    def test_cuda_sm_probe_failure_yields_unknown_sm(self) -> None:
+        with force_cuda():
+            with patch("torch.cuda.get_device_capability", side_effect=RuntimeError("boom")):
+                caps = probe()
+        assert caps.sm is None
+
+    def test_cuda_vram_probe_failure_yields_unknown_vram(self) -> None:
+        with force_cuda():
+            with patch("torch.cuda.mem_get_info", side_effect=RuntimeError("boom")):
+                caps = probe()
+        assert caps.vram_gb is None
+
+    def test_cuda_flash_attention_true_when_package_and_sm_supported(self) -> None:
+        with (
+            patch("dlm.hardware.capabilities._module_available", lambda name: name == "flash_attn"),
+            force_cuda(sm=(8, 0)),
+        ):
+            caps = probe()
+        assert caps.has_flash_attention is True
+
 
 class TestProbeRocm:
     def test_rocm_reports_hip_version(self) -> None:
@@ -40,6 +63,18 @@ class TestProbeRocm:
         assert caps.cuda_version is None
         assert caps.determinism_class == "best-effort"
         assert caps.has_flash_attention is False
+
+    def test_rocm_arch_probe_failure_yields_unknown_arch(self) -> None:
+        with force_rocm():
+            with patch("torch.cuda.get_device_properties", side_effect=RuntimeError("boom")):
+                caps = probe()
+        assert caps.rocm_arch is None
+
+    def test_rocm_arch_probe_missing_name_yields_unknown_arch(self) -> None:
+        with force_rocm():
+            with patch("torch.cuda.get_device_properties", return_value=SimpleNamespace(name="AMD")):
+                caps = probe()
+        assert caps.rocm_arch is None
 
 
 class TestProbeMps:
@@ -52,6 +87,14 @@ class TestProbeMps:
         assert caps.unified_memory_gb is not None
         assert caps.vram_gb is None
         assert caps.determinism_class == "best-effort"
+        assert caps.has_flash_attention is False
+
+    def test_mps_never_reports_flash_attention(self) -> None:
+        with (
+            patch("dlm.hardware.capabilities._module_available", lambda name: name == "flash_attn"),
+            force_mps(),
+        ):
+            caps = probe()
         assert caps.has_flash_attention is False
 
 
@@ -133,3 +176,14 @@ class TestTelemetryPosture:
             caps = probe()
         assert caps.telemetry_posture["HF_HUB_DISABLE_TELEMETRY"] == "<unset>"
         assert caps.telemetry_posture["DO_NOT_TRACK"] == "<unset>"
+
+
+class TestCoverageEdges:
+    def test_rocm_arch_none_is_not_bf16_capable(self) -> None:
+        assert _rocm_arch_supports_bf16(None) is False
+
+    def test_accelerate_version_missing_returns_none(self) -> None:
+        from importlib.metadata import PackageNotFoundError
+
+        with patch("importlib.metadata.version", side_effect=PackageNotFoundError):
+            assert _accelerate_version() is None
