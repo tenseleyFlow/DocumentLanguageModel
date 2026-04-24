@@ -201,6 +201,52 @@ plan; `dlm preference apply` writes the staged plan into the `.dlm`,
 section, and `dlm preference list` shows both applied and staged
 sections.
 
+### `dlm synth`
+
+Synthesize instruction or preference training data (Sprint 43).
+
+```
+dlm synth instructions <path> [--teacher T] [--per-section N]
+                             [--strategy {extraction,expansion,both}]
+                             [--filter {sway,none,dedup-only}]
+                             [--threshold F] [--max-pairs N]
+                             [--max-new-tokens N] [--temp F] [--top-p F]
+                             [--seed N] [--apply | --dry-run]
+dlm synth preferences <path> [--samples N] [--judge J] [--threshold F]
+                             [--max-pairs N] [--temp F] [--top-p F]
+                             [--backend {auto,pytorch,mlx}] [--adapter NAME]
+                             [--apply]
+dlm synth revert <path>
+dlm synth list <path>
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `--teacher T` | `self` | Teacher selector: `self`, `hf:<model>`, `openai:<model>`, `anthropic:<model>`, or `vllm-server:<url>`. |
+| `--per-section N` | `3` | Accepted instruction pairs to request per prose section before filtering. |
+| `--strategy {extraction,expansion,both}` | `extraction` | `extraction` asks for questions answered directly by the prose, `expansion` extrapolates beyond it, and `both` splits the per-section budget across both prompts. |
+| `--filter {sway,none,dedup-only}` | `sway` | Filter pipeline after generation. `sway` reuses Sprint 42's judge, `dedup-only` keeps near-duplicate suppression but skips judging, `none` accepts every deduped pair. |
+| `--threshold F` | judge default | Minimum sway-judge margin. Only valid with `--filter sway`. |
+| `--max-pairs N` | unlimited | Cap the number of accepted synth pairs from one invocation. |
+| `--max-new-tokens N` | `512` | Teacher-side completion cap per prompt. |
+| `--temp F` | `0.0` | Teacher sampling temperature. |
+| `--top-p F` | None | Optional top-p cutoff for teacher sampling. |
+| `--seed N` | None | Optional teacher sampling seed. |
+| `--apply` | false | Write accepted auto-synth `::instruction::` sections directly to the `.dlm`. |
+| `--dry-run` | false | Preview the synth plan without staging or writing anything. Default behavior stages the accepted plan under the store for inspection via `dlm synth list`. |
+
+`dlm synth instructions` prints the raw synth plan, then the filter
+summary (`generated`, `dedup`, `judge passed`, `threshold/accepted`).
+Without `--apply` or `--dry-run`, the accepted auto-synth
+`::instruction::` sections are staged under the store root so `dlm
+synth list` can show them before a later rerun. `dlm synth revert`
+strips every `auto_synth: true` instruction section from the document.
+
+`dlm synth preferences` is an alias over `dlm preference mine` for the
+same Sprint 42 preference-mining loop. Use it when you want the
+umbrella synth surface but the output should be `::preference::`
+sections instead of `::instruction::` sections.
+
 ### `dlm templates`
 
 Browse the starter template gallery (Sprint 27).

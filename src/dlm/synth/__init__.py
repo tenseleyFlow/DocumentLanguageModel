@@ -1,5 +1,16 @@
 """Sprint 43 synthetic-instruction generation substrate."""
 
+from dlm.synth.apply import (
+    PlannedSynthAddition,
+    SkippedSynthAddition,
+    SynthApplyPlan,
+    SynthApplySkipReason,
+    SynthApplySummary,
+    apply_plan,
+    build_apply_plan,
+    render_apply_plan,
+    revert_all_auto_synth,
+)
 from dlm.synth.errors import (
     InvalidTeacherSpecError,
     SynthError,
@@ -15,6 +26,13 @@ from dlm.synth.filter import (
     SynthFilterSkipReason,
     filter_synth_plan,
     render_filter_report,
+)
+from dlm.synth.pending import (
+    PendingSynthPlan,
+    PendingSynthPlanError,
+    clear_pending_plan,
+    load_pending_plan,
+    save_pending_plan,
 )
 from dlm.synth.prompts import (
     DEFAULT_PROMPT_TEMPLATES,
@@ -55,11 +73,18 @@ __all__ = [
     "HfTeacher",
     "InvalidTeacherSpecError",
     "OpenAiTeacher",
+    "PendingSynthPlan",
+    "PendingSynthPlanError",
+    "PlannedSynthAddition",
     "PromptParserKind",
     "PlannedSynthInstruction",
     "SelfTeacher",
+    "SkippedSynthAddition",
     "SkippedSynthSection",
     "SynthError",
+    "SynthApplyPlan",
+    "SynthApplySkipReason",
+    "SynthApplySummary",
     "SynthFilterKind",
     "SynthFilterReport",
     "SynthFilterSkipReason",
@@ -75,11 +100,18 @@ __all__ = [
     "TeacherRef",
     "TeacherUnavailableError",
     "VllmServerTeacher",
+    "apply_plan",
     "build_synth_plan",
+    "build_apply_plan",
     "build_teacher",
+    "clear_pending_plan",
     "filter_synth_plan",
     "get_prompt_template",
+    "load_pending_plan",
     "parse_teacher_ref",
     "render_filter_report",
+    "render_apply_plan",
     "render_synth_plan",
+    "revert_all_auto_synth",
+    "save_pending_plan",
 ]

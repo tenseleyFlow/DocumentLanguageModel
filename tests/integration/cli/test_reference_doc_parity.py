@@ -86,3 +86,24 @@ def test_reference_doc_covers_preference_surface() -> None:
     assert "dlm preference apply <path>" in section
     assert "dlm preference revert <path>" in section
     assert "dlm preference list <path>" in section
+
+
+def test_reference_doc_covers_synth_surface() -> None:
+    section = _section("synth")
+    help_text = _normalized_help("synth", "instructions")
+
+    for flag in (
+        "--teacher",
+        "--per-section",
+        "--strategy",
+        "--filter",
+        "--threshold",
+        "--apply",
+        "--dry-run",
+    ):
+        assert flag in help_text
+        assert flag in section
+
+    assert "dlm synth preferences <path>" in section
+    assert "dlm synth revert <path>" in section
+    assert "dlm synth list <path>" in section

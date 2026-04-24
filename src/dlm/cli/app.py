@@ -115,6 +115,17 @@ app.command("show")(commands.show_cmd)
 app.command("migrate")(commands.migrate_cmd)
 app.command("harvest")(commands.harvest_cmd)
 
+# `dlm synth instructions|preferences|revert|list` — synthetic data loop.
+_synth_app = typer.Typer(
+    help="Synthesize instruction or preference training data.",
+    no_args_is_help=True,
+)
+_synth_app.command("instructions")(commands.synth_instructions_cmd)
+_synth_app.command("preferences")(commands.preference_mine_cmd)
+_synth_app.command("revert")(commands.synth_revert_cmd)
+_synth_app.command("list")(commands.synth_list_cmd)
+app.add_typer(_synth_app, name="synth")
+
 # `dlm preference mine|apply|revert|list` — auto-mined preference loop.
 _preference_app = typer.Typer(
     help="Mine, stage, apply, and inspect auto-mined preference sections.",
