@@ -9,7 +9,7 @@ import pytest
 
 from dlm.replay.errors import SamplerError
 from dlm.replay.models import IndexEntry
-from dlm.replay.sampler import sample
+from dlm.replay.sampler import _weighted_reservoir, sample
 
 _NOW = datetime(2026, 4, 18)
 
@@ -113,3 +113,28 @@ class TestStableOrdering:
         p1 = sample(entries_a, k=5, now=_NOW, rng=random.Random(7), scheme="uniform")
         p2 = sample(entries_b, k=5, now=_NOW, rng=random.Random(7), scheme="uniform")
         assert [e.section_id for e in p1] == [e.section_id for e in p2]
+
+
+class TestReservoirEdgeCases:
+    def test_zero_random_draw_retries_and_falls_back_to_tiny_positive(self) -> None:
+        entries = _entries(2)
+
+        class _ZeroThenHalfRng:
+            def __init__(self) -> None:
+                self._values = iter([0.0, 0.0, 0.5, 0.5])
+
+            def random(self) -> float:
+                return next(self._values)
+
+        picked = sample(entries, k=1, now=_NOW, rng=_ZeroThenHalfRng(), scheme="uniform")
+        assert len(picked) == 1
+
+    def test_nonpositive_weight_entries_are_skipped(self) -> None:
+        entries = _entries(3)
+        picked = _weighted_reservoir(
+            entries,
+            weights=[1.0, 0.0, -1.0],
+            k=3,
+            rng=random.Random(0),
+        )
+        assert [entry.section_id for entry in picked] == [entries[0].section_id]
