@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dlm.data.weighted_rows import (
+    _keep_fraction,
     expand_rows_by_weight,
+    merge_weights_maps,
     resolve_row_weight,
     weight_distribution,
 )
@@ -103,6 +105,32 @@ class TestExpandRowsByWeight:
         out = expand_rows_by_weight(rows, weights, seed=42)
         # 2.0 × 3.0 = 6 copies.
         assert len(out) == 6
+
+
+class TestMergeWeightsMaps:
+    def test_empty_sequence_returns_empty_map(self) -> None:
+        assert merge_weights_maps([]) == {}
+
+    def test_deeper_entries_override_shallower_ones(self) -> None:
+        merged = merge_weights_maps(
+            [
+                {"lang": {"py": 2.0, "rs": 1.5}, "gen": {"true": 0.5}},
+                {"lang": {"py": 3.0}, "new": {"x": 4.0}},
+            ]
+        )
+        assert merged == {
+            "lang": {"py": 3.0, "rs": 1.5},
+            "gen": {"true": 0.5},
+            "new": {"x": 4.0},
+        }
+
+
+class TestKeepFraction:
+    def test_non_positive_fraction_never_keeps(self) -> None:
+        assert _keep_fraction("sid", seed=42, fractional=0.0) is False
+
+    def test_fraction_at_or_above_one_always_keeps(self) -> None:
+        assert _keep_fraction("sid", seed=42, fractional=1.0) is True
 
 
 class TestWeightDistribution:

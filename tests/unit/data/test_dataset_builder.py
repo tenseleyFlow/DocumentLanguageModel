@@ -55,3 +55,20 @@ class TestBuildDataset:
         sections = [_s(SectionType.PROSE, "   ")]
         with pytest.raises(ValueError, match="no trainable rows"):
             build_dataset(sections, seed=0, val_frac=0.1)
+
+    def test_weights_dropping_every_row_raises(self) -> None:
+        replay = [
+            {
+                "text": "replay-only",
+                "_dlm_section_id": "replay-v1",
+                "_dlm_row_tags": {"lang": "en"},
+            },
+        ]
+        with pytest.raises(ValueError, match="weights dropped every row"):
+            build_dataset(
+                [],
+                seed=0,
+                val_frac=0.1,
+                replay_rows=replay,
+                weights={"lang": {"en": 0.0}},
+            )

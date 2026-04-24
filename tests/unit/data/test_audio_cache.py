@@ -183,6 +183,36 @@ class TestProcessorSha256:
         proc_b = SimpleNamespace(feature_extractor=FeB())
         assert processor_sha256(proc_a) != processor_sha256(proc_b)
 
+    def test_nested_feature_extractor_fields_are_readable(self) -> None:
+        proc = SimpleNamespace(
+            feature_extractor=SimpleNamespace(
+                sampling_rate=16_000,
+                feature_size=(80, 2),
+                n_fft=400,
+                hop_length=160,
+                chunk_length={"seconds": 30},
+                padding_value=0.0,
+                return_attention_mask=True,
+            )
+        )
+        sha = processor_sha256(proc)
+        assert len(sha) == 64
+
+    def test_exotic_feature_field_stringifies_stably(self) -> None:
+        proc = SimpleNamespace(
+            feature_extractor=SimpleNamespace(
+                sampling_rate=16_000,
+                feature_size=80,
+                n_fft=400,
+                hop_length=160,
+                chunk_length=object(),
+                padding_value=0.0,
+                return_attention_mask=True,
+            )
+        )
+        sha = processor_sha256(proc)
+        assert len(sha) == 64
+
 
 # --- WaveformCache (35.2 deferred-item follow-up) ---------------------------
 

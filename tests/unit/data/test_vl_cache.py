@@ -146,3 +146,33 @@ class TestProcessorSha256:
             image_std = [0.5] * 3
 
         assert processor_sha256(ProcA()) != processor_sha256(ProcB())
+
+    def test_nested_dict_and_tuple_fields_are_readable(self) -> None:
+        proc = SimpleNamespace(
+            image_processor=SimpleNamespace(
+                size={"shortest_edge": 224, "crop": (224, 224)},
+                image_mean=(0.5, 0.5, 0.5),
+                image_std=[0.2, 0.2, 0.2],
+                do_normalize=True,
+                do_rescale=True,
+                rescale_factor=1 / 255,
+                resample="bicubic",
+            )
+        )
+        sha = processor_sha256(proc)
+        assert len(sha) == 64
+
+    def test_exotic_resample_value_stringifies_stably(self) -> None:
+        proc = SimpleNamespace(
+            image_processor=SimpleNamespace(
+                size={"shortest_edge": 224},
+                image_mean=[0.5] * 3,
+                image_std=[0.5] * 3,
+                do_normalize=True,
+                do_rescale=True,
+                rescale_factor=1 / 255,
+                resample=object(),
+            )
+        )
+        sha = processor_sha256(proc)
+        assert len(sha) == 64
