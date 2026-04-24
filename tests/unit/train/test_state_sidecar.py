@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import io
 import json
@@ -22,6 +23,8 @@ from dlm.train.state_sidecar import (
     STATE_SHA_FILENAME,
     TRAINING_RUN_FILENAME,
     VERSIONS_FILENAME,
+    _decode_python_random_state,
+    _encode_python_random_state,
     TrainingState,
     capture_runtime_versions,
     load_state,
@@ -280,6 +283,10 @@ class TestRngSidecar:
         # live in the JSON sidecar.
         assert "numpy_rng_state" not in payload
 
+    def test_python_random_none_helpers_round_trip(self) -> None:
+        assert _encode_python_random_state(None) is None
+        assert _decode_python_random_state(None) is None
+
 
 class TestLegacyV1Compat:
     """Audit-11 B7: one-release back-compat for pre-B7 sidecars.
@@ -334,6 +341,50 @@ class TestLegacyV1Compat:
         loaded = load_state(tmp_path, runtime_versions={"torch": torch.__version__})
         assert loaded["global_step"] == 10
 
+    def test_double_failed_torch_load_raises_integrity_error(self, tmp_path: Path, monkeypatch) -> None:
+        save_state(tmp_path, _mock_state())
+
+        calls = {"count": 0}
+        real_load = torch.load
+
+        def fake_load(*args: Any, **kwargs: Any) -> Any:
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("weights-only failed")
+            raise RuntimeError("legacy failed")
+
+        monkeypatch.setattr(torch, "load", fake_load)
+        with pytest.raises(ResumeIntegrityError, match="legacy load also failed"):
+            load_state(tmp_path, runtime_versions={"torch": torch.__version__})
+        monkeypatch.setattr(torch, "load", real_load)
+
+    def test_missing_sidecar_version_defaults_rng_to_none(self, tmp_path: Path, monkeypatch) -> None:
+        save_state(tmp_path, _mock_state())
+        real_load = torch.load
+
+        def fake_load(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            return {
+                "optimizer_state_dict": {"lr": 1e-4},
+                "scheduler_state_dict": {"step": 5},
+                "scaler_state_dict": None,
+                "torch_rng_state": torch.get_rng_state(),
+                "cuda_rng_state": None,
+                "global_step": 10,
+                "epoch": 0.5,
+                "best_val_loss": 0.9,
+                "dlm_manifest_hash": None,
+                "base_model_revision": "a" * 40,
+                "pinned_versions": {"torch": torch.__version__},
+                "use_qlora": False,
+            }
+
+        monkeypatch.setattr(torch, "load", fake_load)
+        loaded = load_state(tmp_path, runtime_versions={"torch": torch.__version__})
+        monkeypatch.setattr(torch, "load", real_load)
+
+        assert loaded["numpy_rng_state"] is None
+        assert loaded["python_random_state"] is None
+
 
 class TestCaptureRuntimeVersions:
     def test_torch_key_populated(self) -> None:
@@ -353,3 +404,15 @@ class TestCaptureRuntimeVersions:
         reports that drove the run."""
         versions = capture_runtime_versions()
         assert "sway" in versions
+
+    def test_missing_import_returns_none(self, monkeypatch) -> None:
+        real_import = builtins.__import__
+
+        def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "bitsandbytes":
+                raise ImportError("forced missing package")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        versions = capture_runtime_versions()
+        assert versions["bitsandbytes"] is None
