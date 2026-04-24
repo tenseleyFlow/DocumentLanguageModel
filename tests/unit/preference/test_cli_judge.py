@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -12,6 +13,7 @@ from dlm.preference import (
     HfRewardModelJudge,
     JudgeInvocationError,
     JudgeUnavailableError,
+    SwayJudge,
     build_judge,
 )
 
@@ -126,6 +128,12 @@ class TestBuildJudge:
         assert isinstance(judge, HfRewardModelJudge)
         assert judge.name == "hf:reward/model"
 
-    def test_sway_ref_still_raises_unavailable(self) -> None:
-        with pytest.raises(JudgeUnavailableError, match="sway preference judge"):
+    def test_sway_ref_builds_concrete_sway_judge(self) -> None:
+        judge = build_judge("sway", dlm_path=Path("/tmp/example.dlm"))
+
+        assert isinstance(judge, SwayJudge)
+        assert judge.name == "sway:preference_judge"
+
+    def test_sway_ref_requires_dlm_path_context(self) -> None:
+        with pytest.raises(JudgeUnavailableError, match="requires the .dlm path context"):
             build_judge("sway")

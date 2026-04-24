@@ -28,6 +28,7 @@ from dlm.preference.judge import (
     JudgeRef,
     PairScore,
     PreferenceJudge,
+    SwayJudge,
     build_judge,
     parse_judge_ref,
 )
@@ -61,6 +62,7 @@ __all__ = [
     "PreferenceJudge",
     "PreferenceMiningError",
     "PreferenceSkipReason",
+    "SwayJudge",
     "SkippedPreferenceSection",
     "apply_plan",
     "build_apply_plan",

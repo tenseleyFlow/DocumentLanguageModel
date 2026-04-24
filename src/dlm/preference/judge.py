@@ -6,8 +6,10 @@ import json
 import math
 import shlex
 import subprocess  # nosec B404
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from dlm.preference.errors import (
@@ -18,6 +20,7 @@ from dlm.preference.errors import (
 
 JudgeKind = Literal["sway", "hf", "cli"]
 
+_DEFAULT_SWAY_THRESHOLD = 0.1
 _DEFAULT_CLI_THRESHOLD = 0.1
 _DEFAULT_CLI_TIMEOUT_SECONDS = 30.0
 
@@ -80,6 +83,7 @@ class _CliInvocationResult:
 
 
 CliJudgeRunner = Callable[[list[str], str, float], _CliInvocationResult]
+SwayBackendFactory = Callable[[Path], Any]
 
 
 @dataclass(frozen=True)
@@ -153,6 +157,48 @@ class CliJudge:
         return _parse_cli_candidate_score(result.stdout)
 
 
+@dataclass(frozen=True)
+class SwayJudge:
+    """sway-backed preference judge over the current document adapter.
+
+    The default bootstrap path uses the fine-tuned adapter itself as a
+    scorer. Scores are normalized by an approximate completion-token
+    count so the judge does not trivially prefer the shortest sample.
+    """
+
+    dlm_path: Path
+    backend_factory: SwayBackendFactory | None = field(default=None, repr=False, compare=False)
+    name: str = field(default="sway:preference_judge", init=False)
+    suggested_threshold: float = field(default=_DEFAULT_SWAY_THRESHOLD, init=False)
+    _backend: Any = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "dlm_path", Path(self.dlm_path).expanduser())
+
+    def score_pair(self, prompt: str, candidate_a: str, candidate_b: str) -> PairScore:
+        backend = self._ensure_backend()
+        try:
+            with backend.as_finetuned() as ft_view:
+                score_a = _normalized_sway_score(ft_view, prompt, candidate_a)
+                score_b = _normalized_sway_score(ft_view, prompt, candidate_b)
+        except Exception as exc:
+            raise JudgeInvocationError(f"sway judge failed to score candidates: {exc}") from exc
+        return PairScore(
+            score_a=score_a,
+            score_b=score_b,
+            reasoning=f"ft mean-logprob delta={score_a - score_b:+.3f}",
+        )
+
+    def _ensure_backend(self) -> Any:
+        cached = self._backend
+        if cached is not None:
+            return cached
+        factory = self.backend_factory if self.backend_factory is not None else _build_sway_backend
+        backend = factory(self.dlm_path)
+        object.__setattr__(self, "_backend", backend)
+        return backend
+
+
 def parse_judge_ref(raw: str) -> JudgeRef:
     """Parse `sway`, `hf:<model>`, or `cli:<cmd>` judge selectors."""
     spec = raw.strip()
@@ -175,11 +221,11 @@ def parse_judge_ref(raw: str) -> JudgeRef:
     )
 
 
-def build_judge(raw: str | JudgeRef) -> PreferenceJudge:
+def build_judge(raw: str | JudgeRef, *, dlm_path: Path | None = None) -> PreferenceJudge:
     """Instantiate the concrete judge for `raw`.
 
-    This slice only lands the external CLI-backed path. HF reward-model
-    and sway-backed judges follow in later Sprint 42 chunks.
+    `sway` needs the source `.dlm` path so it can resolve the current
+    adapter through sway's dlm bridge.
     """
     ref = parse_judge_ref(raw) if isinstance(raw, str) else raw
     if ref.kind == "cli":
@@ -188,7 +234,9 @@ def build_judge(raw: str | JudgeRef) -> PreferenceJudge:
     if ref.kind == "hf":
         assert ref.target is not None
         return HfRewardModelJudge(ref.target)
-    raise JudgeUnavailableError("sway preference judge is not wired yet in this slice")
+    if dlm_path is None:
+        raise JudgeUnavailableError("sway preference judge requires the .dlm path context")
+    return SwayJudge(dlm_path)
 
 
 @dataclass(frozen=True)
@@ -247,6 +295,15 @@ def _combine_reasoning(left: str | None, right: str | None) -> str | None:
     if right:
         parts.append(f"b: {right}")
     return " | ".join(parts) if parts else None
+
+
+def _normalized_sway_score(view: Any, prompt: str, completion: str) -> float:
+    raw = float(view.logprob_of(prompt, completion))
+    return raw / max(_token_estimate(completion), 1)
+
+
+def _token_estimate(text: str) -> int:
+    return max(1, len(text) // 4)
 
 
 RewardModelLoader = Callable[[str, str], "_LoadedRewardJudge"]
@@ -396,3 +453,81 @@ def _extract_reward_scalar(logits: Any) -> float:
             if math.isfinite(scalar):
                 return scalar
     raise JudgeInvocationError("hf reward model returned an unreadable scalar logit")
+
+
+def _build_sway_backend(dlm_path: Path) -> Any:
+    try:
+        resolve_dlm, build_backend, model_spec_cls, sway_error_cls = _import_sway_bridge()
+    except ImportError as exc:
+        raise JudgeUnavailableError(
+            "sway preference judge requires the sway bridge to be importable"
+        ) from exc
+
+    try:
+        handle = resolve_dlm(dlm_path)
+    except sway_error_cls as exc:
+        raise JudgeUnavailableError(f"sway judge could not resolve {dlm_path}: {exc}") from exc
+    except Exception as exc:
+        raise JudgeUnavailableError(f"sway judge could not resolve {dlm_path}: {exc}") from exc
+
+    adapter_path = handle.adapter_path
+    if adapter_path is None:
+        raise JudgeUnavailableError(
+            f"sway preference judge requires a trained adapter for {dlm_path}"
+        )
+
+    try:
+        base_spec = model_spec_cls(
+            kind="hf",
+            base=handle.base_model,
+            adapter=adapter_path,
+            trust_remote_code=_resolve_sway_trust_remote_code(dlm_path),
+        )
+        return build_backend(base_spec, adapter_path=adapter_path)
+    except Exception as exc:
+        raise JudgeUnavailableError(
+            f"sway judge could not load backend for {dlm_path}: {exc}"
+        ) from exc
+
+
+def _import_sway_bridge() -> tuple[Any, Any, Any, Any]:
+    def _load() -> tuple[Any, Any, Any, Any]:
+        import importlib
+
+        build_backend = importlib.import_module("dlm_sway.backends").build
+        sway_error = importlib.import_module("dlm_sway.core.errors").SwayError
+        model_spec = importlib.import_module("dlm_sway.core.model").ModelSpec
+        resolve_dlm = importlib.import_module("dlm_sway.integrations.dlm.resolver").resolve_dlm
+        return resolve_dlm, build_backend, model_spec, sway_error
+
+    try:
+        return _load()
+    except ImportError:
+        sway_src = Path(__file__).resolve().parents[3] / "sway" / "src"
+        sway_src_str = str(sway_src)
+        if sway_src.exists() and sway_src_str not in sys.path:
+            sys.path.insert(0, sway_src_str)
+        return _load()
+
+
+def _resolve_sway_trust_remote_code(dlm_path: Path) -> bool:
+    try:
+        from dlm.base_models import resolve as resolve_base_model
+        from dlm.doc.parser import parse_file
+    except ImportError:
+        return False
+
+    try:
+        parsed = parse_file(dlm_path)
+    except Exception:
+        return False
+
+    base_model = parsed.frontmatter.base_model.strip()
+    if not base_model or base_model.startswith("hf:"):
+        return False
+
+    try:
+        spec = resolve_base_model(base_model, accept_license=True)
+    except Exception:
+        return False
+    return bool(spec.trust_remote_code)
