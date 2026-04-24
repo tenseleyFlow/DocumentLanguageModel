@@ -10,6 +10,7 @@ assign (`port=0`).
 from __future__ import annotations
 
 import json
+import socket
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
@@ -60,6 +61,42 @@ def _post(
     return resp.status, json.loads(resp.read())
 
 
+def _raw_post(
+    server: ProbeRpcServer,
+    *,
+    headers: dict[str, str],
+    body: bytes = b"",
+    path: str = "/rpc",
+) -> tuple[int, dict[str, Any]]:
+    host, port = server.address
+    lines = [
+        f"POST {path} HTTP/1.1",
+        f"Host: {host}:{port}",
+        *[f"{key}: {value}" for key, value in headers.items()],
+        "",
+        "",
+    ]
+    request = "\r\n".join(lines).encode("utf-8") + body
+    with socket.create_connection((host, port), timeout=5.0) as sock:
+        sock.sendall(request)
+        response = b""
+        while b"\r\n\r\n" not in response:
+            response += sock.recv(4096)
+        head, rest = response.split(b"\r\n\r\n", 1)
+        header_lines = head.decode("iso-8859-1").split("\r\n")
+        status = int(header_lines[0].split()[1])
+        parsed_headers: dict[str, str] = {}
+        for line in header_lines[1:]:
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            parsed_headers[key.lower()] = value.strip()
+        content_length = int(parsed_headers.get("content-length", "0"))
+        while len(rest) < content_length:
+            rest += sock.recv(4096)
+    return status, json.loads(rest[:content_length].decode("utf-8"))
+
+
 class TestHappyPath:
     def test_inject_probe_accepted(self, server: ProbeRpcServer) -> None:
         status, body = _post(
@@ -102,10 +139,64 @@ class TestMalformedPayload:
         assert status == 400
         assert "malformed" in body["error"].lower()
 
+    def test_invalid_content_length_400(self, server: ProbeRpcServer) -> None:
+        status, body = _raw_post(
+            server,
+            headers={
+                "Authorization": f"Bearer {_TOKEN}",
+                "Content-Type": "application/json",
+                "Content-Length": "nope",
+            },
+        )
+        assert status == 400
+        assert "content-length" in body["error"].lower()
+
+    def test_empty_body_400(self, server: ProbeRpcServer) -> None:
+        status, body = _raw_post(
+            server,
+            headers={
+                "Authorization": f"Bearer {_TOKEN}",
+                "Content-Type": "application/json",
+                "Content-Length": "0",
+            },
+        )
+        assert status == 400
+        assert "empty body" in body["error"].lower()
+
+    def test_oversized_body_400(self, server: ProbeRpcServer) -> None:
+        status, body = _raw_post(
+            server,
+            headers={
+                "Authorization": f"Bearer {_TOKEN}",
+                "Content-Type": "application/json",
+                "Content-Length": str(70 * 1024),
+            },
+        )
+        assert status == 400
+        assert "exceeds" in body["error"].lower()
+
+    def test_payload_must_be_object(self, server: ProbeRpcServer) -> None:
+        status, body = _post(server, body="[]")
+        assert status == 400
+        assert "json object" in body["error"].lower()
+
     def test_missing_prompt_400(self, server: ProbeRpcServer) -> None:
         status, body = _post(server, body={"method": "inject_probe", "params": {"reference": "a"}})
         assert status == 400
         assert "prompt" in body["error"].lower()
+
+    def test_params_must_be_object(self, server: ProbeRpcServer) -> None:
+        status, body = _post(server, body={"method": "inject_probe", "params": "bad"})
+        assert status == 400
+        assert "`params`" in body["error"]
+
+    def test_empty_reference_400(self, server: ProbeRpcServer) -> None:
+        status, body = _post(
+            server,
+            body={"method": "inject_probe", "params": {"prompt": "q", "reference": "   "}},
+        )
+        assert status == 400
+        assert "reference" in body["error"].lower()
 
     def test_non_string_tags_400(self, server: ProbeRpcServer) -> None:
         status, body = _post(
@@ -165,3 +256,20 @@ class TestConstruction:
     def test_empty_token_rejected(self) -> None:
         with pytest.raises(ValueError, match="bearer token"):
             ProbeRpcServer(host="127.0.0.1", port=0, token="", queue=InjectedProbeQueue())
+
+    def test_start_twice_rejected(self) -> None:
+        try:
+            srv = ProbeRpcServer(
+                host="127.0.0.1",
+                port=0,
+                token=_TOKEN,
+                queue=InjectedProbeQueue(),
+            )
+        except PermissionError as exc:
+            pytest.skip(f"loopback bind blocked on this host: {exc}")
+        srv.start()
+        try:
+            with pytest.raises(RuntimeError, match="already started"):
+                srv.start()
+        finally:
+            srv.stop()
