@@ -76,6 +76,15 @@ audio = [
     "soundfile>=0.12",
     "soxr>=0.3",
 ]
+# Sprint 43 synth teachers. API clients are optional — `dlm synth`
+# works with `self` and `hf:` teachers without these. Install via
+# `pip install dlm[openai]` or `pip install dlm[anthropic]`.
+openai = [
+    "openai>=1.0",
+]
+anthropic = [
+    "anthropic>=0.30",
+]
 
 [project.scripts]
 dlm = "dlm.cli.app:main"
