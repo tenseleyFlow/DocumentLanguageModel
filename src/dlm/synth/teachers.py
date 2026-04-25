@@ -2,6 +2,7 @@
 
 import importlib
 import json
+import logging
 import os
 import urllib.error
 import urllib.request
@@ -17,12 +18,40 @@ from dlm.synth.errors import (
     TeacherUnavailableError,
 )
 
+_log = logging.getLogger(__name__)
+
 TeacherKind = Literal["self", "hf", "openai", "anthropic", "vllm-server"]
 
 _DEFAULT_MAX_NEW_TOKENS = 512
 _DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
 _OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
 _ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY"
+
+
+@dataclass
+class TeacherUsage:
+    """Accumulated token usage from API-backed teachers."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    requests: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
+    def log_summary(self, teacher_name: str) -> None:
+        if self.requests == 0:
+            return
+        _log.info(
+            "teacher %s usage: %d requests, %d prompt tokens, "
+            "%d completion tokens, %d total tokens",
+            teacher_name,
+            self.requests,
+            self.prompt_tokens,
+            self.completion_tokens,
+            self.total_tokens,
+        )
 
 
 @dataclass(frozen=True)
@@ -185,6 +214,7 @@ class OpenAiTeacher:
     client_factory: OpenAiClientFactory | None = field(default=None, repr=False, compare=False)
     api_key_env: str = field(default=_OPENAI_API_KEY_ENV, repr=False, compare=False)
     name: str = field(init=False)
+    usage: TeacherUsage = field(default_factory=TeacherUsage, init=False, repr=False, compare=False)
     _client: Any = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -222,6 +252,7 @@ class OpenAiTeacher:
             response = client.chat.completions.create(**payload)
         except Exception as exc:
             raise TeacherInvocationError(f"{self.name} request failed: {exc}") from exc
+        _accumulate_openai_usage(self.usage, response)
         return _require_non_empty_teacher_output(
             _extract_openai_message_text(response),
             teacher=self.name,
@@ -247,6 +278,7 @@ class AnthropicTeacher:
     client_factory: AnthropicClientFactory | None = field(default=None, repr=False, compare=False)
     api_key_env: str = field(default=_ANTHROPIC_API_KEY_ENV, repr=False, compare=False)
     name: str = field(init=False)
+    usage: TeacherUsage = field(default_factory=TeacherUsage, init=False, repr=False, compare=False)
     _client: Any = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -281,6 +313,7 @@ class AnthropicTeacher:
             response = client.messages.create(**payload)
         except Exception as exc:
             raise TeacherInvocationError(f"{self.name} request failed: {exc}") from exc
+        _accumulate_anthropic_usage(self.usage, response)
         return _require_non_empty_teacher_output(
             _extract_anthropic_text(response),
             teacher=self.name,
@@ -616,6 +649,32 @@ def _obj_get(obj: object, name: str) -> object:
     if isinstance(obj, Mapping):
         return obj.get(name)
     return getattr(obj, name, None)
+
+
+def _accumulate_openai_usage(usage: TeacherUsage, response: Any) -> None:
+    usage.requests += 1
+    u = _obj_get(response, "usage")
+    if u is None:
+        return
+    pt = _obj_get(u, "prompt_tokens")
+    ct = _obj_get(u, "completion_tokens")
+    if isinstance(pt, int):
+        usage.prompt_tokens += pt
+    if isinstance(ct, int):
+        usage.completion_tokens += ct
+
+
+def _accumulate_anthropic_usage(usage: TeacherUsage, response: Any) -> None:
+    usage.requests += 1
+    u = _obj_get(response, "usage")
+    if u is None:
+        return
+    pt = _obj_get(u, "input_tokens")
+    ct = _obj_get(u, "output_tokens")
+    if isinstance(pt, int):
+        usage.prompt_tokens += pt
+    if isinstance(ct, int):
+        usage.completion_tokens += ct
 
 
 def _normalize_openai_compat_base_url(url: str) -> str:

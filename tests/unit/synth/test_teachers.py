@@ -21,6 +21,7 @@ from dlm.synth import (
     SelfTeacher,
     TeacherInvocationError,
     TeacherUnavailableError,
+    TeacherUsage,
     VllmServerTeacher,
     build_teacher,
     parse_teacher_ref,
@@ -228,6 +229,24 @@ class TestOpenAiTeacher:
         assert payloads[0]["seed"] == 5
         assert factories == ["secret"]
 
+    def test_openai_teacher_accumulates_usage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "secret")
+
+        def _create(**_kwargs: Any) -> Any:
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+                usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+            )
+
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=_create)))
+        teacher = OpenAiTeacher("gpt-4o-mini", client_factory=lambda _k: client)
+        teacher.generate("sys", "usr")
+        teacher.generate("sys", "usr")
+        assert teacher.usage.requests == 2
+        assert teacher.usage.prompt_tokens == 20
+        assert teacher.usage.completion_tokens == 10
+        assert teacher.usage.total_tokens == 30
+
     def test_openai_teacher_wraps_request_failures(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "secret")
 
@@ -290,6 +309,28 @@ class TestAnthropicTeacher:
         assert second == "first\nsecond"
         assert captured["payload"]["model"] == "claude-3-5-haiku-latest"
         assert factories == ["secret"]
+
+    def test_anthropic_teacher_accumulates_usage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "secret")
+
+        class _Messages:
+            @staticmethod
+            def create(**_kwargs: Any) -> Any:
+                return SimpleNamespace(
+                    content=[SimpleNamespace(type="text", text="ok")],
+                    usage=SimpleNamespace(input_tokens=8, output_tokens=3),
+                )
+
+        teacher = AnthropicTeacher(
+            "claude-3-5-haiku-latest",
+            client_factory=lambda _k: SimpleNamespace(messages=_Messages()),
+        )
+        teacher.generate("sys", "usr")
+        teacher.generate("sys", "usr")
+        assert teacher.usage.requests == 2
+        assert teacher.usage.prompt_tokens == 16
+        assert teacher.usage.completion_tokens == 6
+        assert teacher.usage.total_tokens == 22
 
     def test_anthropic_teacher_wraps_request_failures(
         self, monkeypatch: pytest.MonkeyPatch
@@ -372,6 +413,26 @@ class TestVllmServerTeacher:
         assert model_calls == [("http://127.0.0.1:8000", 30.0)]
         assert completion_calls[0][1] == "demo-model"
         assert completion_calls[0][3:] == (29, 0.4, 0.75, 9, 30.0)
+
+
+class TestTeacherUsage:
+    def test_total_tokens(self) -> None:
+        u = TeacherUsage(prompt_tokens=10, completion_tokens=5, requests=1)
+        assert u.total_tokens == 15
+
+    def test_log_summary_skips_zero_requests(self, caplog: pytest.LogCaptureFixture) -> None:
+        u = TeacherUsage()
+        u.log_summary("test")
+        assert "test" not in caplog.text
+
+    def test_log_summary_emits_on_nonzero(self, caplog: pytest.LogCaptureFixture) -> None:
+        import logging
+
+        u = TeacherUsage(prompt_tokens=100, completion_tokens=50, requests=3)
+        with caplog.at_level(logging.INFO, logger="dlm.synth.teachers"):
+            u.log_summary("openai:gpt-4o")
+        assert "openai:gpt-4o" in caplog.text
+        assert "150 total tokens" in caplog.text
 
 
 class TestTeacherHelpers:
