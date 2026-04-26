@@ -167,8 +167,19 @@ class TestExportCliFlagWiring:
 
         from dlm.cli.app import app
 
-        runner = CliRunner()
+        # Force a wide terminal so typer/Rich don't wrap the long
+        # ``--emit-sway-json`` flag across lines (CI's runner has a
+        # narrow default that breaks substring asserts).
+        runner = CliRunner(env={"COLUMNS": "200", "TERM": "dumb"})
         result = runner.invoke(app, ["export", "--help"])
         assert result.exit_code == 0, result.output
-        assert "--emit-sway-json" in result.output
-        assert "sway.yaml" in result.output
+        # Strip any ANSI escapes so a substring match is robust to
+        # color codes inserted at arbitrary positions.
+        import re
+
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+        # Collapse whitespace so wrap-induced line breaks within the
+        # flag name still match — belt + braces with the COLUMNS env.
+        plain = re.sub(r"\s+", " ", plain)
+        assert "--emit-sway-json" in plain, plain
+        assert "sway.yaml" in plain, plain
