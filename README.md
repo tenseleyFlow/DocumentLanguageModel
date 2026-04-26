@@ -290,6 +290,11 @@ uv run dlm export mydoc.dlm --target vllm
 uv run dlm export mydoc.dlm --target mlx-serve
 uv run dlm pack mydoc.dlm --include-exports
 uv run dlm verify mydoc.dlm.pack
+
+# Also emit a ready-to-run sway.yaml next to the GGUF for downstream
+# evaluation via `sway run` (requires the [sway] extra).
+uv run dlm export mydoc.dlm --target ollama --emit-sway-json
+uv run sway run <export-dir>/sway.yaml
 ```
 
 On Apple Silicon, `--target vllm` now emits conservative `vllm-metal`
