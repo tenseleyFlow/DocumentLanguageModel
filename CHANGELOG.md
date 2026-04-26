@@ -28,6 +28,26 @@ the project targets [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`dlm export --emit-sway-json`** writes a ready-to-run
+  `<export-dir>/sway.yaml` alongside the GGUF/Modelfile, eliminating
+  the previous two-step `dlm export` → `sway autogen` ritual users
+  had to do before evaluating an adapter via [sway](https://github.com/tenseleyFlow/sway).
+  Calls into `dlm_sway.integrations.dlm.autogen.build_spec_dict` via
+  a new `dlm.export.sway_json.write_sway_json` helper. Closes the X1
+  half of sway's Sprint 26 cross-repo integration; X3 (sway-side
+  `sway pack` / `sway unpack`) ships in sway proper.
+  - New `[sway]` optional extra (`pip install 'dlm[sway]'`) pulls
+    `dlm-sway>=0.1.0`. Deliberately pulls plain `dlm-sway`, NOT
+    `dlm-sway[dlm]`, because the round-trip extra would create a
+    pip-resolver cycle (sway's `[dlm]` extra already pulls dlm).
+  - Failures route through a new typed `SwayJsonExportError`
+    (subclass of `ExportError`) so the CLI's existing exception
+    handler renders them cleanly. The most common failure — user
+    didn't install the `[sway]` extra — gets a message that names
+    the install command verbatim.
+  - 5 unit tests in `tests/unit/cli/test_export_sway_json.py`
+    cover the helper round-trip, missing-extra error, autogen
+    failure wrapping, and CLI flag wiring.
 - **`dlm train --skip-export-probes`** mirrors the flag on `dlm init`
   (it was missing from the train CLI; a user could `dlm init
   --skip-export-probes` a fresh .dlm then have `dlm train` re-run
