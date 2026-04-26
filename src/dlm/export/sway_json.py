@@ -89,13 +89,16 @@ def write_sway_json(dlm_path: Path, export_dir: Path) -> Path:
     try:
         # Both imports are required: ``resolve_dlm`` parses the .dlm
         # into the DlmHandle that ``build_spec_dict`` consumes.
-        # ``# type: ignore[import-not-found]`` because dlm-sway is in
-        # the optional ``[sway]`` extra; mypy strict shouldn't fail
-        # type-checking on a deliberately-optional import.
-        from dlm_sway.integrations.dlm.autogen import (  # type: ignore[import-not-found]
+        # The combined ``[import-not-found,unused-ignore]`` keeps mypy
+        # happy across two install postures: when dlm-sway is missing
+        # (``import-not-found`` fires), and when CI installs the
+        # ``[sway]`` extra (the import succeeds — without the
+        # ``unused-ignore`` paired code, mypy then complains that the
+        # ``import-not-found`` ignore is itself unused).
+        from dlm_sway.integrations.dlm.autogen import (  # type: ignore[import-not-found,unused-ignore]
             build_spec_dict,
         )
-        from dlm_sway.integrations.dlm.resolver import (  # type: ignore[import-not-found]
+        from dlm_sway.integrations.dlm.resolver import (  # type: ignore[import-not-found,unused-ignore]
             resolve_dlm,
         )
     except ImportError as exc:  # pragma: no cover — env-dep branch
