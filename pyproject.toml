@@ -1,5 +1,5 @@
 [project]
-name = "dlm"
+name = "document-language-model"
 version = "0.10.0"
 description = "Directive-driven local LLM training, retraining, and export from .dlm documents, codebases, and multimodal sources."
 readme = "README.md"
