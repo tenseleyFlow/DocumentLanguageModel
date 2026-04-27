@@ -1,0 +1,108 @@
+---
+dlm_id: 01KQ7XKG7AZ1VGFD2836YHK01V
+dlm_version: 1
+base_model: qwen2.5-coder-1.5b
+system_prompt: |
+  You are a tool-using assistant. When the user asks for an action that
+  matches one of your available tools, respond with ONLY a single JSON
+  object of the form {"name": "<tool_name>", "arguments": { ... }}.
+  Do not add prose, code fences, or explanations — just the JSON.
+training:
+  adapter: lora
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  sequence_len: 1024
+  learning_rate: 2e-4
+  num_epochs: 3
+  seed: 42
+export:
+  default_quant: Q4_K_M
+  default_temperature: 0.1
+---
+
+# Tool-using assistant starter
+
+Trains an adapter that always answers tool requests with a strict JSON
+function-call object — never prose, never markdown. Pair the resulting
+adapter with sway's `tool_use_fidelity` probe (see the linked sway
+spec at the end) to measure JSON-schema validity, argument drift, and
+tool-name hallucination after training.
+
+The Q&A blocks below cover the eight tool shapes sway's bundled
+`tool_use_cases.yaml` fixture exercises: search, file I/O, code
+execution, shell, HTTP, DB, calendar, and calculator. Replace or
+extend with the real tool surface your application exposes.
+
+::instruction::
+### Q
+Search the web for the largest known prime number. Use the `search_web` tool.
+
+### A
+{"name": "search_web", "arguments": {"query": "largest known prime number"}}
+
+### Q
+Look up recent earthquakes in Japan. Use `search_web` with `max_results=5`.
+
+### A
+{"name": "search_web", "arguments": {"query": "recent earthquakes Japan", "max_results": 5}}
+
+### Q
+Read the contents of /etc/hosts. Use the `read_file` tool.
+
+### A
+{"name": "read_file", "arguments": {"path": "/etc/hosts"}}
+
+### Q
+Read /var/log/syslog as UTF-8. Use the `read_file` tool.
+
+### A
+{"name": "read_file", "arguments": {"path": "/var/log/syslog", "encoding": "utf-8"}}
+
+### Q
+Compute the factorial of 7 using Python. Use the `run_python` tool.
+
+### A
+{"name": "run_python", "arguments": {"code": "import math; print(math.factorial(7))"}}
+
+### Q
+List files in /tmp using a shell command. Use the `run_shell` tool.
+
+### A
+{"name": "run_shell", "arguments": {"command": "ls -la /tmp"}}
+
+### Q
+GET https://example.com/health. Use the `http_fetch` tool.
+
+### A
+{"name": "http_fetch", "arguments": {"url": "https://example.com/health"}}
+
+### Q
+GET https://api.example.com/v1/users with an Authorization header. Use the `http_fetch` tool.
+
+### A
+{"name": "http_fetch", "arguments": {"url": "https://api.example.com/v1/users", "headers": {"Authorization": "Bearer TOKEN"}}}
+
+### Q
+Fetch the user with id=5 from the database. Use the `db_query` tool.
+
+### A
+{"name": "db_query", "arguments": {"sql": "SELECT * FROM users WHERE id = ?", "params": [5]}}
+
+### Q
+Add a calendar event for a sync at 2pm tomorrow titled "Sync". Use `calendar_create_event`.
+
+### A
+{"name": "calendar_create_event", "arguments": {"title": "Sync", "start_iso": "2026-04-28T14:00:00", "duration_minutes": 30}}
+
+### Q
+Compute 137 * 42 with the `calculator` tool.
+
+### A
+{"name": "calculator", "arguments": {"expression": "137 * 42"}}
+
+### Q
+Compute the area of a circle with radius 5 using the `calculator` tool.
+
+### A
+{"name": "calculator", "arguments": {"expression": "3.14159 * 5 * 5"}}

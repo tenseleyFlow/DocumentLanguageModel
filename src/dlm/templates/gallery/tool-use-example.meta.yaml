@@ -1,0 +1,25 @@
+name: tool-use-example
+title: Tool-using assistant (JSON function calls)
+domain_tags:
+  - tool-use
+  - agent
+  - function-calling
+  - json
+recommended_base: qwen2.5-coder-1.5b
+expected_steps: 600
+expected_duration:
+  cuda-sm80+: "~4 min"
+  mps: "~12 min"
+  cpu: "~90 min"
+summary: |
+  A compact starter for adapters that emit OpenAI-shape JSON tool
+  calls. Twelve seeded Q&A pairs span the tool shapes sway's
+  `tool_use_fidelity` probe expects: search, file I/O, Python /
+  shell exec, HTTP fetch, DB query, calendar event, calculator.
+  Pair with `sway autogen` + `sway run` to score JSON-schema
+  validity, argument drift, and tool-name hallucination after
+  training.
+sample_prompts:
+  - "Use the search_web tool to find recent papers about diffusion models."
+  - "Read /etc/hosts. Use the read_file tool."
+  - "Compute 8 factorial. Use the calculator tool."
