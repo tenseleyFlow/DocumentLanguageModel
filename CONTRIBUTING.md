@@ -116,13 +116,11 @@ Docs are built strict in CI but not hosted — read them in-repo or in
 the brew-installed tarball. Hosting (GitHub Pages or a custom
 subdomain) is a separate change, deferred post-v0.9.0.
 
-We publish via our Homebrew tap —
+We publish to PyPI as
+[document-language-model](https://pypi.org/project/document-language-model/).
+The `PYPI_TOKEN` secret in GitHub Actions handles automated releases via
+`.github/workflows/release.yml`. We also maintain a Homebrew tap at
 [tenseleyFlow/homebrew-tap](https://github.com/tenseleyFlow/homebrew-tap).
-**We do not publish to PyPI.** Rationale lives in the audit-05 /
-release-mode discussion; the short version is: PyPI makes versions
-permanent, requires us to maintain a ~5 GB transitive dep surface,
-and signals "this is battle-tested" in a way we're not ready to back
-yet.
 
 ### Conservative versioning
 
