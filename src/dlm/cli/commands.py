@@ -879,11 +879,15 @@ def train_cmd(
     store = for_dlm(parsed.frontmatter.dlm_id)
     store.ensure_layout()
 
-    # `dlm init` writes a manifest as part of store provisioning. When
-    # we just scaffolded a fresh `.dlm`, mirror that manifest write
-    # here too. Guarded by exists() so --rescaffold (same dlm_id,
-    # prior store) preserves training history.
-    if just_scaffolded and not store.manifest.exists():
+    # `dlm init` writes a manifest as part of store provisioning. Mirror
+    # that manifest write here when the store layout exists but has no
+    # manifest yet — covers two flows:
+    #   - auto-scaffold via `dlm train <dir>` (just_scaffolded path)
+    #   - hand-authored .dlm with a fresh ULID that never went through
+    #     `dlm init` (e.g. authored via the LSP / VSCode extension)
+    # License acceptance has already been validated upstream by this
+    # point, so we just record it.
+    if not store.manifest.exists():
         from dlm.base_models import is_gated
         from dlm.base_models.license import require_acceptance
         from dlm.store.manifest import Manifest, save_manifest
