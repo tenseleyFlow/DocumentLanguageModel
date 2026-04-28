@@ -2,7 +2,7 @@
 
 One file per `exports/<quant>/` directory. Records:
 
-- export target (`ollama` today; more runtimes in Sprint 41)
+- export target (`ollama`, `vllm`, `llama-server`, `mlx-serve`)
 - quant level
 - checksums of emitted GGUF artifacts
 - pinned llama.cpp tag (so a future upstream bump can detect drift)

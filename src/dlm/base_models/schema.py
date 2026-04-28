@@ -149,8 +149,8 @@ class BaseModelSpec(BaseModel):
     provenance_url: str | None = None
     provenance_match_text: str | None = None
 
-    # Modality + multi-modal preprocessing (schema v10 + v11, plus
-    # Sprint 40's additive `text-moe` discriminator).
+    # Modality + multi-modal preprocessing (schema v10 + v11, plus the
+    # additive `text-moe` discriminator).
     # Text-family bases leave `modality in {"text", "text-moe"}`
     # with both plans None;
     # `modality="vision-language"` requires a `vl_preprocessor_plan`

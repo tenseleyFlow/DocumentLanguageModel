@@ -1,4 +1,4 @@
-"""Typed errors for Sprint 43 synthetic-instruction generation."""
+"""Typed errors for synthetic-instruction generation."""
 
 from __future__ import annotations
 

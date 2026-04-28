@@ -12,7 +12,7 @@ Three primary artifacts:
 - `llama-quantize` — compiled binary (built by cmake). Converts an
   fp16 GGUF into one of the quant levels.
 - `llama-server` — compiled binary for the OpenAI-compatible HTTP
-  server target added in Sprint 41.
+  server target.
 
 Lookup order for the llama.cpp source tree (convert scripts):
 

@@ -1,4 +1,4 @@
-"""Sprint 43 synthetic-instruction generation substrate."""
+"""Synthetic-instruction generation substrate."""
 
 from dlm.synth.apply import (
     PlannedSynthAddition,

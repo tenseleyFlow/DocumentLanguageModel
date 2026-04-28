@@ -440,8 +440,8 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
     # Mistral Small 3.1 24B Instruct — Apache-2.0 multimodal base with
     # native vision support and 128k context.
     #
-    # The Sprint 40 draft treated this as text-only; the live HF
-    # config is `Mistral3ForConditionalGeneration` with both text and
+    # An earlier draft treated this as text-only; the live HF config
+    # is `Mistral3ForConditionalGeneration` with both text and
     # vision towers, so we register it as vision-language. The current
     # processor config pins `[IMG]` as the image placeholder and a
     # longest edge of 1540 px. DLM's current `VlPreprocessorPlan`

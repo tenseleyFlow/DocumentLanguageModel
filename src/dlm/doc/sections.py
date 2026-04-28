@@ -93,15 +93,15 @@ class Section:
     neither field participates in `section_id`.
 
     `auto_mined` marks a `::preference::` section as synthesized by
-    Sprint 42's preference-mining loop rather than hand-authored. The
+    the preference-mining loop rather than hand-authored. The
     accompanying judge metadata (`judge_name`, `judge_score_chosen`,
     `judge_score_rejected`, `mined_at`, `mined_run_id`) captures
     provenance for review, metrics, and revert flows. Like harvest
     metadata, these fields do not participate in `section_id`.
 
     `auto_synth` marks an `::instruction::` section as synthesized by
-    Sprint 43's instruction-generation loop rather than hand-authored.
-    The accompanying metadata (`synth_teacher`, `synth_strategy`,
+    the instruction-generation loop rather than hand-authored. The
+    accompanying metadata (`synth_teacher`, `synth_strategy`,
     `synth_at`, `source_section_id`) captures provenance for review,
     metrics, and revert flows. Like the other provenance flags, these
     fields do not participate in `section_id`.

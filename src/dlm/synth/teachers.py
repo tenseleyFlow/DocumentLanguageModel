@@ -1,4 +1,4 @@
-"""Teacher selector parsing and runtime wrappers for Sprint 43."""
+"""Teacher selector parsing and runtime wrappers for synthetic-data generation."""
 
 import importlib
 import json

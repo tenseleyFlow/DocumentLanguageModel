@@ -1,9 +1,8 @@
 """Export-target protocol shared by runtime-specific export surfaces.
 
-Sprint 41 starts by making "target" a first-class concept even though
-the only registered runtime today is Ollama. Later targets (vLLM,
-llama-server, MLX-serve) plug into the same shape instead of growing
-ad-hoc CLI branches.
+"target" is a first-class concept so each registered runtime (Ollama,
+vLLM, llama-server, MLX-serve) plugs into the same shape instead of
+growing ad-hoc CLI branches.
 """
 
 from __future__ import annotations

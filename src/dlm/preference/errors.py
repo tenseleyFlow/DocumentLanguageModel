@@ -1,4 +1,4 @@
-"""Errors raised by Sprint 42 preference-mining infrastructure."""
+"""Errors raised by the preference-mining infrastructure."""
 
 from __future__ import annotations
 

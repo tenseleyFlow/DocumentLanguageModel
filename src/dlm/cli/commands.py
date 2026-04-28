@@ -1675,8 +1675,7 @@ def export_cmd(
             help=(
                 "After the export, also write a ready-to-run sway.yaml "
                 "(via dlm-sway autogen) into the export dir. Requires the "
-                "[sway] extra: pip install 'dlm[sway]'. Closes the "
-                "training-then-evaluating gap from sway Sprint 26 X1."
+                "[sway] extra: pip install 'dlm[sway]'."
             ),
         ),
     ] = False,
