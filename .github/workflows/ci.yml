@@ -240,11 +240,17 @@ jobs:
           # when it's wired.
 
   slow-tests:
-    # Sprint 02: marker-gated tests that touch HF. Cache-keyed on
-    # (pyproject.toml hash, tiny-model revision) per audit guidance.
-    # Sprint 11: also initializes + builds `vendor/llama.cpp` so export
-    # integration tests can exercise real GGUF conversion.
+    # Marker-gated tests that touch HF + build llama.cpp. Runs ~2 hours
+    # cold (~30 min warm). To avoid blocking every PR push, this job
+    # fires only on:
+    #   - pushes to trunk (post-merge regression catch)
+    #   - PRs labeled `slow-run-please` (opt-in for risky changes)
+    #   - the standalone `Slow integration tests` workflow (weekly cron + manual dispatch)
     name: slow tests (hf-cache + llama.cpp)
+    if: >-
+      github.event_name == 'push'
+      || (github.event_name == 'pull_request'
+          && contains(github.event.pull_request.labels.*.name, 'slow-run-please'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout with llama.cpp submodule
