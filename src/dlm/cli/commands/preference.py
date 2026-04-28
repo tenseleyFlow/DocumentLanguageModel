@@ -89,25 +89,19 @@ def preference_mine_cmd(
     from dlm.doc.parser import parse_file
     from dlm.hardware import doctor
     from dlm.inference import AdapterNotFoundError
-    from dlm.inference.backends import (
-        UnsupportedBackendError,
-        build_backend,
-        select_backend,
-    )
-    from dlm.metrics import MetricsRecorder, PreferenceMineEvent
-    from dlm.metrics.events import PreferenceMineWriteMode
+    from dlm.inference.backends import UnsupportedBackendError, select_backend
     from dlm.modality import modality_for
     from dlm.preference import (
         InvalidJudgeSpecError,
         JudgeUnavailableError,
-        build_apply_plan,
-        build_judge,
-        build_mine_plan,
         render_apply_plan,
         render_mine_plan,
     )
-    from dlm.preference.apply import apply_plan as apply_preference_plan
-    from dlm.preference.pending import clear_pending_plan, save_pending_plan
+    from dlm.preference.dispatch import (
+        PreferenceMineOutcome,
+        PreferenceMineRequest,
+        run_preference_mine,
+    )
     from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
@@ -187,27 +181,30 @@ def preference_mine_cmd(
     except UnsupportedBackendError as exc:
         console.print(f"[red]preference:[/red] {exc}")
         raise typer.Exit(code=2) from exc
-    backend_obj = build_backend(backend_name, caps)
+
+    request = PreferenceMineRequest(
+        parsed=parsed,
+        target_path=path,
+        store=store,
+        spec=spec,
+        capabilities=caps,
+        backend_name=backend_name,
+        judge_spec=judge,
+        mined_run_id=run_id,
+        samples=samples,
+        max_pairs=max_pairs,
+        threshold=threshold,
+        temperature=temp,
+        top_p=top_p,
+        adapter=adapter,
+        apply=apply,
+    )
 
     try:
-        backend_obj.load(spec, store, adapter_name=adapter)
+        result = run_preference_mine(request)
     except AdapterNotFoundError as exc:
         console.print(f"[red]preference:[/red] {exc}")
         raise typer.Exit(code=1) from exc
-
-    try:
-        judge_obj = build_judge(judge, dlm_path=path)
-        plan = build_mine_plan(
-            parsed,
-            backend_obj,
-            judge_obj,
-            mined_run_id=run_id,
-            samples=samples,
-            max_pairs=max_pairs,
-            threshold=threshold,
-            temperature=temp,
-            top_p=top_p,
-        )
     except InvalidJudgeSpecError as exc:
         console.print(f"[red]preference:[/red] {exc}")
         raise typer.Exit(code=2) from exc
@@ -217,28 +214,10 @@ def preference_mine_cmd(
     except ValueError as exc:
         console.print(f"[red]preference:[/red] {exc}")
         raise typer.Exit(code=2) from exc
-    finally:
-        backend_obj.unload()
 
-    recorder = MetricsRecorder(store.root)
+    out_console.print(render_mine_plan(result.plan))
 
-    def _record_preference_mine(write_mode: PreferenceMineWriteMode) -> None:
-        recorder.record_preference_mine(
-            PreferenceMineEvent(
-                run_id=run_id,
-                judge_name=judge_obj.name,
-                sample_count=samples,
-                mined_pairs=len(plan.additions),
-                skipped_prompts=len(plan.skipped),
-                write_mode=write_mode,
-            )
-        )
-
-    out_console.print(render_mine_plan(plan))
-
-    if not plan.additions:
-        clear_pending_plan(store)
-        _record_preference_mine("empty")
+    if result.outcome is PreferenceMineOutcome.NO_ADDITIONS:
         out_console.print(
             "\n[yellow]no candidates to mine[/yellow] — either instruction prompts "
             "did not yield a confident pair, or the matching preference sections "
@@ -246,25 +225,20 @@ def preference_mine_cmd(
         )
         raise typer.Exit(code=2)
 
-    sections = [addition.section for addition in plan.additions]
-
-    if apply:
-        apply_plan = build_apply_plan(parsed, sections)
+    if result.outcome is PreferenceMineOutcome.APPLIED:
+        assert result.apply_plan is not None
+        assert result.apply_summary is not None
         out_console.print("")
-        out_console.print(render_apply_plan(apply_plan))
-        summary = apply_preference_plan(parsed, apply_plan, target=path)
-        clear_pending_plan(store)
-        _record_preference_mine("applied")
+        out_console.print(render_apply_plan(result.apply_plan))
         out_console.print(
-            f"\n[green]preference:[/green] wrote {summary.added} section(s) to {path} "
-            f"({summary.skipped} skipped)"
+            f"\n[green]preference:[/green] wrote {result.apply_summary.added} section(s) to {path} "
+            f"({result.apply_summary.skipped} skipped)"
         )
         return
 
-    pending = save_pending_plan(store, source_path=path.resolve(), sections=sections)
-    _record_preference_mine("staged")
+    # PreferenceMineOutcome.STAGED
     out_console.print(
-        f"\n[green]preference:[/green] staged {len(pending.sections)} mined preference "
+        f"\n[green]preference:[/green] staged {result.pending_count} mined preference "
         f"section(s). Run [bold]dlm preference apply {path}[/bold] to write them."
     )
 
