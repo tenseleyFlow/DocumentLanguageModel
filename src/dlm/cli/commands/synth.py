@@ -106,28 +106,20 @@ def synth_instructions_cmd(
 
     from dlm.doc.errors import DlmParseError
     from dlm.doc.parser import parse_file
-    from dlm.preference import JudgeUnavailableError, build_judge
+    from dlm.preference import JudgeUnavailableError
     from dlm.store.paths import for_dlm
     from dlm.synth import (
         InvalidTeacherSpecError,
         TeacherInvocationError,
         TeacherUnavailableError,
-        build_synth_plan,
-        build_teacher,
-        clear_pending_plan,
-        filter_synth_plan,
+        render_apply_plan,
         render_filter_report,
         render_synth_plan,
-        save_pending_plan,
     )
-    from dlm.synth import (
-        apply_plan as apply_synth_plan,
-    )
-    from dlm.synth import (
-        build_apply_plan as build_synth_apply_plan,
-    )
-    from dlm.synth import (
-        render_apply_plan as render_synth_apply_plan,
+    from dlm.synth.dispatch import (
+        SynthInstructionsRequest,
+        SynthOutcome,
+        run_synth_instructions,
     )
 
     console = Console(stderr=True)
@@ -159,20 +151,26 @@ def synth_instructions_cmd(
 
     store = for_dlm(parsed.frontmatter.dlm_id)
 
+    request = SynthInstructionsRequest(
+        parsed=parsed,
+        target_path=path,
+        store=store,
+        teacher=teacher,
+        per_section=per_section,
+        strategy=cast(Literal["extraction", "expansion", "both"], strategy),
+        filter_kind=cast(Literal["sway", "none", "dedup-only"], filter_kind),
+        threshold=threshold,
+        max_pairs=max_pairs,
+        max_new_tokens=max_new_tokens,
+        temperature=temp,
+        top_p=top_p,
+        seed=seed,
+        apply=apply,
+        dry_run=dry_run,
+    )
+
     try:
-        strategy_value = cast(Literal["extraction", "expansion", "both"], strategy)
-        teacher_obj = build_teacher(teacher, dlm_path=path)
-        plan = build_synth_plan(
-            parsed,
-            teacher_obj,
-            per_section=per_section,
-            strategy=strategy_value,
-            max_pairs=max_pairs,
-            max_new_tokens=max_new_tokens,
-            temperature=temp,
-            top_p=top_p,
-            seed=seed,
-        )
+        result = run_synth_instructions(request)
     except InvalidTeacherSpecError as exc:
         console.print(f"[red]synth:[/red] {exc}")
         raise typer.Exit(code=2) from exc
@@ -182,64 +180,42 @@ def synth_instructions_cmd(
     except TeacherInvocationError as exc:
         console.print(f"[red]synth:[/red] {exc}")
         raise typer.Exit(code=1) from exc
+    except JudgeUnavailableError as exc:
+        console.print(f"[red]synth:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
     except ValueError as exc:
         console.print(f"[red]synth:[/red] {exc}")
         raise typer.Exit(code=2) from exc
 
-    judge_obj = None
-    if filter_kind == "sway":
-        try:
-            judge_obj = build_judge("sway", dlm_path=path)
-        except JudgeUnavailableError as exc:
-            console.print(f"[red]synth:[/red] {exc}")
-            raise typer.Exit(code=1) from exc
-
-    try:
-        filter_value = cast(Literal["sway", "none", "dedup-only"], filter_kind)
-        filtered = filter_synth_plan(
-            plan,
-            filter_kind=filter_value,
-            judge=judge_obj,
-            threshold=threshold,
-        )
-    except ValueError as exc:
-        console.print(f"[red]synth:[/red] {exc}")
-        raise typer.Exit(code=2) from exc
-
-    out_console.print(render_synth_plan(plan))
+    out_console.print(render_synth_plan(result.plan))
     out_console.print("")
-    out_console.print(render_filter_report(filtered))
+    out_console.print(render_filter_report(result.filtered_plan))
 
-    if not filtered.additions:
-        if not dry_run:
-            clear_pending_plan(store)
+    if result.outcome is SynthOutcome.NO_ADDITIONS:
         out_console.print(
             "\n[yellow]no synth additions accepted[/yellow] — either generation "
             "yielded no valid pairs, dedup removed them, or the filter rejected them."
         )
         raise typer.Exit(code=2)
 
-    sections = [addition.addition.section for addition in filtered.additions]
-
-    if apply:
-        apply_plan = build_synth_apply_plan(parsed, sections)
+    if result.outcome is SynthOutcome.APPLIED:
+        assert result.apply_plan is not None
+        assert result.apply_summary is not None
         out_console.print("")
-        out_console.print(render_synth_apply_plan(apply_plan))
-        summary = apply_synth_plan(parsed, apply_plan, target=path)
-        clear_pending_plan(store)
+        out_console.print(render_apply_plan(result.apply_plan))
         out_console.print(
-            f"\n[green]synth:[/green] wrote {summary.added} section(s) to {path} "
-            f"({summary.skipped} skipped)"
+            f"\n[green]synth:[/green] wrote {result.apply_summary.added} section(s) to {path} "
+            f"({result.apply_summary.skipped} skipped)"
         )
         return
 
-    if dry_run:
+    if result.outcome is SynthOutcome.DRY_RUN:
         out_console.print("\n[green]synth:[/green] dry-run only — nothing staged.")
         return
 
-    pending = save_pending_plan(store, source_path=path.resolve(), sections=sections)
+    # SynthOutcome.STAGED
     out_console.print(
-        f"\n[green]synth:[/green] staged {len(pending.sections)} auto-synth instruction "
+        f"\n[green]synth:[/green] staged {result.pending_count} auto-synth instruction "
         f"section(s). Run [bold]dlm synth list {path}[/bold] to inspect them."
     )
 

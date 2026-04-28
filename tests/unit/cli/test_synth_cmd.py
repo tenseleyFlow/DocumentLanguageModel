@@ -149,7 +149,7 @@ def _patch_synth_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
         payload = payloads.get(raw, payloads["self"])
         return _FakeTeacher(raw, payload)
 
-    monkeypatch.setattr("dlm.synth.build_teacher", _build_teacher)
+    monkeypatch.setattr("dlm.synth.teachers.build_teacher", _build_teacher)
     monkeypatch.setattr("dlm.preference.build_judge", lambda *args, **kwargs: _FakeJudge())
 
 
