@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import shlex
 import subprocess  # nosec B404
@@ -10,13 +11,15 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Final, Literal, Protocol, runtime_checkable
 
 from dlm.preference.errors import (
     InvalidJudgeSpecError,
     JudgeInvocationError,
     JudgeUnavailableError,
 )
+
+_LOG: Final = logging.getLogger(__name__)
 
 JudgeKind = Literal["sway", "hf", "cli"]
 
@@ -181,7 +184,11 @@ class SwayJudge:
             with backend.as_finetuned() as ft_view:
                 score_a = _normalized_sway_score(ft_view, prompt, candidate_a)
                 score_b = _normalized_sway_score(ft_view, prompt, candidate_b)
-        except Exception as exc:
+        except (RuntimeError, OSError, ValueError, ImportError) as exc:
+            # Sway backend / torch / file-system / unloadable imports.
+            # Anything else (e.g. KeyboardInterrupt, MemoryError, internal
+            # AssertionError) should propagate so the caller sees the bug.
+            _LOG.warning("sway judge scoring failed: %s", exc)
             raise JudgeInvocationError(f"sway judge failed to score candidates: {exc}") from exc
         return PairScore(
             score_a=score_a,
@@ -417,7 +424,12 @@ def _encode_reward_input(tokenizer: Any, prompt: str, candidate: str) -> Any:
             )
             if isinstance(rendered, str):
                 return tokenizer(rendered, return_tensors="pt", truncation=True)
-        except Exception:
+        except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
+            # Tokenizer lacks apply_chat_template, template missing,
+            # message-shape mismatch, or HF runtime template error —
+            # fall back to the legacy text-pair tokenization below.
+            # Anything else (KeyboardInterrupt, MemoryError, ...) is a
+            # real signal and propagates.
             pass
     return tokenizer(prompt, text_pair=candidate, return_tensors="pt", truncation=True)
 
@@ -467,7 +479,11 @@ def _build_sway_backend(dlm_path: Path) -> Any:
         handle = resolve_dlm(dlm_path)
     except sway_error_cls as exc:
         raise JudgeUnavailableError(f"sway judge could not resolve {dlm_path}: {exc}") from exc
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, ImportError) as exc:
+        # FS errors, malformed dlm path, sway internals failing import,
+        # or sway runtime errors. AssertionError / TypeError / true bug
+        # exceptions propagate.
+        _LOG.warning("sway judge resolve_dlm failed for %s: %s", dlm_path, exc)
         raise JudgeUnavailableError(f"sway judge could not resolve {dlm_path}: {exc}") from exc
 
     adapter_path = handle.adapter_path
@@ -484,7 +500,10 @@ def _build_sway_backend(dlm_path: Path) -> Any:
             trust_remote_code=_resolve_sway_trust_remote_code(dlm_path),
         )
         return build_backend(base_spec, adapter_path=adapter_path)
-    except Exception as exc:
+    except (RuntimeError, OSError, ValueError, ImportError) as exc:
+        # Adapter load / weight-file / device-init / torch / sway-import
+        # failures are environmental. Anything else is a bug to surface.
+        _LOG.warning("sway judge backend load failed for %s: %s", dlm_path, exc)
         raise JudgeUnavailableError(
             f"sway judge could not load backend for {dlm_path}: {exc}"
         ) from exc
@@ -519,7 +538,11 @@ def _resolve_sway_trust_remote_code(dlm_path: Path) -> bool:
 
     try:
         parsed = parse_file(dlm_path)
-    except Exception:
+    except (OSError, RuntimeError, ValueError) as exc:
+        # ValueError covers DlmParseError + subclasses. OSError covers
+        # FS failures. RuntimeError covers parser internals (and tests
+        # that synthesize a generic failure). Other exceptions propagate.
+        _LOG.debug("trust-remote-code probe could not parse %s: %s", dlm_path, exc)
         return False
 
     base_model = parsed.frontmatter.base_model.strip()
@@ -528,6 +551,9 @@ def _resolve_sway_trust_remote_code(dlm_path: Path) -> bool:
 
     try:
         spec = resolve_base_model(base_model, accept_license=True)
-    except Exception:
+    except (KeyError, OSError, RuntimeError, ValueError) as exc:
+        # KeyError: registry miss. OSError/ValueError: license-gate or
+        # registry I/O. RuntimeError: registry-load runtime failure.
+        _LOG.debug("trust-remote-code probe could not resolve %s: %s", base_model, exc)
         return False
     return bool(spec.trust_remote_code)
