@@ -13,8 +13,7 @@ Callers that previously wrote ``if spec.modality == "vision-language"``
 now read ``modality_for(spec).accepts_images`` (or one of the other
 predicate flags) or call a dispatch method directly. A pregate
 grep-gate refuses new scatter — see ``scripts/pregate.sh``.
-Text-family tags (`"text"` and Sprint 40's `"text-moe"`) share
-the same dispatcher.
+Text-family tags (`"text"` and `"text-moe"`) share the same dispatcher.
 """
 
 from __future__ import annotations

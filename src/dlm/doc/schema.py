@@ -50,7 +50,7 @@ training signal). v12 adds the additive `training.audio` block
 (currently one field, `auto_resample: bool`) — opt-in automatic
 resampling when audio files don't match the base's pinned rate.
 Default False preserves the "refuse on SR mismatch" contract. v13 is
-an identity bump paired with Sprint 40's base-model registry refresh:
+an identity bump paired with the 2026 base-model registry refresh:
 the document frontmatter shape is unchanged, but the migration chain
 still advances so tooling can distinguish post-refresh docs from older
 ones. v14 adds additive auto-mined preference metadata on

@@ -1,4 +1,4 @@
-"""Pure dry-run orchestration for Sprint 43 synthetic instruction generation."""
+"""Pure dry-run orchestration for synthetic instruction generation."""
 
 from __future__ import annotations
 

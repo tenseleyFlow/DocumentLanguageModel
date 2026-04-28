@@ -1,7 +1,7 @@
 """Cross-repo bridge: emit a ready-to-run ``sway.yaml`` next to a dlm export.
 
-Sprint 26 X1. Closes Audit 03's "users who train via dlm then evaluate
-via sway have to run two separate commands" gap. With ``dlm export
+Closes the gap where users who train via dlm then evaluate via sway
+had to run two separate commands. With ``dlm export
 --emit-sway-json``, the user runs::
 
     dlm export myadapter.dlm --target ollama --emit-sway-json

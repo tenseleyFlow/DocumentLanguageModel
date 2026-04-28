@@ -1,4 +1,4 @@
-"""Teacher selector parsing and runtime wrappers for Sprint 43."""
+"""Teacher selector parsing and runtime wrappers for synthetic-data generation."""
 
 import importlib
 import json
@@ -400,6 +400,15 @@ def parse_teacher_ref(raw: str) -> TeacherRef:
         target = spec.removeprefix("hf:").strip()
         if not target:
             raise InvalidTeacherSpecError("hf teacher selector must include a model id")
+        # Resolve dlm-registry aliases (e.g. `hf:smollm2-135m`) to their
+        # canonical HuggingFace id. Keeps `--teacher hf:<key>` consistent
+        # with `dlm init --base <key>`. A literal HF id (`org/repo`)
+        # passes through unchanged.
+        from dlm.base_models.registry import BASE_MODELS
+
+        spec_entry = BASE_MODELS.get(target)
+        if spec_entry is not None:
+            target = spec_entry.hf_id
         return TeacherRef(raw=spec, kind="hf", target=target)
     if spec.startswith("openai:"):
         target = spec.removeprefix("openai:").strip()

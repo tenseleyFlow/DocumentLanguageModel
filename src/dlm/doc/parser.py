@@ -6,7 +6,7 @@ Flow:
               → split frontmatter and body on the two `---` delimiters
               → YAML-parse the frontmatter
               → Pydantic validate → DlmFrontmatter
-              → check dlm_version (sprint 12b owns migration)
+              → check dlm_version (delegates to the migration registry)
               → tokenize body into Section list (code-fence aware)
               → return ParsedDlm(frozen)
 
@@ -509,7 +509,7 @@ def _resolve_fence_type(name: str, line: int, path: Path | None) -> tuple[Sectio
 def _parse_auto_mined_marker(
     attr_blob: str, *, path: Path | None, line: int
 ) -> tuple[str, float, float, str, int]:
-    """Parse the Sprint 42 auto-mined metadata marker on preference sections."""
+    """Parse the auto-mined metadata marker on preference sections."""
     if not _MARKER_ATTR_BLOB_RE.fullmatch(attr_blob):
         raise FenceError(
             "invalid dlm-auto-mined marker syntax",
@@ -606,7 +606,7 @@ def _parse_auto_mined_marker(
 def _parse_auto_synth_marker(
     attr_blob: str, *, path: Path | None, line: int
 ) -> tuple[str, str, str, str]:
-    """Parse the Sprint 43 auto-synth metadata marker on instruction sections."""
+    """Parse the auto-synth metadata marker on instruction sections."""
     if not _MARKER_ATTR_BLOB_RE.fullmatch(attr_blob):
         raise FenceError(
             "invalid dlm-auto-synth marker syntax",

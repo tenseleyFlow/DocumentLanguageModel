@@ -1,8 +1,8 @@
 """Preference-mining substrate types.
 
-Sprint 42 builds the mining/apply/train loop on top of these typed
-contracts. This module only exposes the pure-value surface; the
-side-effecting mine/apply runtime lands in follow-up slices.
+Pure-value surface only — typed contracts the mining/apply/train loop
+builds on. The side-effecting mine/apply runtime lives in sibling
+modules.
 """
 
 from dlm.preference.apply import (

@@ -1,9 +1,9 @@
 """Ollama target wrapper.
 
 The text GGUF export path already owns Modelfile emission, registration,
-and smoke testing. Sprint 41's first substrate slice wraps that
-behavior in an `ExportTarget` implementation so later runtimes can slot
-into a shared registry without rewriting the existing Ollama flow.
+and smoke testing. This module wraps that behavior in an
+`ExportTarget` implementation so other runtimes can slot into a shared
+registry without rewriting the existing Ollama flow.
 """
 
 from __future__ import annotations

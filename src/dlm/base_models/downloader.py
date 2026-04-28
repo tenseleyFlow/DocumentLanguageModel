@@ -46,9 +46,9 @@ def download_spec(
     """Fetch (or locate) the snapshot for `spec` and return a pinned reference.
 
     `cache_dir` overrides `HF_HOME`. `local_dir` copies the snapshot
-    into a specific path (non-symlinked) — used by sprint 04's store
-    when we want a per-`.dlm` cache. `local_files_only=True` refuses to
-    hit the network (mirrors `HF_HUB_OFFLINE`).
+    into a specific path (non-symlinked) — used by the per-`.dlm`
+    store cache. `local_files_only=True` refuses to hit the network
+    (mirrors `HF_HUB_OFFLINE`).
     """
     from huggingface_hub import snapshot_download
     from huggingface_hub.errors import (

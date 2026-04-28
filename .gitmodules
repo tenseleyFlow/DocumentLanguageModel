@@ -12,3 +12,9 @@
 	# from the outer repo's `git status`. sway's own .gitignore already
 	# covers these locally.
 	ignore = untracked
+[submodule "vendor/dlm-lsp"]
+	path = vendor/dlm-lsp
+	url = git@github.com:tenseleyFlow/dlm-lsp.git
+[submodule "vendor/dlm-vsc"]
+	path = vendor/dlm-vsc
+	url = git@github.com:tenseleyFlow/dlm-vsc.git
