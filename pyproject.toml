@@ -85,6 +85,16 @@ openai = [
 anthropic = [
     "anthropic>=0.30",
 ]
+# Sprint 26 (X1) cross-repo bridge: `dlm export --emit-sway-json` calls
+# into ``dlm_sway.integrations.dlm.autogen`` to write a ready-to-run
+# sway.yaml alongside the GGUF. NB: pulls plain `dlm-sway`, NOT
+# `dlm-sway[dlm]` — `dlm-sway[dlm]` would round-trip back to this
+# package and create a pip resolver cycle. Plain `dlm-sway` is enough
+# because `build_spec_dict` operates on data structures the dlm
+# bridge already exposes from sway's side.
+sway = [
+    "dlm-sway>=0.1.0",
+]
 
 [project.scripts]
 dlm = "dlm.cli.app:main"

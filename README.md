@@ -181,6 +181,11 @@ dlm export mydoc.dlm --target ollama --name mydoc
 dlm export mydoc.dlm --target llama-server
 dlm export mydoc.dlm --target vllm
 dlm export mydoc.dlm --target mlx-serve
+
+# Also emit a ready-to-run sway.yaml next to the GGUF for downstream
+# evaluation via `sway run` (requires the [sway] extra).
+dlm export mydoc.dlm --target ollama --emit-sway-json
+sway run <export-dir>/sway.yaml
 ```
 
 ### Mine preference pairs and retrain

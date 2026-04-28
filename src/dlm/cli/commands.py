@@ -1664,6 +1664,18 @@ def export_cmd(
         bool,
         typer.Option("--verbose", help="Log each subprocess command as it launches."),
     ] = False,
+    emit_sway_json: Annotated[
+        bool,
+        typer.Option(
+            "--emit-sway-json",
+            help=(
+                "After the export, also write a ready-to-run sway.yaml "
+                "(via dlm-sway autogen) into the export dir. Requires the "
+                "[sway] extra: pip install 'dlm[sway]'. Closes the "
+                "training-then-evaluating gap from sway Sprint 26 X1."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Export the adapter to a runtime target."""
 
@@ -2147,6 +2159,20 @@ def export_cmd(
     console.print(f"[green]exported:[/green] {result.export_dir}{cached_tag}")
     for artifact in result.artifacts:
         console.print(f"  {artifact.name}")
+
+    # S26 X1 — also emit a sway.yaml next to the GGUF when the user
+    # asks for it. Done AFTER the regular export so a sway-side
+    # failure can never roll back a working GGUF deployment.
+    if emit_sway_json:
+        from dlm.export.sway_json import SwayJsonExportError, write_sway_json
+
+        try:
+            sway_yaml_path = write_sway_json(path, result.export_dir)
+        except SwayJsonExportError as exc:
+            console.print(f"[red]sway-json:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
+        console.print(f"[green]sway.yaml:[/green] {sway_yaml_path}")
+        console.print("  next: sway run " + str(sway_yaml_path))
     if resolved_target.name == "llama-server":
         assert llama_server_result.launch_script_path is not None
         assert llama_server_result.config_path is not None
