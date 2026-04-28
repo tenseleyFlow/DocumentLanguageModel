@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 import typer
 
+from dlm.cli.commands._shared import _human_size as _human_size
+from dlm.cli.commands._shared import _previously_accepted as _previously_accepted
 from dlm.cli.commands.doctor import doctor_cmd as doctor_cmd
 from dlm.cli.commands.migrate import migrate_cmd as migrate_cmd
 from dlm.cli.commands.pack import pack_cmd as pack_cmd
@@ -281,30 +283,6 @@ def init_cmd(
         )
     else:
         console.print(f"[green]init:[/green] wrote {path}")
-
-
-def _previously_accepted(store_manifest_path: Path) -> bool:
-    """Return True iff the store manifest already holds a LicenseAcceptance.
-
-    `dlm prompt` and `dlm export` operate on an already-trained
-    adapter; the gated-base license was accepted during training and
-    persisted into `manifest.license_acceptance`. Replaying that
-    acceptance here is correct; silently hardcoding
-    `accept_license=True` is not — it would let a never-accepted
-    gated base slip through.
-    """
-    if not store_manifest_path.exists():
-        return False
-    from dlm.store.errors import ManifestCorruptError
-    from dlm.store.manifest import load_manifest
-
-    try:
-        manifest = load_manifest(store_manifest_path)
-    except (ManifestCorruptError, OSError):
-        # Narrow from bare `Exception` so programmer bugs propagate
-        # instead of being silently treated as "no acceptance."
-        return False
-    return manifest.license_acceptance is not None
 
 
 def _prompt_accept_license(console: object, base: str, license_url: str | None) -> bool:
@@ -2692,14 +2670,6 @@ def _render_inspection_text(console: object, path: Path, inspection: object) -> 
         console.print(f"                  {exp.quant}{tag}")
     if inspection.orphaned:
         console.print("  [yellow]orphaned:[/yellow]     source .dlm is missing or mismatched")
-
-
-def _human_size(n: int) -> str:
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1024:
-            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
-        n //= 1024
-    return f"{n} PB"
 
 
 def _summarize_training_sources(parsed: object, base_path: Path) -> list[dict[str, object]] | None:
