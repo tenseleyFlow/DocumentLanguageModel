@@ -45,6 +45,7 @@ def _resolved_spec() -> object:
         modality="text",
         params=135_000_000,
         effective_context_length=2048,
+        requires_acceptance=False,
     )
 
 
