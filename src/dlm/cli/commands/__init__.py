@@ -19,6 +19,7 @@ import typer
 
 from dlm.cli.commands._shared import _human_size as _human_size
 from dlm.cli.commands._shared import _previously_accepted as _previously_accepted
+from dlm.cli.commands.cache import _parse_duration as _parse_duration
 from dlm.cli.commands.cache import cache_clear_cmd as cache_clear_cmd
 from dlm.cli.commands.cache import cache_prune_cmd as cache_prune_cmd
 from dlm.cli.commands.cache import cache_show_cmd as cache_show_cmd
