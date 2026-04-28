@@ -808,7 +808,6 @@ def train_cmd(
     # Directory targets auto-scaffold `<dir>/.dlm/corpus.dlm` (or
     # reuse an existing one). After this block, `path` always points
     # at an actual `.dlm` file that the rest of the flow can parse.
-    just_scaffolded = False
     if path.is_dir():
         from dlm.cli.scaffold import ScaffoldError, scaffold_train_target
 
@@ -832,7 +831,6 @@ def train_cmd(
                 f"[cyan]scaffolded:[/cyan] {scaffold_result.dlm_path} "
                 f"(dlm_id={scaffold_result.dlm_id})"
             )
-            just_scaffolded = True
         path = scaffold_result.dlm_path
 
     try:
@@ -882,7 +880,7 @@ def train_cmd(
     # `dlm init` writes a manifest as part of store provisioning. Mirror
     # that manifest write here when the store layout exists but has no
     # manifest yet — covers two flows:
-    #   - auto-scaffold via `dlm train <dir>` (just_scaffolded path)
+    #   - auto-scaffold via `dlm train <dir>` on a fresh directory
     #   - hand-authored .dlm with a fresh ULID that never went through
     #     `dlm init` (e.g. authored via the LSP / VSCode extension)
     # License acceptance has already been validated upstream by this
