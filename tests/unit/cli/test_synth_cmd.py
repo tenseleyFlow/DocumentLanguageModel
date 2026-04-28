@@ -150,7 +150,7 @@ def _patch_synth_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
         return _FakeTeacher(raw, payload)
 
     monkeypatch.setattr("dlm.synth.teachers.build_teacher", _build_teacher)
-    monkeypatch.setattr("dlm.preference.build_judge", lambda *args, **kwargs: _FakeJudge())
+    monkeypatch.setattr("dlm.preference.judge.build_judge", lambda *args, **kwargs: _FakeJudge())
 
 
 def _patch_preference_alias_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -167,7 +167,7 @@ def _patch_preference_alias_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
         "dlm.inference.backends.build_backend",
         lambda *args, **kwargs: _FakeBackend({"What is DGEMM?": ["bad answer", "good answer"]}),
     )
-    monkeypatch.setattr("dlm.preference.build_judge", lambda *args, **kwargs: _FakeJudge())
+    monkeypatch.setattr("dlm.preference.judge.build_judge", lambda *args, **kwargs: _FakeJudge())
 
 
 class TestSynthCmd:

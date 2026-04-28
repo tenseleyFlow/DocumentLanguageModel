@@ -103,7 +103,7 @@ def run_synth_instructions(req: SynthInstructionsRequest) -> SynthInstructionsRe
 
     judge_obj: PreferenceJudge | None = None
     if req.filter_kind == "sway":
-        from dlm.preference import build_judge
+        from dlm.preference.judge import build_judge
 
         judge_obj = build_judge("sway", dlm_path=req.target_path)
 
