@@ -20,8 +20,8 @@ import typer
 from dlm.cli.commands.doctor import doctor_cmd as doctor_cmd
 from dlm.cli.commands.migrate import migrate_cmd as migrate_cmd
 from dlm.cli.commands.pack import pack_cmd as pack_cmd
-from dlm.cli.commands.unpack import unpack_cmd as unpack_cmd
 from dlm.cli.commands.templates import templates_list_cmd as templates_list_cmd
+from dlm.cli.commands.unpack import unpack_cmd as unpack_cmd
 from dlm.cli.commands.verify import verify_cmd as verify_cmd
 
 if TYPE_CHECKING:
