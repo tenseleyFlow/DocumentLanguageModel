@@ -267,16 +267,31 @@ Any HuggingFace model via `--base hf:org/name` with compatibility probes.
 
 See the [CLI reference](./docs/cli/reference.md) for the full flag surface.
 
-## VSCode Extension
+## Editor support
 
-The [dlm-vsc](https://github.com/tenseleyFlow/dlm-vsc) extension provides
-syntax highlighting, completions, diagnostics, and a side panel for `.dlm`
-authoring. Requires the
-[dlm-lsp](https://github.com/tenseleyFlow/dlm-lsp) language server:
+### VSCode
+
+Install **DLM — Document Language Model** from the
+[VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=tenseleyFlow.dlm-vsc).
+The extension provides syntax highlighting, completions, diagnostics, and a
+side panel for `.dlm` authoring. Source:
+[dlm-vsc](https://github.com/tenseleyFlow/dlm-vsc).
+
+It uses the [dlm-lsp](https://github.com/tenseleyFlow/dlm-lsp) language
+server, which you also need to install:
 
 ```sh
 pip install dlm-lsp
 ```
+
+### Other editors
+
+The language server is editor-agnostic — Zed, Helix, and Neovim get
+diagnostics, hover, and completions through their LSP clients. See:
+
+- [Zed setup](./docs/cookbook/lsp-zed.md)
+- [Helix setup](./docs/cookbook/lsp-helix.md)
+- [Neovim setup](./docs/cookbook/lsp-neovim.md)
 
 ## Documentation
 
