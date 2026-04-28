@@ -38,14 +38,11 @@ def metrics_cmd(
     from rich.console import Console
 
     from dlm.doc.parser import parse_file
+    from dlm.metrics.cli import MetricsQuery, gather_metrics
     from dlm.metrics.queries import (
-        evals_for_run,
         evals_to_dict,
-        preference_mining_for_run,
         preference_mining_to_dict,
-        recent_runs,
         runs_to_dict,
-        steps_for_run,
         steps_to_dict,
     )
     from dlm.store.paths import for_dlm
@@ -61,24 +58,31 @@ def metrics_cmd(
     parsed = parse_file(path)
     store = for_dlm(parsed.frontmatter.dlm_id)
 
-    runs = recent_runs(store.root, limit=limit, phase=phase, since=since_delta, run_id=run_id)
+    view = gather_metrics(
+        MetricsQuery(
+            store_root=store.root,
+            run_id=run_id,
+            phase=phase,
+            since=since_delta,
+            limit=limit,
+        )
+    )
 
     if run_id is not None:
-        # Drill-down: show this run's steps + evals.
-        if not runs:
+        if view.drilldown is None:
             console.print(f"[red]metrics:[/red] no run with run_id={run_id}")
             raise typer.Exit(code=1)
-        run = runs[0]
-        steps = steps_for_run(store.root, run_id)
-        evals = evals_for_run(store.root, run_id)
-        preference_rows = preference_mining_for_run(store.root, run_id)
+        run = view.drilldown.run
+        steps = view.drilldown.steps
+        evals = view.drilldown.evals
+        preference_rows = view.drilldown.preference_rows
 
         if json_out:
             payload = {
                 "run": runs_to_dict([run])[0],
-                "steps": steps_to_dict(steps),
-                "evals": evals_to_dict(evals),
-                "preference_mining": preference_mining_to_dict(preference_rows),
+                "steps": steps_to_dict(list(steps)),
+                "evals": evals_to_dict(list(evals)),
+                "preference_mining": preference_mining_to_dict(list(preference_rows)),
             }
             sys.stdout.write(json.dumps(payload, indent=2) + "\n")
             return
@@ -113,8 +117,9 @@ def metrics_cmd(
         return
 
     # Top-level: list runs.
+    runs = view.runs
     if json_out:
-        sys.stdout.write(json.dumps({"runs": runs_to_dict(runs)}, indent=2) + "\n")
+        sys.stdout.write(json.dumps({"runs": runs_to_dict(list(runs))}, indent=2) + "\n")
         return
     if csv_out:
         writer = csv.writer(sys.stdout)
