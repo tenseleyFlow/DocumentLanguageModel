@@ -72,6 +72,17 @@ class TestTeacherSelectorParsing:
         with pytest.raises(InvalidTeacherSpecError, match=message):
             parse_teacher_ref(raw)
 
+    def test_hf_teacher_resolves_dlm_registry_alias(self) -> None:
+        # Audit 12 M12.6: `hf:smollm2-135m` should resolve via the registry,
+        # mirroring `dlm init --base smollm2-135m`. A literal HF id stays put.
+        ref = parse_teacher_ref("hf:smollm2-135m")
+        assert ref.kind == "hf"
+        assert ref.target == "HuggingFaceTB/SmolLM2-135M-Instruct"
+
+    def test_hf_teacher_passes_through_literal_hf_id(self) -> None:
+        ref = parse_teacher_ref("hf:Qwen/Qwen2.5-1.5B-Instruct")
+        assert ref.target == "Qwen/Qwen2.5-1.5B-Instruct"
+
 
 class TestBuildTeacher:
     def test_self_requires_dlm_path(self) -> None:
