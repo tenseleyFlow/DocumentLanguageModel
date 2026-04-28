@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 import typer
 
+from dlm.cli.commands.doctor import doctor_cmd as doctor_cmd
+
 if TYPE_CHECKING:
     from datetime import timedelta
 
@@ -2716,21 +2718,6 @@ def _parse_since_arg(since: str, console: object) -> timedelta:
         return timedelta(days=value)
     console.print(f"[red]metrics:[/red] --since {since!r} unit must be s/m/h/d")
     raise typer.Exit(code=2)
-
-
-def doctor_cmd(
-    json_out: Annotated[bool, typer.Option("--json", help="Emit machine-readable output.")] = False,
-) -> None:
-    """Inspect hardware and print the resolved training plan."""
-    import json
-
-    from dlm.hardware import doctor, render_text
-
-    result = doctor()
-    if json_out:
-        typer.echo(json.dumps(result.to_dict(), indent=2, default=str))
-    else:
-        typer.echo(render_text(result))
 
 
 def show_cmd(
