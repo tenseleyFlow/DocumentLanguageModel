@@ -115,7 +115,7 @@ class TestTrainValidationEdges:
             seen["mixed_precision"] = mixed_precision
             return 17
 
-        monkeypatch.setattr("dlm.cli.commands._maybe_dispatch_multi_gpu", _fake_dispatch)
+        monkeypatch.setattr("dlm.cli.commands.train._maybe_dispatch_multi_gpu", _fake_dispatch)
 
         runner = CliRunner()
         result = runner.invoke(
