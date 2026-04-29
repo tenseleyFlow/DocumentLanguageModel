@@ -166,6 +166,21 @@ class TestVlModelfileRender:
         out = render_vl_modelfile(vl_ctx)
         assert out.endswith("\n")
 
+    def test_no_template_when_include_template_false(self, adapter_dir: Path) -> None:
+        """`--no-template` skips TEMPLATE emission on the VL path too."""
+        ctx = VlModelfileContext(
+            spec=_fake_vl_spec(),
+            plan=_fake_plan(include_template=False),
+            adapter_dir=adapter_dir,
+            base_gguf_name="base.Q4_K_M.gguf",
+            adapter_gguf_name="adapter.Q4_K_M.gguf",
+            dlm_id="01JZZZZZZZZZZZZZZZZZZZZZZZ",
+            adapter_version=1,
+        )
+        out = render_vl_modelfile(ctx)
+        assert "TEMPLATE" not in out
+        assert "FROM ./base.Q4_K_M.gguf" in out
+
 
 class TestStopsFallback:
     def test_paligemma_uses_gemma_style_stop(self, tmp_path: Path) -> None:
