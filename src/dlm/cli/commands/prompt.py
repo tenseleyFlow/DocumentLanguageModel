@@ -96,11 +96,8 @@ def prompt_cmd(
     from dlm.doc.parser import parse_file
     from dlm.hardware import doctor
     from dlm.inference import AdapterNotFoundError
-    from dlm.inference.backends import (
-        UnsupportedBackendError,
-        build_backend,
-        select_backend,
-    )
+    from dlm.inference.backends import UnsupportedBackendError, select_backend
+    from dlm.inference.dispatch import PromptRequest, run_prompt
     from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
@@ -234,16 +231,9 @@ def prompt_cmd(
     except UnsupportedBackendError as exc:
         console.print(f"[red]prompt:[/red] {exc}")
         raise typer.Exit(code=2) from exc
-    backend_obj = build_backend(backend_name, caps)
 
     if verbose:
         console.print(f"[dim]backend:[/dim] {backend_name}")
-
-    try:
-        backend_obj.load(spec, store, adapter_name=adapter)
-    except AdapterNotFoundError as exc:
-        console.print(f"[red]prompt:[/red] {exc}")
-        raise typer.Exit(code=1) from exc
 
     if query is None:
         query = sys.stdin.read().strip()
@@ -251,13 +241,24 @@ def prompt_cmd(
         console.print("[red]prompt:[/red] empty query (pass a string or pipe on stdin)")
         raise typer.Exit(code=2)
 
-    response = backend_obj.generate(
-        query,
+    request = PromptRequest(
+        spec=spec,
+        capabilities=caps,
+        store=store,
+        backend_name=backend_name,
+        query=query,
         max_new_tokens=max_tokens,
         temperature=temp,
         top_p=top_p,
+        adapter=adapter,
     )
-    sys.stdout.write(response + "\n")
+    try:
+        result = run_prompt(request)
+    except AdapterNotFoundError as exc:
+        console.print(f"[red]prompt:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    sys.stdout.write(result.response + "\n")
 
 
 def _dispatch_vl_prompt(  # pragma: no cover
