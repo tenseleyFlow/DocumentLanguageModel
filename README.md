@@ -30,6 +30,14 @@ dlm --version
 dlm doctor
 ```
 
+> **Reproducibility caveat.** "Reproducible" in the headline means
+> *bit-exact* on Linux + CUDA with the deterministic kernel set, and
+> *best-effort* on Apple Silicon (MPS) — same seed produces stable
+> training dynamics but not bit-identical adapter weights, because
+> Metal kernels for some ops are nondeterministic. `dlm doctor` reports
+> your tier as `determinism_class: strong | best-effort | advisory`.
+> Full discussion: [docs/determinism.md](./docs/determinism.md).
+
 ### Extras
 
 ```sh
