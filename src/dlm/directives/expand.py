@@ -210,7 +210,7 @@ def _expand_one(
 
     for file_path in _iter_candidates(resolved_root):
         if directive.max_files is not None and _section_cap_reached(sections, directive.max_files):
-            _LOG.info(
+            _LOG.debug(
                 "directive: hit max_files=%d for %s; truncating deterministically",
                 directive.max_files,
                 directive.path,
@@ -238,7 +238,7 @@ def _expand_one(
             continue
 
         if directive.max_bytes_per_file is not None and size > directive.max_bytes_per_file:
-            _LOG.info(
+            _LOG.debug(
                 "directive: %s (%d bytes) exceeds max_bytes_per_file=%d; skipping",
                 file_path,
                 size,
@@ -252,7 +252,7 @@ def _expand_one(
         # section carries only the path + blob sha.
         if file_path.suffix.lower() in _IMAGE_EXTENSIONS:
             if blob_store is None:
-                _LOG.info(
+                _LOG.debug(
                     "directive: %s is an image but no blob_store supplied; skipping",
                     file_path,
                 )
@@ -283,7 +283,7 @@ def _expand_one(
         # (has .txt) and "reference" audio (no .txt) side by side.
         if file_path.suffix.lower() in _AUDIO_EXTENSIONS:
             if blob_store is None:
-                _LOG.info(
+                _LOG.debug(
                     "directive: %s is audio but no blob_store supplied; skipping",
                     file_path,
                 )
@@ -291,7 +291,7 @@ def _expand_one(
                 continue
             transcript = _read_audio_transcript(file_path)
             if transcript is None:
-                _LOG.info(
+                _LOG.debug(
                     "directive: %s has no %s sidecar; skipping "
                     "(audio without transcript has no training signal)",
                     file_path,
@@ -322,7 +322,7 @@ def _expand_one(
             continue
 
         if is_probably_binary(raw):
-            _LOG.info("directive: %s looks binary (NUL in first KiB); skipping", file_path)
+            _LOG.debug("directive: %s looks binary (NUL in first KiB); skipping", file_path)
             skipped_binary += 1
             continue
 
