@@ -2265,6 +2265,18 @@ def unpack_cmd(
             "--out", help="Directory to place the restored .dlm (default: alongside the pack)."
         ),
     ] = None,
+    home: Annotated[
+        Path | None,
+        typer.Option(
+            "--home",
+            envvar="DLM_HOME",
+            help=(
+                "Override the dlm home directory (where the store lives). "
+                "Defaults to ``$DLM_HOME`` or ``~/.dlm``. Useful for "
+                "isolated test installs without polluting the user's store."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Install a .dlm.pack into the local store."""
     from rich.console import Console
@@ -2279,7 +2291,7 @@ def unpack_cmd(
     console = Console(stderr=True)
 
     try:
-        result = unpack(path, force=force, out_dir=out)
+        result = unpack(path, force=force, out_dir=out, home=home)
     except PackFormatVersionError as exc:
         console.print(f"[red]unpack:[/red] {exc}")
         raise typer.Exit(code=1) from exc
