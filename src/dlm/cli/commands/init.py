@@ -75,7 +75,8 @@ def init_cmd(
         require_acceptance,
     )
     from dlm.base_models import resolve as resolve_base_model
-    from dlm.io.ulid import mint_ulid
+    from dlm.store.bootstrap import InitRequest, ScaffoldKind, run_init
+    from dlm.templates import TemplateError
 
     console = Console(stderr=True)
 
@@ -170,20 +171,6 @@ def init_cmd(
             skip_export_probes=skip_export_probes,
         )
 
-    # NOW apply the template — license has already been accepted
-    # (either by --i-accept-license or interactive prompt), so pass
-    # the acceptance through. apply_template enforces the license
-    # contract at its boundary.
-    applied_result = None
-    if template is not None:
-        from dlm.templates import TemplateError, apply_template
-
-        try:
-            applied_result = apply_template(template, path, force=force, accept_license=True)
-        except TemplateError as exc:
-            console.print(f"[red]init:[/red] {exc}")
-            raise typer.Exit(code=1) from exc
-
     # Record the license acceptance (or None for non-gated specs). We
     # know `resolve_base_model` already validated the flag/prompt chain
     # — `accept_license=True` means either the user passed the flag or
@@ -217,37 +204,30 @@ def init_cmd(
         )
         raise typer.Exit(code=2)
 
-    if applied_result is not None:
-        dlm_id = applied_result.dlm_id
+    if multimodal:
+        scaffold_kind = ScaffoldKind.VISION
+    elif audio:
+        scaffold_kind = ScaffoldKind.AUDIO
     else:
-        dlm_id = mint_ulid()
-        if multimodal:
-            _write_init_scaffold_multimodal(path, spec.key, dlm_id)
-        elif audio:
-            _write_init_scaffold_audio(path, spec.key, dlm_id)
-        else:
-            _write_init_scaffold(path, spec.key, dlm_id)
+        scaffold_kind = ScaffoldKind.TEXT
 
-    # Create the store + write the initial manifest so `dlm show` sees
-    # the license record and `dlm train` has a prior manifest to diff
-    # against.
-    from dlm.store.manifest import Manifest, save_manifest
-    from dlm.store.paths import for_dlm
-
-    store = for_dlm(dlm_id)
-    store.ensure_layout()
-    save_manifest(
-        store.manifest,
-        Manifest(
-            dlm_id=dlm_id,
-            base_model=spec.key,
-            base_model_revision=spec.revision,
-            source_path=path.resolve(),
-            license_acceptance=acceptance,
-        ),
+    request = InitRequest(
+        path=path,
+        spec=spec,
+        acceptance=acceptance,
+        force=force,
+        template_name=template,
+        scaffold_kind=scaffold_kind,
     )
-    if applied_result is not None:
-        meta = applied_result.template.meta
+
+    try:
+        result = run_init(request)
+    except TemplateError as exc:
+        console.print(f"[red]init:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    if result.applied_template is not None:
+        meta = result.applied_template.template.meta
         console.print(
             f"[green]init:[/green] wrote {path} from template "
             f"[bold]{meta.name}[/bold] ({meta.title}) — base {spec.key}."
@@ -282,102 +262,3 @@ def _prompt_accept_license(console: object, base: str, license_url: str | None) 
     except EOFError:
         return False
     return answer in ("y", "yes")
-
-
-def _write_init_scaffold(path: Path, base_model_key: str, dlm_id: str) -> None:
-    """Write a minimal-but-valid .dlm file at `path`.
-
-    Body has one PROSE paragraph + a commented instruction section so
-    users see both section shapes on first open.
-    """
-    scaffold = f"""---
-dlm_id: {dlm_id}
-dlm_version: 1
-base_model: {base_model_key}
----
-
-# Your document title
-
-Write prose here. It will train via continued pretraining (CPT) loss.
-
-::instruction::
-
-### Q
-Your example question.
-
-### A
-Your example answer.
-"""
-    path.write_text(scaffold, encoding="utf-8")
-
-
-def _write_init_scaffold_multimodal(path: Path, base_model_key: str, dlm_id: str) -> None:
-    """Write a VL-shaped .dlm file at `path`.
-
-    Body shows the `::image::` attribute fence + a caption so users
-    see the v10 grammar on first open. The placeholder path
-    `figures/your-image.png` is deliberately non-existent — first
-    `dlm train` will refuse with a clear file-missing error, prompting
-    the user to drop a real image in. This is friendlier than
-    committing an inert sample that users might not notice isn't theirs.
-
-    `dlm_version: 10` because IMAGE sections require schema v10.
-    """
-    scaffold = f"""---
-dlm_id: {dlm_id}
-dlm_version: 10
-base_model: {base_model_key}
----
-
-# Your document title
-
-Write prose here. It will train via continued pretraining (CPT) loss.
-
-::image path="figures/your-image.png" alt="short description"::
-Caption text describing the image. Training rows bundle the image
-with this caption as `<image>\\n<caption>`.
-
-::instruction::
-
-### Q
-What is in this image?
-
-### A
-Describe what the image shows.
-"""
-    path.write_text(scaffold, encoding="utf-8")
-
-
-def _write_init_scaffold_audio(path: Path, base_model_key: str, dlm_id: str) -> None:
-    """Write an audio-shaped .dlm file at `path`.
-
-    Body shows the `::audio::` attribute fence with the sibling-
-    transcript-friendly `transcript="..."` form so users see the v11
-    grammar on first open. The placeholder path `clips/your-clip.wav`
-    is deliberately non-existent — first `dlm train` refuses with a
-    clear file-missing error rather than silently training on an inert
-    sample.
-
-    `dlm_version: 11` because AUDIO sections require schema v11.
-    """
-    scaffold = f"""---
-dlm_id: {dlm_id}
-dlm_version: 11
-base_model: {base_model_key}
----
-
-# Your document title
-
-Write prose here. It will train via continued pretraining (CPT) loss.
-
-::audio path="clips/your-clip.wav" transcript="Transcript of the audio clip."::
-
-::instruction::
-
-### Q
-What was said in this recording?
-
-### A
-Describe what you hear in the audio.
-"""
-    path.write_text(scaffold, encoding="utf-8")

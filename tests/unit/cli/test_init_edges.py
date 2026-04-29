@@ -148,7 +148,7 @@ class TestInitTemplateEdges:
         ) -> object:
             raise TemplateError("template exploded")
 
-        monkeypatch.setattr(templates, "apply_template", _fake_apply_template)
+        monkeypatch.setattr("dlm.templates.init.apply_template", _fake_apply_template)
 
         result = runner.invoke(
             app,
