@@ -137,14 +137,20 @@ _preference_app.command("revert")(commands.preference_revert_cmd)
 _preference_app.command("list")(commands.preference_list_cmd)
 app.add_typer(_preference_app, name="preference")
 
-# `dlm metrics <path>` + `dlm metrics watch <path>` as a subcommand
-# group. Typer nests naturally via an Annotated sub-app.
+# `dlm metrics show <path>` + `dlm metrics watch <path>` as a
+# subcommand group. The previous shape — a callback that took the
+# positional `path` plus a `watch` subcommand — broke with
+# "Missing argument 'PATH'" when an option came after the positional
+# (`dlm metrics PATH --run-id 1`), because click can't disambiguate
+# a positional-then-option from a subcommand-then-args inside the
+# same group. Audit 13 M13.3. The explicit `show` subcommand removes
+# the ambiguity. Run-time impact: `dlm metrics PATH` now needs to be
+# `dlm metrics show PATH` — flagged in CHANGELOG.
 _metrics_app = typer.Typer(
     help="Query the per-store metrics database.",
     no_args_is_help=True,
-    invoke_without_command=True,
 )
-_metrics_app.callback(invoke_without_command=True)(commands.metrics_cmd)
+_metrics_app.command("show")(commands.metrics_cmd)
 _metrics_app.command("watch")(commands.metrics_watch_cmd)
 app.add_typer(_metrics_app, name="metrics")
 
