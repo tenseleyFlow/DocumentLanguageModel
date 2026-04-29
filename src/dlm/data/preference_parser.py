@@ -94,14 +94,16 @@ def _parse_field(it: _PeekableLines, *, expected: str, section_id: str) -> str:
 
 
 def _read_field_body(it: _PeekableLines) -> str:
-    """Read until a blank line or the next recognized header."""
+    """Read until the next recognized header or end-of-section.
+
+    Blank lines inside a body are preserved verbatim so multi-paragraph
+    chosen/rejected completions and fenced code blocks parse correctly.
+    Leading and trailing blanks are stripped via `str.strip()`.
+    """
     buf: list[str] = []
     while not it.eof():
         line = it.peek_line()
         assert line is not None
-        if line.strip() == "":
-            it.advance()
-            break
         if line.strip() in _ALL_HEADERS:
             break
         buf.append(line)
