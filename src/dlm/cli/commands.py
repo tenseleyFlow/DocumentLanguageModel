@@ -439,7 +439,19 @@ def train_cmd(
         ),
     ],
     resume: Annotated[bool, typer.Option("--resume", help="Resume from last checkpoint.")] = False,
-    fresh: Annotated[bool, typer.Option("--fresh", help="Discard prior adapter state.")] = False,
+    fresh: Annotated[
+        bool,
+        typer.Option(
+            "--fresh",
+            help=(
+                "Start from base weights for this run (discard the "
+                "currently-resumable training state). Prior adapter "
+                "versions in the store are kept — the next run lands "
+                "as v0002, v0003, etc. Use ``rm -rf <store>`` if you "
+                "want to wipe history entirely."
+            ),
+        ),
+    ] = False,
     seed: Annotated[int | None, typer.Option("--seed", help="Override training seed.")] = None,
     max_steps: Annotated[int | None, typer.Option("--max-steps", help="Cap step count.")] = None,
     phase: Annotated[
