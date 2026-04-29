@@ -274,7 +274,6 @@ def train_cmd(
     from dlm.base_models import resolve as resolve_base_model
     from dlm.doc.errors import DlmParseError
     from dlm.doc.parser import parse_file
-    from dlm.hardware import doctor
     from dlm.lock import LockMode, LockValidationError
     from dlm.store.paths import for_dlm
     from dlm.train import (
@@ -283,12 +282,17 @@ def train_cmd(
         ResumeIntegrityError,
         TrainingError,
     )
+    from dlm.train.dispatch import (
+        NoViableTrainingPlanError,
+        TrainRequest,
+        run_train,
+    )
     from dlm.train.preference import (
         DpoPhaseError,
         NoPreferenceContentError,
         PriorAdapterRequiredError,
     )
-    from dlm.train.preference.phase_orchestrator import Phase, run_phases
+    from dlm.train.preference.phase_orchestrator import Phase
 
     console = Console(stderr=True)
 
@@ -442,70 +446,30 @@ def train_cmd(
     from dlm.train.distributed import detect_world_size
 
     ws = detect_world_size()
-    doctor_result = doctor(
-        training_config=parsed.frontmatter.training,
-        base_params=spec.params,
-        seq_len=min(parsed.frontmatter.training.sequence_len, spec.effective_context_length),
-        world_size=ws,
-    )
-    plan = doctor_result.plan
-    if plan is None:
-        console.print(
-            "[red]doctor:[/red] no viable training plan for this host. "
-            "Run `dlm doctor` for details."
-        )
-        raise typer.Exit(code=1)
-
     store = for_dlm(parsed.frontmatter.dlm_id)
-    store.ensure_layout()
-
-    # `dlm init` writes a manifest as part of store provisioning. Mirror
-    # that manifest write here when the store layout exists but has no
-    # manifest yet — covers two flows:
-    #   - auto-scaffold via `dlm train <dir>` on a fresh directory
-    #   - hand-authored .dlm with a fresh ULID that never went through
-    #     `dlm init` (e.g. authored via the LSP / VSCode extension)
-    # License acceptance has already been validated upstream by this
-    # point, so we just record it.
-    if not store.manifest.exists():
-        from dlm.base_models import is_gated
-        from dlm.base_models.license import require_acceptance
-        from dlm.store.manifest import Manifest, save_manifest
-
-        acceptance = (
-            require_acceptance(spec, accept_license=True, via="cli_flag")
-            if is_gated(spec)
-            else None
-        )
-        save_manifest(
-            store.manifest,
-            Manifest(
-                dlm_id=parsed.frontmatter.dlm_id,
-                base_model=spec.key,
-                base_model_revision=spec.revision,
-                source_path=path.resolve(),
-                license_acceptance=acceptance,
-            ),
-        )
 
     from dlm.modality import ModalityError
 
+    request = TrainRequest(
+        parsed=parsed,
+        target_path=path,
+        spec=spec,
+        store=store,
+        phase=phase_literal,
+        mode=mode,
+        seed=seed,
+        max_steps=max_steps,
+        lock_mode=lock_mode,
+        world_size=ws,
+        strict_metrics=strict_metrics,
+        include_auto_mined=not no_mined,
+    )
+
     try:
-        phase_results = run_phases(
-            store,
-            parsed,
-            spec,
-            plan,
-            phase=phase_literal,
-            mode=mode,
-            seed=seed,
-            max_steps=max_steps,
-            lock_mode=lock_mode,
-            capabilities=doctor_result.capabilities,
-            world_size=ws,
-            strict_metrics=strict_metrics,
-            include_auto_mined=not no_mined,
-        )
+        train_result = run_train(request)
+    except NoViableTrainingPlanError as exc:
+        console.print(f"[red]doctor:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
     except sqlite3.Error as exc:
         console.print(f"[red]metrics:[/red] {exc}")
         raise typer.Exit(code=1) from exc
@@ -547,6 +511,9 @@ def train_cmd(
     except ModalityError as exc:
         console.print(f"[red]training:[/red] {exc}")
         raise typer.Exit(code=1) from exc
+
+    plan = train_result.plan
+    phase_results = train_result.phase_results
 
     if not phase_results:
         console.print(
