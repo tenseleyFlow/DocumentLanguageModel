@@ -150,6 +150,21 @@ class TestRenderVlModelfile:
 
         assert "SYSTEM " not in text
 
+    def test_no_template_when_include_template_false(self, tmp_path: Path) -> None:
+        """`--no-template` skips TEMPLATE emission on the VL renderer."""
+        ctx = VlModelfileContext(
+            spec=_QWEN_VL_SPEC,
+            plan=ExportPlan(quant="Q4_K_M", merged=False, include_template=False),
+            adapter_dir=_adapter_dir(tmp_path),
+            base_gguf_name="base.Q4_K_M.gguf",
+            adapter_gguf_name="adapter.gguf",
+            dlm_id="01VLTEST",
+            adapter_version=4,
+        )
+        text = render_vl_modelfile(ctx)
+        assert "TEMPLATE" not in text
+        assert "FROM ./base.Q4_K_M.gguf" in text
+
 
 class TestVlStopsFromAdapter:
     def test_family_defaults_and_adapter_special_tokens_are_merged(self, tmp_path: Path) -> None:
