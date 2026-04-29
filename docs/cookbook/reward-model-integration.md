@@ -106,7 +106,7 @@ uv run dlm train mydoc.dlm --phase preference
 Then inspect:
 
 ```sh
-uv run dlm metrics mydoc.dlm --run-id 7 --json
+uv run dlm metrics show mydoc.dlm --run-id 7 --json
 uv run dlm prompt mydoc.dlm "..." 
 ```
 
