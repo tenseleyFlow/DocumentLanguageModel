@@ -18,12 +18,12 @@ are available behind the `observability` extra.
 
 Writes are best-effort: a metrics failure never takes down training.
 
-## `dlm metrics <path>`
+## `dlm metrics show <path>`
 
 Default view lists the most-recent runs:
 
 ```bash
-$ dlm metrics mydoc.dlm
+$ dlm metrics show mydoc.dlm
 Runs: 3
   run_id=3  phase=sft  seed=42  status=ok  started=2026-04-20T17:12:04Z
   run_id=2  phase=sft  seed=42  status=ok  started=2026-04-20T16:58:11Z
@@ -114,4 +114,4 @@ DELETE FROM runs  WHERE run_id NOT IN (SELECT run_id FROM runs ORDER BY run_id D
 VACUUM;
 ```
 
-A built-in `dlm metrics prune` is on the backlog.
+A built-in `dlm metrics show prune` is on the backlog.

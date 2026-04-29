@@ -110,7 +110,7 @@ without deleting anything from the file.
 Use these two commands to see what happened:
 
 ```sh
-uv run dlm metrics release-notes.dlm --run-id 7 --json
+uv run dlm metrics show release-notes.dlm --run-id 7 --json
 uv run dlm show release-notes.dlm --json
 ```
 

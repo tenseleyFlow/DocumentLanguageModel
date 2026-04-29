@@ -43,9 +43,13 @@ class TestMetricsCmd:
         _write_minimal_dlm(doc)
 
         runner = CliRunner()
+        # `dlm metrics show <path>` is the M13.3 form. The bare
+        # `dlm metrics <path>` shape was the source of the
+        # "Missing argument 'PATH'" parser bug; the explicit `show`
+        # subcommand is its replacement.
         result = runner.invoke(
             app,
-            ["--home", str(tmp_path / "home"), "metrics", str(doc)],
+            ["--home", str(tmp_path / "home"), "metrics", "show", str(doc)],
         )
         assert result.exit_code == 0, result.output
         # An untrained .dlm has no runs — the CLI prints an empty
