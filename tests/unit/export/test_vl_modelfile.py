@@ -48,10 +48,10 @@ def _fake_vl_spec() -> Any:
     )
 
 
-def _fake_plan() -> Any:
+def _fake_plan(*, include_template: bool = True) -> Any:
     from types import SimpleNamespace
 
-    return SimpleNamespace(quant="Q4_K_M", merged=False)
+    return SimpleNamespace(quant="Q4_K_M", merged=False, include_template=include_template)
 
 
 @pytest.fixture
