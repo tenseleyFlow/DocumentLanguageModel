@@ -91,3 +91,115 @@ class TestBuildMlxAdapterConfig:
                 },
                 0,
             )
+
+    def test_attn_target_modules_get_self_attn_prefix(self) -> None:
+        """mlx-lm matches `named_modules()` keys *inside* a transformer
+        block via exact equality. PEFT's bare `q_proj` doesn't match
+        the `self_attn.q_proj` FQN, so without the rewrite mlx-lm
+        silently leaves the model un-wrapped — the textbook "trained
+        model behaves like base" failure mode."""
+        from dlm.inference.mlx_adapter import build_mlx_adapter_config
+
+        cfg = build_mlx_adapter_config(
+            {
+                "r": 16,
+                "lora_alpha": 32,
+                "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
+            },
+            base_num_hidden_layers=28,
+        )
+        assert cfg["lora_parameters"]["keys"] == [
+            "self_attn.q_proj",
+            "self_attn.k_proj",
+            "self_attn.v_proj",
+            "self_attn.o_proj",
+        ]
+
+    def test_mlp_target_modules_get_mlp_prefix(self) -> None:
+        from dlm.inference.mlx_adapter import build_mlx_adapter_config
+
+        cfg = build_mlx_adapter_config(
+            {
+                "r": 8,
+                "target_modules": ["gate_proj", "up_proj", "down_proj"],
+            },
+            base_num_hidden_layers=12,
+        )
+        assert cfg["lora_parameters"]["keys"] == [
+            "mlp.gate_proj",
+            "mlp.up_proj",
+            "mlp.down_proj",
+        ]
+
+    def test_already_qualified_keys_pass_through(self) -> None:
+        """Callers that pre-qualify (e.g. for non-decoder architectures)
+        should not see their dotted keys re-rewritten."""
+        from dlm.inference.mlx_adapter import build_mlx_adapter_config
+
+        cfg = build_mlx_adapter_config(
+            {
+                "r": 8,
+                "target_modules": ["self_attn.q_proj", "encoder.fc1"],
+            },
+            base_num_hidden_layers=12,
+        )
+        assert cfg["lora_parameters"]["keys"] == ["self_attn.q_proj", "encoder.fc1"]
+
+    def test_unknown_target_module_passes_through_unqualified(self) -> None:
+        """Names that aren't in the attn/mlp tables stay bare. Caller
+        supervision is the user's responsibility — we don't guess."""
+        from dlm.inference.mlx_adapter import build_mlx_adapter_config
+
+        cfg = build_mlx_adapter_config(
+            {
+                "r": 8,
+                "target_modules": ["unknown_proj"],
+            },
+            base_num_hidden_layers=12,
+        )
+        assert cfg["lora_parameters"]["keys"] == ["unknown_proj"]
+
+
+class TestPeftSafetensorsToMlxTransposes:
+    """PEFT and MLX-LM use different storage layouts for LoRA tensors:
+
+      PEFT lora_A : [r, in_features]       MLX lora_a : [in_features, r]
+      PEFT lora_B : [out_features, r]      MLX lora_b : [r, out_features]
+
+    Without transposing, mlx-lm's `model.load_weights(strict=False)`
+    silently skips the mismatched shapes and the adapter has no effect.
+    """
+
+    def test_lora_a_and_b_get_transposed(self, tmp_path: object) -> None:
+        from pathlib import Path as _Path
+
+        import torch
+        from safetensors.torch import load_file, save_file
+
+        from dlm.inference.mlx_adapter import peft_safetensors_to_mlx_safetensors
+
+        tmp_path = _Path(str(tmp_path))
+        peft_dir = tmp_path / "peft"
+        peft_dir.mkdir()
+        # PEFT shapes: lora_A=[r=4, in=8], lora_B=[out=16, r=4]
+        peft_tensors = {
+            "base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight": torch.arange(
+                32, dtype=torch.float32
+            ).reshape(4, 8),
+            "base_model.model.model.layers.0.self_attn.q_proj.lora_B.weight": torch.arange(
+                64, dtype=torch.float32
+            ).reshape(16, 4),
+        }
+        save_file(peft_tensors, str(peft_dir / "adapter_model.safetensors"))
+
+        mlx_path = tmp_path / "out" / "adapters.safetensors"
+        peft_safetensors_to_mlx_safetensors(peft_dir, mlx_path)
+
+        mlx_tensors = load_file(str(mlx_path))
+        a = mlx_tensors["model.layers.0.self_attn.q_proj.lora_a"]
+        b = mlx_tensors["model.layers.0.self_attn.q_proj.lora_b"]
+        # Transposed shapes
+        assert tuple(a.shape) == (8, 4)
+        assert tuple(b.shape) == (4, 16)
+        # Values match a transpose, not just a reshape.
+        assert torch.equal(a, peft_tensors[next(iter(peft_tensors))].t())
