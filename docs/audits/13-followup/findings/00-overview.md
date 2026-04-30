@@ -39,7 +39,17 @@ hypothesis about why the original audit-13 fortran fine-tune showed
    adapters). The audit closes GREEN with a clean three-step
    product story.
 
-5. **[Finding 05 — corpus density](./05-corpus-density.md)** *(optional)*
+5. **[Finding 05 — Q/A-shape recipe on smol](./05-smol-qa-shape.md)**
+   Took finding 04's exact INSTRUCTION-only corpus, swapped the base
+   to SmolLM2-135M. Result: **architectural floor confirmed.** Smol
+   overfits the 32 train pairs (eval_loss bottoms at epoch 20-30 then
+   climbs while train descends), produces token-salad on held-out
+   questions, and damages base capability so badly that "What is 2+2?"
+   hallucinates a `stdlib_array_plus` helper. Finding 02's "use 135M
+   for style-transfer demos only" caveat is a base-size constraint,
+   not a recipe constraint.
+
+6. **[Finding 06 — corpus density](./06-corpus-density.md)** *(optional)*
    Test the dataset-size / generalization curve. Find the per-module
    Q/A density floor below which the model can't generalize the API
    form. Gives dlm users a concrete planning number ("budget N Q/A
