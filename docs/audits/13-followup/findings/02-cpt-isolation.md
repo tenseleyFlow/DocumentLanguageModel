@@ -131,6 +131,44 @@ specialty domains. It also informs dlm's recommended-base table —
 the smollm2-135m row should carry a "use for style-transfer demos
 only" caveat.
 
+## Post-MLX-fix retest (2026-04-30)
+
+After the MLX backend bugs were fixed (key qualification + tensor
+transpose; commits 931f6bb + f7f0450), re-ran the same adapter
+(`01KQDGAM70EJ1WJCQY6PVDV95W` v0001) on a small set of direct queries
+through both `--backend pytorch` and `--backend mlx` to verify the
+finding-02 verdict wasn't an artifact of the MLX silent-bypass bug.
+
+Results on raw fortran-shaped prompts (e.g. `subroutine
+sort_real_array(arr, n)`):
+
+- **PyTorch (chat-templated):** produces fortran-flavored but invalid
+  syntax (`real(kind=real), real(kind=complex) :: a, b, c`) — adapter
+  active, output is malformed memorization.
+- **MLX (raw prompt):** produces mixed Python/fortran (`integer :: n`,
+  `n = size(arr)`, `print *, arr[0:2]`) — adapter active, output
+  recombines training fragments incoherently.
+
+Both paths show adapter influence; neither produces coherent fortran.
+This matches the original finding-02 signature (memorization without
+generalization, fragments recombined under the adapter delta) and
+falsifies the worry that the verdict was MLX-bypass-induced. The
+sway numbers (`z=−13.74σ`, `cal_general −4.81σ` 26% items regressed)
+go through PyTorch logprob calls in any case, so those were never
+affected by the MLX inference bug.
+
+**Verdict stands.** SmolLM2-135M with the audit-13-followup recipe
+produces memorization, not generalization. Architectural floor is a
+real conclusion, not an inference-bug artifact.
+
+Note on chat-templated questions ("How do you declare an allocatable
+real(real64) array?"): both backends fall back to base-like behavior
+(Python/numpy redirection) under chat formatting, because the adapter
+trained on PROSE-only raw fortran source learned a token prior keyed
+on raw-fortran-shaped inputs, not on chat-shaped questions. This is
+itself a finding-02 corollary: the LoRA only activates on inputs that
+match its training format.
+
 ## Next experiment
 
 [Finding 03](./03-base-floor.md) — promote the base to
