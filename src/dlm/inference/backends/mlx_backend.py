@@ -35,7 +35,10 @@ from typing import TYPE_CHECKING, Any
 
 from dlm.inference.backends.base import InferenceBackend
 from dlm.inference.errors import AdapterNotFoundError
-from dlm.inference.mlx_adapter import MlxConversionError
+from dlm.inference.mlx_adapter import (
+    MlxConversionError,
+    assert_mlx_adapter_applied,
+)
 
 if TYPE_CHECKING:
     from dlm.base_models import BaseModelSpec
@@ -191,6 +194,14 @@ class MlxBackend(InferenceBackend):
             base.hf_id,
             adapter_path=str(staged),
         )
+
+        # mlx-lm's `load_adapters` runs `linear_to_lora_layers` +
+        # `model.load_weights(strict=False)`, both of which fail
+        # silently on key/shape mismatches. Verify at least one LoRA
+        # parameter actually attached — else `MlxConversionError` so
+        # the user sees the failure instead of base-model output.
+        staged_cfg = json.loads((staged / _ADAPTER_CONFIG_FILENAME).read_text(encoding="utf-8"))
+        assert_mlx_adapter_applied(self._model, expected_keys=staged_cfg["lora_parameters"]["keys"])
 
     def generate(self, prompt: str, **gen_kwargs: Any) -> str:  # pragma: no cover - heavy path
         if self._model is None or self._tokenizer is None:

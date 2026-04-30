@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from dlm.inference.mlx_adapter import (
     MlxConversionError,
+    assert_mlx_adapter_applied,
     map_all_keys,
     map_peft_key_to_mlx,
 )
@@ -203,3 +206,72 @@ class TestPeftSafetensorsToMlxTransposes:
         assert tuple(b.shape) == (4, 16)
         # Values match a transpose, not just a reshape.
         assert torch.equal(a, peft_tensors[next(iter(peft_tensors))].t())
+
+
+class TestAssertMlxAdapterApplied:
+    """Fail-loud post-load guard. mlx-lm silently leaves a model
+    un-wrapped when keys don't match; this check turns that footgun
+    into an explicit `MlxConversionError` so users see the failure
+    rather than getting silent base-model output."""
+
+    def _fake_model_with_params(self, names: list[str]) -> Any:
+        """Build a stand-in for an mlx model that exposes
+        `trainable_parameters()` returning a flat dict of fake tensors.
+        We don't go through `mlx.utils.tree_flatten`'s real
+        implementation here — assert_mlx_adapter_applied uses it
+        directly, so we assert via the import-mock approach below."""
+
+        class _FakeArr:
+            shape = (1,)
+
+        class _FakeModel:
+            def trainable_parameters(self) -> dict[str, Any]:
+                return {n: _FakeArr() for n in names}
+
+        return _FakeModel()
+
+    def test_passes_when_lora_params_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Stub mlx.utils.tree_flatten so the test doesn't require
+        # mlx-lm's real flatten semantics — we only need it to walk
+        # the dict-shaped trainable_parameters() output.
+        import sys
+        import types as _types
+
+        fake_mlx = _types.ModuleType("mlx")
+        fake_mlx_utils = _types.ModuleType("mlx.utils")
+
+        def _tree_flatten(d: dict[str, Any]) -> list[tuple[str, Any]]:
+            return list(d.items())
+
+        fake_mlx_utils.tree_flatten = _tree_flatten  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "mlx", fake_mlx)
+        monkeypatch.setitem(sys.modules, "mlx.utils", fake_mlx_utils)
+
+        model = self._fake_model_with_params(
+            [
+                "model.layers.0.self_attn.q_proj.lora_a",
+                "model.layers.0.self_attn.q_proj.lora_b",
+            ]
+        )
+        # Should not raise.
+        assert_mlx_adapter_applied(model, expected_keys=["self_attn.q_proj"])
+
+    def test_raises_when_no_lora_params(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import sys
+        import types as _types
+
+        fake_mlx = _types.ModuleType("mlx")
+        fake_mlx_utils = _types.ModuleType("mlx.utils")
+        fake_mlx_utils.tree_flatten = lambda d: list(d.items())  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "mlx", fake_mlx)
+        monkeypatch.setitem(sys.modules, "mlx.utils", fake_mlx_utils)
+
+        # Only base parameters; no lora_a/lora_b.
+        model = self._fake_model_with_params(
+            [
+                "model.embed_tokens.weight",
+                "model.layers.0.self_attn.q_proj.weight",
+            ]
+        )
+        with pytest.raises(MlxConversionError, match="zero `lora_a`"):
+            assert_mlx_adapter_applied(model, expected_keys=["self_attn.q_proj"])
