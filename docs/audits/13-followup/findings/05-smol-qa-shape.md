@@ -42,6 +42,30 @@ endpoint eval is 50× higher; held-out token-acc is 35 percentage
 points lower. The base can memorize the train pairs but lacks the
 parameter capacity to generalize the patterns.
 
+## sway results
+
+Composite **0.55 (`partial`)**. Full report at
+[`finding05-smol-qa/sway-results.md`](../finding05-smol-qa/sway-results.md).
+
+| probe | verdict | z | reading |
+|---|---|---:|---|
+| `dk_fortran_qa_shaped` | **FAIL** | +0.23σ | adapter shift on Q/A prompts is noise-level; the Q/A-shape recipe didn't even teach smol to *fire* on Q/A-shaped inputs |
+| `sis_fortran` | **FAIL** | +0.00σ | 15/36 sections cleared; **no per-section internalization signal whatsoever** |
+| `para_fortran` | ERROR | — | sway bridge "no cases provided" — separate sway issue |
+| `leak_fortran` | PASS | +2.04σ | greedy_recall=0.03, fragility=0.00 — textbook memorization fingerprint |
+| `cal_general` | pass* | — | **12% items regressed >1 nat** (was 26% in finding 02); recipe-shape fix mitigates forgetting but doesn't eliminate it |
+| `abl_fortran` | **FAIL** | — | R²=0.91 linearity, but **overshoot=1.88, sat_λ=1.25 out of band** — adapter is in pathological "more is more" territory, not converged at a coherent minimum |
+
+*`cal_general` formally passed because its null-baseline std collapsed
+to zero (1 of the 3 seeds duplicated), but the raw 12% regression is
+the load-bearing signal — that's 6/50 general-competence items broken
+by the LoRA on a model that started at 100%.
+
+The adherence and attribution probes both at noise-level (z ≈ 0) is
+the cleanest signal here: **the adapter doesn't reliably activate on
+the trained input shape** despite 95% train token-acc. That's the
+parameter-capacity bottleneck on display.
+
 ## Direct-query smoke
 
 Full transcripts at
