@@ -342,9 +342,10 @@ def _synth_prompt_summary(content: str, *, section_id: str) -> str:
     """Best-effort prompt summary for `synth list`."""
     from dlm.data.errors import InstructionParseError
     from dlm.data.instruction_parser import parse_instruction_body
+    from dlm.data.sections_to_rows import normalize_probe_markers
 
     try:
-        pairs = parse_instruction_body(content, section_id=section_id)
+        pairs = parse_instruction_body(normalize_probe_markers(content), section_id=section_id)
     except InstructionParseError:
         return "<unparseable>"
     if not pairs:
