@@ -44,6 +44,39 @@ attribute. We strip only the outer `base_model.model.` once so inner
 _LORA_AB = re.compile(r"\.lora_([AB])\.weight$")
 """Matches the trailing `.lora_A.weight` / `.lora_B.weight` suffix."""
 
+_ATTN_TARGETS: frozenset[str] = frozenset(
+    {"q_proj", "k_proj", "v_proj", "o_proj", "qkv_proj", "wqkv"}
+)
+"""Bare PEFT `target_modules` names that live under `self_attn.` on
+decoder-only transformers (Qwen2/Llama/Mistral/Phi/SmolLM)."""
+
+_MLP_TARGETS: frozenset[str] = frozenset({"gate_proj", "up_proj", "down_proj", "fc1", "fc2"})
+"""Bare PEFT `target_modules` names that live under `mlp.` on the same
+family of architectures."""
+
+
+def _qualify_target_module(name: str) -> str:
+    """Map a PEFT bare `target_modules` entry to its in-block FQN.
+
+    mlx-lm's `linear_to_lora_layers` matches `named_modules()` keys
+    *within* each transformer block via exact equality (`if k in keys`).
+    PEFT records `target_modules` as bare module names (`q_proj`),
+    while the FQN within an MLX-LM transformer block is fully qualified
+    (`self_attn.q_proj`). Without this rewrite the keys never match and
+    `linear_to_lora_layers` silently leaves the model un-wrapped — the
+    user-visible failure is "trained model behaves identically to base."
+
+    Already-qualified names (containing a `.`) pass through untouched
+    so callers can pre-qualify if needed.
+    """
+    if "." in name:
+        return name
+    if name in _ATTN_TARGETS:
+        return f"self_attn.{name}"
+    if name in _MLP_TARGETS:
+        return f"mlp.{name}"
+    return name
+
 
 class MlxConversionError(RuntimeError):
     """Raised when a PEFT adapter cannot be converted to the MLX layout."""
@@ -121,7 +154,23 @@ def peft_safetensors_to_mlx_safetensors(  # pragma: no cover - I/O + torch deps
     tensors = load_file(str(src))
     mapping = map_all_keys(list(tensors.keys()))
 
-    mlx_tensors = {mlx_key: tensors[peft_key] for peft_key, mlx_key in mapping.items()}
+    # PEFT stores LoRA weights with shapes that don't match what
+    # mlx-lm's `LoRALinear` expects:
+    #
+    #   PEFT lora_A : [r, in_features]       MLX lora_a : [in_features, r]
+    #   PEFT lora_B : [out_features, r]      MLX lora_b : [r, out_features]
+    #
+    # Both tensors need a transpose. Loading without the transpose
+    # makes mlx-lm's `model.load_weights(strict=False)` silently skip
+    # the mismatched shapes and the adapter has no effect — the
+    # textbook "trained model behaves like base" failure mode.
+    mlx_tensors = {}
+    for peft_key, mlx_key in mapping.items():
+        t = tensors[peft_key]
+        # `mlx_key` ends in `.lora_a` or `.lora_b` (lowercase, no `.weight`).
+        if mlx_key.endswith((".lora_a", ".lora_b")):
+            t = t.t().contiguous()
+        mlx_tensors[mlx_key] = t
 
     mlx_safetensors_path.parent.mkdir(parents=True, exist_ok=True)
     save_file(mlx_tensors, str(mlx_safetensors_path))
@@ -174,6 +223,8 @@ def build_mlx_adapter_config(
             "cannot stage mlx adapter without a valid layer count"
         )
 
+    qualified_keys = [_qualify_target_module(t) for t in target_modules]
+
     return {
         "fine_tune_type": "dora" if use_dora else "lora",
         "num_layers": int(base_num_hidden_layers),
@@ -181,6 +232,6 @@ def build_mlx_adapter_config(
             "rank": rank,
             "scale": lora_alpha / rank if rank else float(lora_alpha),
             "dropout": lora_dropout,
-            "keys": list(target_modules),
+            "keys": qualified_keys,
         },
     }
