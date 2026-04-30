@@ -1,0 +1,101 @@
+# Stage-1 sway spec — does PROSE-only CPT actually expand the fortran prior?
+#
+# This is the load-bearing experiment. The audit follow-up showed that the
+# combined PROSE+INSTRUCTION run produced a *uniform* fortran-flavored bias
+# (leak_lift constant ≈0.064 across sections, own_lift small, effective_sis
+# ≈0). That meant the adapter learned "this looks fortran" but not "this
+# section says X."
+#
+# Stage 1 trains on PROSE only at LoRA r=64 (vs r=16 in the prior run).
+# Pass criterion: ``section_internalization`` should now show *positive*
+# effective_sis on at least 40% of sections — i.e., own_lift > leak_lift on
+# the section's own probes. If this still flatlines, the base model is the
+# floor, and we promote to Qwen2.5-Coder-1.5B.
+#
+# Run from the sway repo's venv (need [dlm] for bridge probes):
+#   cd ~/GithubOrgs/tenseleyFlow/sway
+#   uv run --no-sync sway run \
+#     ~/GithubOrgs/tenseleyFlow/DocumentLanguageModel/docs/audits/13-followup/stage1/sway.yaml \
+#     --json /tmp/sway-stage1.json --markdown /tmp/sway-stage1.md
+
+version: 1
+
+dlm_source: /Users/mfwolffe/GithubOrgs/tenseleyFlow/DocumentLanguageModel/docs/audits/13-followup/stage1/the-doc.dlm
+
+models:
+  base:
+    kind: hf
+    base: HuggingFaceTB/SmolLM2-135M-Instruct
+  ft:
+    kind: hf
+    base: HuggingFaceTB/SmolLM2-135M-Instruct
+    adapter: ~/.dlm/store/01KQDGAM70EJ1WJCQY6PVDV95W/adapter/versions/v0001
+
+defaults:
+  seed: 0
+  differential: true
+  coverage_threshold: 0.6
+  score_weights:
+    adherence: 0.30
+    attribution: 0.40   # bumped: SIS is the load-bearing metric for this stage
+    calibration: 0.15
+    ablation: 0.15
+
+suite:
+  # ── Calibration baseline ────────────────────────────────────────
+  - name: null_baseline
+    kind: null_adapter
+    runs: 3
+
+  # ── Adherence: does the adapter shift logits on fortran prompts? ─
+  # Use prompts where SmolLM2's *English* prior is strong, so the null
+  # baseline produces low JS divergence and the trained adapter's
+  # divergence is visible above noise. Audit follow-up showed that
+  # bare fortran-fence prefixes give the null adapter ~0.15 JS
+  # divergence on its own — calibration ceiling, not a learning signal.
+  - name: dk_fortran_qa_shaped
+    kind: delta_kl
+    prompts:
+      - "Write a Fortran function that"
+      - "In modern Fortran, the syntax for declaring an allocatable array is"
+      - "When should you prefer `do concurrent` over a plain `do` loop?"
+      - "The `intent(in)` attribute on a dummy argument means"
+      - "To use stdlib's sorting routines, you would import"
+      - "Fortran's `pure` and `elemental` attributes differ in that"
+      - "A type-bound procedure in Fortran is declared with"
+      - "The `use, only:` import form in Fortran is preferred because"
+    assert_z_gte: 1.0
+    assert_mean_gte: 0.02
+
+  # ── Attribution: THE load-bearing test ──────────────────────────
+  # Prior run had effective_sis ≈ 0. If stage-1 fixes this, we have
+  # signal. assert_passing_section_frac at 0.4 is the bar from the
+  # prior audit follow-up spec.
+  - name: sis_fortran
+    kind: section_internalization
+    assert_z_gte: 1.0
+    assert_passing_section_frac: 0.4
+
+  # ── Calibration ──────────────────────────────────────────────────
+  - name: leak_fortran
+    kind: leakage
+    assert_z_gte: 1.0
+
+  - name: cal_general
+    kind: calibration_drift
+    items_limit: 50
+    assert_z_gte: 1.0
+
+  # ── Ablation: did r=64 fix the saturation overshoot? ────────────
+  # Prior run (r=16) showed overshoot=1.54 + sat_λ out of band, which
+  # we read as adapter under-magnitude. r=64 + 800 steps should land
+  # the saturation in (0.5, 1.0] with overshoot ≤ 1.05.
+  - name: abl_fortran
+    kind: adapter_ablation
+    lambdas: [0.0, 0.25, 0.5, 0.75, 1.0, 1.25]
+    prompts:
+      - "module fortran_demo\n  implicit none"
+      - "subroutine compute_norm(vector, n, result)"
+      - "use stdlib_linalg, only: solve"
+    assert_linearity_gte: 0.85
+    assert_z_gte: 1.0

@@ -1,0 +1,105 @@
+# Audit 13 follow-up — sway spec for the fortran fine-tune.
+#
+# Compared to audit 13's spec (which got dk +44σ but
+# paraphrase_invariance −3.51σ FAIL), this one:
+#
+# - Includes ``null_adapter`` for every numeric probe (was already
+#   present in audit 13; kept here as the recipe's foundation).
+# - Activates the [dlm] bridge probes — section_internalization,
+#   paraphrase_invariance, leakage — which need the .dlm to be
+#   resolvable. The audit's venv didn't install ``[dlm]`` so these
+#   SKIPped; we install dlm separately in the follow-up venv to get
+#   them firing.
+# - Fortran-specific prompts on delta_kl + adapter_ablation so the
+#   distribution shift signal is grounded in the trained domain.
+#
+# Run from the sway repo's venv after training completes:
+#   uv run --no-sync sway run \
+#     /Users/mfwolffe/GithubOrgs/tenseleyFlow/DocumentLanguageModel/docs/audits/13-followup/sway.yaml \
+#     --json /tmp/sway-13fu.json --markdown /tmp/sway-13fu.md
+
+version: 1
+
+dlm_source: /Users/mfwolffe/GithubOrgs/tenseleyFlow/DocumentLanguageModel/docs/audits/13-followup/finding03/the-doc.dlm
+
+models:
+  base:
+    kind: hf
+    base: Qwen/Qwen2.5-Coder-1.5B-Instruct
+  ft:
+    kind: hf
+    base: Qwen/Qwen2.5-Coder-1.5B-Instruct
+    adapter: ~/.dlm/store/01KQDM14CT0X6AWFWTW9E81ZJ7/adapter/versions/v0001
+
+defaults:
+  seed: 0
+  differential: true
+  coverage_threshold: 0.6
+  score_weights:
+    adherence: 0.30
+    attribution: 0.35
+    calibration: 0.20
+    ablation: 0.15
+
+suite:
+  # ── Calibration baseline ─────────────────────────────────────────
+  - name: null_baseline
+    kind: null_adapter
+    runs: 3
+
+  # ── Adherence ────────────────────────────────────────────────────
+  - name: dk_fortran
+    kind: delta_kl
+    prompts:
+      - "module mymod\n  implicit none\n"
+      - "subroutine compute(x, y)"
+      - "do concurrent (i = 1:n)"
+      - "type :: container"
+      - "intent(in) ::"
+      - "use stdlib_io, only: loadtxt"
+      - "use stdlib_sorting, only:"
+      - "real(real64), allocatable ::"
+    assert_z_gte: 1.0
+    assert_mean_gte: 0.02
+
+  # ── Attribution (bridge-aware) ───────────────────────────────────
+  # Per-section internalization. Should fire now that [dlm] is
+  # installed and the bridge can resolve the .dlm.
+  - name: sis_fortran
+    kind: section_internalization
+    assert_z_gte: 1.0
+    assert_passing_section_frac: 0.4
+
+  # The audit's load-bearing probe — was -3.51σ FAIL in audit 13,
+  # need to flip to PASS here. With 5× more INSTRUCTION sections +
+  # 5× more steps + the bridge installed, this is the falsifiable
+  # claim.
+  - name: para_fortran
+    kind: paraphrase_invariance
+    assert_z_gte: 1.0
+
+  # ── Calibration ──────────────────────────────────────────────────
+  - name: leak_fortran
+    kind: leakage
+    assert_z_gte: 1.0
+
+  # General-competence regression check. Audit 13 PASSed this —
+  # we want to confirm we didn't fry it with 5× more fine-tune steps.
+  - name: cal_general
+    kind: calibration_drift
+    items_limit: 50
+    assert_z_gte: 1.0
+
+  # ── Ablation (the sway signature) ────────────────────────────────
+  # Healthy fine-tunes show monotonic R² ≥ 0.85 on the λ-scaled KL
+  # curve. If this is a step-function or saturates early, the adapter
+  # is degenerate.
+  - name: abl_fortran
+    kind: adapter_ablation
+    lambdas: [0.0, 0.25, 0.5, 0.75, 1.0, 1.25]
+    prompts:
+      - "subroutine matmul_optimized(A, B, C)"
+      - "do concurrent (i = 1:n)"
+      - "use stdlib_linalg, only: solve"
+    assert_linearity_gte: 0.85
+    assert_z_gte: 1.0
