@@ -235,3 +235,51 @@ def build_mlx_adapter_config(
             "keys": qualified_keys,
         },
     }
+
+
+def assert_mlx_adapter_applied(model: Any, *, expected_keys: list[str]) -> None:
+    """Verify mlx-lm's `load_adapters` actually wrapped the targeted layers.
+
+    `mlx_lm.load(..., adapter_path=...)` calls `linear_to_lora_layers`
+    followed by `model.load_weights(strict=False)`. Both steps fail
+    silently if their inputs don't match the loaded model:
+
+    - `linear_to_lora_layers` is a no-op when `keys` don't match any
+      module's FQN inside the transformer blocks
+    - `load_weights(strict=False)` skips any tensor key that doesn't
+      match a model parameter
+
+    Either failure produces a model that runs as if no adapter were
+    loaded. Catching this here turns the "trained model behaves like
+    base" footgun into an explicit refusal so the user knows to use
+    `--backend pytorch` (or the fix needs an architecture-aware
+    keys translator).
+
+    `expected_keys` are the in-block FQNs from the staged
+    `adapter_config.json` (e.g. `["self_attn.q_proj", ...]`). We confirm
+    that at least one matching module ended up as a LoRA-wrapped layer.
+    """
+    try:
+        import mlx.utils as mlx_utils  # type: ignore[import-not-found, unused-ignore]
+    except ImportError as exc:  # pragma: no cover - mlx not importable
+        raise MlxConversionError(f"mlx not importable for verification: {exc}") from exc
+
+    try:
+        flat: Any = mlx_utils.tree_flatten(model.trainable_parameters())
+    except Exception as exc:  # pragma: no cover - defensive
+        raise MlxConversionError(
+            f"could not enumerate model trainable_parameters for verification: {exc}"
+        ) from exc
+
+    lora_param_count = sum(1 for k, _ in flat if k.endswith(".lora_a") or k.endswith(".lora_b"))
+    if lora_param_count == 0:
+        raise MlxConversionError(
+            "mlx-lm loaded the adapter without applying it — zero "
+            "`lora_a` / `lora_b` parameters present after load. This "
+            "usually means the keys "
+            f"{expected_keys!r} don't match the model's `named_modules()` "
+            "FQNs (e.g. the base architecture uses a different submodule "
+            "layout than `self_attn.*` / `mlp.*`). The trained adapter "
+            "would behave identically to the base model. Use "
+            "`--backend pytorch` as a workaround."
+        )
