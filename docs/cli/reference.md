@@ -122,6 +122,14 @@ dlm prompt <path> [query] [--max-tokens N] [--temp F] [--top-p F]
 | `--backend {auto,pytorch,mlx}` | `auto` | Inference backend. `auto` picks MLX on Apple Silicon (when `uv sync --extra mlx` is installed), else PyTorch. Ignored on VL bases (the VL path always uses PyTorch + AutoModelForImageTextToText). |
 | `--verbose` | false | Print resolved `InferencePlan` on stderr. |
 
+> **MLX backend caveat (darwin-arm64):** the MLX path has known issues
+> applying PEFT-format LoRA adapters — the converter runs without
+> error but the resulting MLX adapter does not modify generation,
+> producing output that matches the base model. If your trained
+> adapter appears to behave like the base, pass `--backend pytorch`
+> as a workaround. See `docs/audits/13-followup/finding04/direct-query-results.md`
+> for the diagnostic walk-through.
+
 Query is the CLI positional argument. Omit to read from stdin.
 
 ### `dlm repl`

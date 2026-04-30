@@ -59,7 +59,9 @@ def prompt_cmd(
             help=(
                 "Inference backend: `auto` (default) picks MLX on Apple "
                 "Silicon, else PyTorch. Force with `pytorch` or `mlx`. "
-                "MLX requires `uv sync --extra mlx` on darwin-arm64."
+                "MLX requires `uv sync --extra mlx` on darwin-arm64. "
+                "Note: MLX has a known PEFT-adapter bug — if your "
+                "trained model behaves like the base, use `--backend pytorch`."
             ),
         ),
     ] = "auto",
