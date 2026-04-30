@@ -40,20 +40,34 @@ _PROBE_MARKER = "!probe"
 _PROBE_HEADER = f"### Q {_PROBE_MARKER}"
 
 
-def _normalize_probe_markers(body: str) -> str:
+def normalize_probe_markers(body: str) -> str:
     """Rewrite `### Q !probe` → `### Q` so the strict parser accepts it.
 
-    Mirrors `dlm.eval.probes._normalize_probe_markers` (kept local to
-    avoid a data → eval import). Probe-marked Q/A pairs still train
-    exactly like plain pairs; the marker is only load-bearing for probe
-    extraction. We drop it silently here rather than leak `!probe:` into
-    the training question text.
+    Probe-marked Q/A pairs still train exactly like plain pairs; the
+    marker is only load-bearing for probe extraction. We drop it
+    silently here rather than leak `!probe:` into the training question
+    text.
+
+    Public because every caller of `parse_instruction_body` that takes
+    raw section content needs to apply this rewrite before parsing —
+    otherwise the parser rejects probe-marked sections with a misleading
+    "expected `### Q` header" error. Callers: `data.sections_to_rows`,
+    `eval.probes._parse_instruction_sections`,
+    `preference.mine.materialize_pairs`, `replay.store._snapshot_to_rows`,
+    `cli.commands.synth._synth_prompt_summary`,
+    `train.gate.orchestrator._extract_probes`.
     """
     if _PROBE_HEADER not in body:
         return body
     lines = body.splitlines()
     rewritten = [("### Q" if line.strip() == _PROBE_HEADER else line) for line in lines]
     return "\n".join(rewritten)
+
+
+# Back-compat alias for callers that imported the underscore-prefixed
+# private name. Keeping the alias means downstream branches that haven't
+# rebased through the rename don't break.
+_normalize_probe_markers = normalize_probe_markers
 
 
 Row = dict[str, Any]
@@ -112,7 +126,7 @@ def _section_to_rows(
         return [{"text": text, "_dlm_section_id": sid, "_dlm_row_tags": tags}]
 
     if section.type is SectionType.INSTRUCTION:
-        body = _normalize_probe_markers(section.content)
+        body = normalize_probe_markers(section.content)
         pairs = parse_instruction_body(body, section_id=sid)
         return [
             {
