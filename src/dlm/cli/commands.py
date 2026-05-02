@@ -853,6 +853,11 @@ def train_cmd(
             "Acceptance will be persisted in the store manifest."
         )
         raise typer.Exit(code=1) from exc
+    if spec.capability_warning:
+        console.print(
+            f"[yellow]warning:[/yellow] base [bold]{spec.key}[/bold]: "
+            f"{spec.capability_warning}"
+        )
     # Detect the DDP world_size set by `accelerate launch`
     # (WORLD_SIZE env var) and thread it into the doctor so the plan's
     # effective_batch_size reflects the rank count. Single-process
