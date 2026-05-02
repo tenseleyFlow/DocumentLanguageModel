@@ -110,15 +110,21 @@ class TestShape:
         assert "PARAMETER temperature 0.2" in text
 
     def test_draft_model_omitted_by_default(self, tmp_path: Path) -> None:
-        """Sprint 12.5: no draft set → no `PARAMETER draft_model`."""
+        """No draft set → no draft directive at all."""
         text = render_modelfile(_ctx(tmp_path))
-        assert "PARAMETER draft_model" not in text
+        assert "draft_model" not in text
 
-    def test_draft_model_emitted_when_set(self, tmp_path: Path) -> None:
-        """Sprint 12.5: `PARAMETER draft_model <tag>` appears + pull reminder."""
+    def test_draft_model_documented_when_set(self, tmp_path: Path) -> None:
+        """When a draft is registered we emit a comment, not a PARAMETER.
+
+        `draft_model` is a runtime/API option in Ollama, not a Modelfile
+        PARAMETER — emitting `PARAMETER draft_model <tag>` made
+        `ollama create` fail with "unknown parameter 'draft_model'".
+        """
         text = render_modelfile(_ctx(tmp_path, draft_model_ollama_name="qwen2.5:0.5b"))
-        assert "PARAMETER draft_model qwen2.5:0.5b" in text
+        assert "PARAMETER draft_model" not in text
         assert "ollama pull qwen2.5:0.5b" in text
+        assert "OLLAMA_DRAFT_MODEL=qwen2.5:0.5b" in text
 
     def test_override_top_p(self, tmp_path: Path) -> None:
         """Audit-04 Q5: frontmatter export.default_top_p overrides the dialect default."""

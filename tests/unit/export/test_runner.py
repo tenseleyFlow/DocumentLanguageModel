@@ -666,19 +666,18 @@ class TestDraftWiring:
     """Sprint 12.5: runner routes draft override/disable through to the Modelfile."""
 
     def test_override_tag_written_to_modelfile(self, tmp_path: Path) -> None:
-        """--draft custom:tag propagates to PARAMETER draft_model."""
+        """--draft custom:tag propagates to the Modelfile as a documented hint."""
         cached_base, store, vendor = _setup_store(tmp_path)
         plan = ExportPlan(quant="Q4_K_M", ollama_name="mydoc")
         recorder = _SubprocessRecorder(store.export_quant_dir(plan.quant))
 
-        # skip_ollama=True stops before ollama_create but *after* the
-        # Modelfile is rendered? Actually no — the Modelfile is only
-        # rendered when skip_ollama=False. Switch to a mock ollama_create.
         def _ollama_create(*, name: str, modelfile_path: Path, cwd: Path) -> str:
             _ = name, cwd
             assert modelfile_path.is_file()
             text = modelfile_path.read_text()
-            assert "PARAMETER draft_model custom:tag" in text
+            assert "PARAMETER draft_model" not in text
+            assert "ollama pull custom:tag" in text
+            assert "OLLAMA_DRAFT_MODEL=custom:tag" in text
             return "created"
 
         run_export(
