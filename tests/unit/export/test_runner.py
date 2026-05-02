@@ -386,8 +386,30 @@ class TestMergeGate:
 class TestDefaultVocabCheck:
     """Default path loads the adapter tokenizer-vocab and compares against the base GGUF."""
 
-    def test_mismatch_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_adapter_exceeds_gguf_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Tokenizer addressing more indices than the model has embeddings is unsafe."""
         from dlm.export.errors import PreflightError
+        from dlm.export.runner import _default_check_base_vocab
+
+        adapter = tmp_path / "adapter"
+        adapter.mkdir()
+        (adapter / "tokenizer_config.json").write_text(
+            json.dumps({"vocab_size": 32001, "chat_template": "{{m}}"})
+        )
+
+        base = tmp_path / "base.gguf"
+        base.write_bytes(b"ignored")
+
+        monkeypatch.setattr("dlm.export.tokenizer_sync.read_gguf_vocab_size", lambda _p: 32000)
+        with pytest.raises(PreflightError, match="gguf_vocab"):
+            _default_check_base_vocab(adapter, base)
+
+    def test_gguf_reserves_extra_slots_ok(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GGUF carrying more rows than the tokenizer addresses is the Qwen2.5+ norm."""
         from dlm.export.runner import _default_check_base_vocab
 
         adapter = tmp_path / "adapter"
@@ -395,14 +417,11 @@ class TestDefaultVocabCheck:
         (adapter / "tokenizer_config.json").write_text(
             json.dumps({"vocab_size": 32000, "chat_template": "{{m}}"})
         )
-
         base = tmp_path / "base.gguf"
         base.write_bytes(b"ignored")
 
-        # Force a specific GGUF vocab through the reader seam.
-        monkeypatch.setattr("dlm.export.tokenizer_sync.read_gguf_vocab_size", lambda _p: 32001)
-        with pytest.raises(PreflightError, match="gguf_vocab"):
-            _default_check_base_vocab(adapter, base)
+        monkeypatch.setattr("dlm.export.tokenizer_sync.read_gguf_vocab_size", lambda _p: 32293)
+        _default_check_base_vocab(adapter, base)
 
     def test_match_returns_none(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from dlm.export.runner import _default_check_base_vocab

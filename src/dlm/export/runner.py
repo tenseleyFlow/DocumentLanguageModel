@@ -90,24 +90,29 @@ def _default_check_base_vocab(adapter_path: Path, base_gguf_path: Path) -> None:
 
     `assert_gguf_vocab_matches` is tokenizer-backed; we use
     the file-based path here so `run_export` doesn't take a `transformers`
-    import hit on every call. A mismatch means the base conversion
-    materialized a different tokenizer than the one the adapter was
-    trained against — exactly the silent-failure surface this check is
-    meant to catch.
+    import hit on every call. The model's embedding matrix may have
+    reserved/special-token slots beyond the tokenizer's addressable
+    count (Qwen2.5: 151643 BPE + 22 added = 151665 addressable, but
+    `vocab_size = 151936` worth of embedding rows for future-token
+    reservation). GGUF carries the embedding-aligned count, so it's
+    valid for `gguf_vocab >= adapter_vocab`. The unsafe direction is
+    `adapter_vocab > gguf_vocab` — that means the tokenizer can emit
+    indices beyond what the model has embeddings for.
     """
     from dlm.export.preflight import check_tokenizer_vocab
     from dlm.export.tokenizer_sync import read_gguf_vocab_size
 
     adapter_vocab = check_tokenizer_vocab(adapter_path)
     gguf_vocab = read_gguf_vocab_size(base_gguf_path)
-    if adapter_vocab != gguf_vocab:
+    if adapter_vocab > gguf_vocab:
         from dlm.export.errors import PreflightError
 
         raise PreflightError(
             probe="gguf_vocab",
             detail=(
-                f"adapter tokenizer vocab ({adapter_vocab}) does not match "
-                f"base GGUF vocab ({gguf_vocab}) at {base_gguf_path.name}. "
+                f"adapter tokenizer addressable vocab ({adapter_vocab}) exceeds "
+                f"base GGUF vocab ({gguf_vocab}) at {base_gguf_path.name} — "
+                "the tokenizer can emit indices the model has no embeddings for. "
                 "Re-run base conversion against the adapter-dir tokenizer."
             ),
         )
