@@ -155,6 +155,24 @@ class TestChatTemplate:
         with pytest.raises(PreflightError, match="chat_template"):
             check_chat_template(tmp_path)
 
+    def test_unreadable_sibling_jinja_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OSError while reading the .jinja sibling surfaces as a typed PreflightError."""
+        _write_tokenizer_config(tmp_path, chat_template="")
+        (tmp_path / "chat_template.jinja").write_text("{{messages}}")
+
+        original_read_text = Path.read_text
+
+        def _boom(self: Path, *args: object, **kwargs: object) -> str:
+            if self.name == "chat_template.jinja":
+                raise OSError("simulated read failure")
+            return original_read_text(self, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(Path, "read_text", _boom)
+        with pytest.raises(PreflightError, match="cannot read"):
+            check_chat_template(tmp_path)
+
 
 class TestQloraFlag:
     def test_missing_file_returns_false(self, tmp_path: Path) -> None:
