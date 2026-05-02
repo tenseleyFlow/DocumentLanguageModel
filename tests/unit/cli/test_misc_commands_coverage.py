@@ -552,7 +552,11 @@ class TestExportAndCacheCoverage:
         )
         assert show_text.exit_code == 0, show_text.output
         assert "Cache for" in show_text.output
-        assert "no tokenization runs yet" in show_text.output
+        # Minimal doc has no `training.sources` directive, so the cache
+        # is gated off by design — surface that instead of leaving the
+        # user to guess why their cache is empty.
+        assert "not used" in show_text.output
+        assert "training.sources" in show_text.output
 
         prune_bad = runner.invoke(
             app,
