@@ -28,6 +28,7 @@ from dlm.doc.serializer import (
     _needs_quoting,
     _scalar,
     _serialize_section,
+    collect_dict_field_paths,
     serialize,
 )
 
@@ -188,6 +189,48 @@ class TestSerializeTrailingNewline:
         )
         monkeypatch.setattr("dlm.doc.serializer._serialize_section", lambda _section: "body")
         assert serialize(parsed).endswith("\n")
+
+
+class TestCollectDictFieldPaths:
+    """Migrate path uses this to remember which fields the user explicitly set."""
+
+    def test_flat_mapping(self) -> None:
+        paths = collect_dict_field_paths({"a": 1, "b": 2})
+        assert paths == frozenset({("a",), ("b",)})
+
+    def test_nested_mapping_records_intermediate_and_leaf(self) -> None:
+        paths = collect_dict_field_paths({"training": {"lora_r": 8, "lora_alpha": 16}})
+        assert paths == frozenset(
+            {("training",), ("training", "lora_r"), ("training", "lora_alpha")}
+        )
+
+    def test_non_string_keys_ignored(self) -> None:
+        # Pydantic-validated dicts only use string keys; the defensive
+        # branch keeps a hostile YAML round-trip from leaking a tuple key.
+        paths = collect_dict_field_paths({"a": 1, 7: "ignored"})
+        assert paths == frozenset({("a",)})
+
+    def test_list_of_mappings_recurses_under_parent_path(self) -> None:
+        # `training.sources` shape: each list entry is a mapping that
+        # contributes paths under ("training", "sources"), so a v1 source
+        # block with explicit `path:`/`max_bytes_per_file:` survives migration.
+        paths = collect_dict_field_paths(
+            {
+                "training": {
+                    "sources": [
+                        {"path": "/foo", "max_bytes_per_file": 4096},
+                        {"path": "/bar"},
+                    ]
+                }
+            }
+        )
+        assert ("training", "sources") in paths
+        assert ("training", "sources", "path") in paths
+        assert ("training", "sources", "max_bytes_per_file") in paths
+
+    def test_non_dict_input_yields_empty(self) -> None:
+        assert collect_dict_field_paths("not a dict") == frozenset()
+        assert collect_dict_field_paths(None) == frozenset()
 
 
 class TestFrontmatterExplicitTargetModulesList:
