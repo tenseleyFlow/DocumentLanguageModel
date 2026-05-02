@@ -101,6 +101,19 @@ class TestTokenizerVocab:
         with pytest.raises(PreflightError, match="cannot parse"):
             check_tokenizer_vocab(tmp_path)
 
+    def test_fallback_sums_added_tokens(self, tmp_path: Path) -> None:
+        """Qwen2.5+ tokenizer: BPE vocab + added_tokens give addressable count."""
+        (tmp_path / "tokenizer_config.json").write_text(json.dumps({}))
+        (tmp_path / "tokenizer.json").write_text(
+            json.dumps(
+                {
+                    "model": {"vocab": {str(i): i for i in range(5000)}},
+                    "added_tokens": [{"id": i, "content": f"<|t{i}|>"} for i in range(22)],
+                }
+            )
+        )
+        assert check_tokenizer_vocab(tmp_path) == 5022
+
 
 class TestChatTemplate:
     def test_present_ok(self, tmp_path: Path) -> None:
@@ -129,6 +142,20 @@ class TestChatTemplate:
         (tmp_path / "tokenizer_config.json").write_text("not json {{{")
         with pytest.raises(PreflightError, match="cannot parse"):
             check_chat_template(tmp_path, required=True)
+
+    def test_sibling_jinja_satisfies_when_config_lacks_template(
+        self, tmp_path: Path
+    ) -> None:
+        """Qwen2.5+/Llama-3.x write the template to chat_template.jinja, not the config."""
+        _write_tokenizer_config(tmp_path, chat_template="")
+        (tmp_path / "chat_template.jinja").write_text("{{messages}}")
+        check_chat_template(tmp_path)
+
+    def test_empty_sibling_jinja_falls_through_to_error(self, tmp_path: Path) -> None:
+        _write_tokenizer_config(tmp_path, chat_template="")
+        (tmp_path / "chat_template.jinja").write_text("   \n")
+        with pytest.raises(PreflightError, match="chat_template"):
+            check_chat_template(tmp_path)
 
 
 class TestQloraFlag:
