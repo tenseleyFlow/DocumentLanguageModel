@@ -143,9 +143,7 @@ class TestChatTemplate:
         with pytest.raises(PreflightError, match="cannot parse"):
             check_chat_template(tmp_path, required=True)
 
-    def test_sibling_jinja_satisfies_when_config_lacks_template(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sibling_jinja_satisfies_when_config_lacks_template(self, tmp_path: Path) -> None:
         """Qwen2.5+/Llama-3.x write the template to chat_template.jinja, not the config."""
         _write_tokenizer_config(tmp_path, chat_template="")
         (tmp_path / "chat_template.jinja").write_text("{{messages}}")

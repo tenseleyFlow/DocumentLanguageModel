@@ -136,9 +136,7 @@ def build_param_lines(
         # field. Document the suggested pairing as a comment so users
         # can wire it up without forcing-fail their `ollama create`.
         lines.append(f"# Speculative-decoding draft: `ollama pull {draft_model}`")
-        lines.append(
-            f"# then run with `OLLAMA_DRAFT_MODEL={draft_model} ollama run <this-model>`"
-        )
+        lines.append(f"# then run with `OLLAMA_DRAFT_MODEL={draft_model} ollama run <this-model>`")
     return lines
 
 

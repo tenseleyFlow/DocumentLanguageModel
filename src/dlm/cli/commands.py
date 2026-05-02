@@ -858,8 +858,7 @@ def train_cmd(
     capability_warning = getattr(spec, "capability_warning", None)
     if capability_warning:
         console.print(
-            f"[yellow]warning:[/yellow] base [bold]{spec.key}[/bold]: "
-            f"{capability_warning}"
+            f"[yellow]warning:[/yellow] base [bold]{spec.key}[/bold]: {capability_warning}"
         )
     # Detect the DDP world_size set by `accelerate launch`
     # (WORLD_SIZE env var) and thread it into the doctor so the plan's
