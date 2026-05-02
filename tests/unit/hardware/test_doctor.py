@@ -180,6 +180,49 @@ class TestRender:
         assert "adapter:         qlora (4-bit NF4, compute bf16)" in text
 
 
+class TestMlxRenderLine:
+    """Cover both branches of the MLX-availability annotation in render."""
+
+    def _caps(self, *, has_mlx: bool) -> Capabilities:
+        return Capabilities(
+            backend=Backend.CPU,
+            device_name="generic CPU",
+            sm=None,
+            rocm_arch=None,
+            vram_gb=None,
+            unified_memory_gb=None,
+            cpu_cores=8,
+            ram_gb=16.0,
+            supports_bf16=False,
+            supports_fp16=False,
+            has_flash_attention=False,
+            has_xformers=False,
+            has_bitsandbytes=False,
+            has_triton=False,
+            has_mlx=has_mlx,
+            torch_version="2.11.0",
+            accelerate_version=None,
+            cuda_version=None,
+            rocm_version=None,
+            platform="Linux 6.8",
+            determinism_class="best_effort",
+            telemetry_posture={},
+        )
+
+    def test_mlx_available_shows_scope_hint(self) -> None:
+        text = render_text(
+            DoctorResult(capabilities=self._caps(has_mlx=True), plan=None, plan_error=None)
+        )
+        assert "MLX inference:  yes (prompt-only" in text
+        assert "Apple Silicon" in text
+
+    def test_mlx_unavailable_shows_no(self) -> None:
+        text = render_text(
+            DoctorResult(capabilities=self._caps(has_mlx=False), plan=None, plan_error=None)
+        )
+        assert "MLX inference:  no" in text
+
+
 class TestCliDoctor:
     def test_cli_human_output_works(self) -> None:
         runner = CliRunner()
