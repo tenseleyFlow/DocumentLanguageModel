@@ -97,7 +97,17 @@ def migrate_file(
     # Validate post-migration dict against the current schema so a bad
     # migrator can't silently smear garbage into the document.
     fm = DlmFrontmatter.model_validate(migrated)
-    new_text = _rejoin(fm, body_text)
+    # Preserve the user's *originally explicit* fields across migration
+    # by collecting their dotted paths from the post-migration dict and
+    # passing them to the serializer as force-emit overrides. Without
+    # this, a v1 doc with `lora_r: 8` (matching the current schema
+    # default) would silently lose the explicit pin and inherit any
+    # future default change. The contract `CLAUDE.md` calls "additive
+    # identity" is honored at *intent* level, not just behavior level.
+    from dlm.doc.serializer import collect_dict_field_paths
+
+    force_emit = collect_dict_field_paths(migrated)
+    new_text = _rejoin(fm, body_text, force_emit_paths=force_emit)
 
     if dry_run:
         return MigrationResult(
@@ -152,7 +162,12 @@ def _split_for_migrate(text: str, *, path: Path) -> tuple[str, str]:
     )
 
 
-def _rejoin(fm: DlmFrontmatter, body_text: str) -> str:
+def _rejoin(
+    fm: DlmFrontmatter,
+    body_text: str,
+    *,
+    force_emit_paths: frozenset[tuple[str, ...]] | None = None,
+) -> str:
     """Re-assemble a `.dlm` file from a migrated frontmatter + raw body.
 
     Preserves the body verbatim (migration never touches section content);
@@ -165,7 +180,7 @@ def _rejoin(fm: DlmFrontmatter, body_text: str) -> str:
     # section serialization by handing an empty sections tuple and
     # concatenating the raw body manually.
     empty = ParsedDlm(frontmatter=fm, sections=_empty_sections())
-    header = serialize(empty)  # always ends with "\n"
+    header = serialize(empty, force_emit_paths=force_emit_paths)  # always ends with "\n"
 
     # Normalize leading/trailing whitespace on the body to match the
     # canonical layout: exactly one blank line between `---\n` closer

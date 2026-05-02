@@ -853,10 +853,13 @@ def train_cmd(
             "Acceptance will be persisted in the store manifest."
         )
         raise typer.Exit(code=1) from exc
-    if spec.capability_warning:
+    # `getattr` so test fixtures stubbing `spec` as a `SimpleNamespace`
+    # without this field still pass; real registry entries always have it.
+    capability_warning = getattr(spec, "capability_warning", None)
+    if capability_warning:
         console.print(
             f"[yellow]warning:[/yellow] base [bold]{spec.key}[/bold]: "
-            f"{spec.capability_warning}"
+            f"{capability_warning}"
         )
     # Detect the DDP world_size set by `accelerate launch`
     # (WORLD_SIZE env var) and thread it into the doctor so the plan's

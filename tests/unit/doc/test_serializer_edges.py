@@ -168,7 +168,9 @@ class TestSerializeTrailingNewline:
             frontmatter=fm,
             sections=(Section(SectionType.PROSE, "content"),),
         )
-        monkeypatch.setattr("dlm.doc.serializer._serialize_frontmatter", lambda _fm: "---\n---")
+        monkeypatch.setattr(
+            "dlm.doc.serializer._serialize_frontmatter", lambda _fm, _force=None: "---\n---"
+        )
         out = serialize(parsed)
         assert out.endswith("\n")
         assert not out.endswith("\n\n")
@@ -181,7 +183,9 @@ class TestSerializeTrailingNewline:
             frontmatter=fm,
             sections=(Section(SectionType.PROSE, "content"),),
         )
-        monkeypatch.setattr("dlm.doc.serializer._serialize_frontmatter", lambda _fm: "---\n---")
+        monkeypatch.setattr(
+            "dlm.doc.serializer._serialize_frontmatter", lambda _fm, _force=None: "---\n---"
+        )
         monkeypatch.setattr("dlm.doc.serializer._serialize_section", lambda _section: "body")
         assert serialize(parsed).endswith("\n")
 
