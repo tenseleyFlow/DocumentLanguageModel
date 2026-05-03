@@ -146,6 +146,12 @@ def export_cmd(
         resolve_export_plan,
         run_export,
     )
+    from dlm.export.entry import (
+        MlxServeExportRequest,
+        VllmExportRequest,
+        run_mlx_serve_target_export,
+        run_vllm_target_export,
+    )
     from dlm.export.ollama import (
         OllamaBinaryNotFoundError,
         OllamaCreateError,
@@ -154,14 +160,7 @@ def export_cmd(
         OllamaVersionError,
     )
     from dlm.export.quantize import run_checked
-    from dlm.export.targets import (
-        finalize_mlx_serve_export,
-        finalize_vllm_export,
-        prepare_llama_server_export,
-        prepare_mlx_serve_export,
-        prepare_vllm_export,
-        resolve_target,
-    )
+    from dlm.export.targets import prepare_llama_server_export, resolve_target
     from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
@@ -407,44 +406,42 @@ def export_cmd(
 
         declared_adapter_names = tuple(adapters_declared.keys()) if adapters_declared else None
         try:
-            vllm_result = prepare_vllm_export(
-                store=store,
-                spec=spec,
-                served_model_name=name or f"dlm-{parsed.frontmatter.dlm_id.lower()}",
-                training_sequence_len=parsed.frontmatter.training.sequence_len,
-                adapter_name=adapter,
-                adapter_path_override=adapter_path_override,
-                declared_adapter_names=declared_adapter_names,
+            vllm_outcome = run_vllm_target_export(
+                VllmExportRequest(
+                    target=resolved_target,
+                    store=store,
+                    spec=spec,
+                    served_model_name=name or f"dlm-{parsed.frontmatter.dlm_id.lower()}",
+                    training_sequence_len=parsed.frontmatter.training.sequence_len,
+                    adapter_name=adapter,
+                    adapter_path_override=adapter_path_override,
+                    declared_adapter_names=declared_adapter_names,
+                    adapter_mix=mix_entries,
+                    no_smoke=no_smoke,
+                )
             )
         except ExportError as exc:
             console.print(f"[red]export:[/red] {exc}")
             raise typer.Exit(code=1) from exc
 
-        vllm_smoke = None if no_smoke else resolved_target.smoke_test(vllm_result)
-        if vllm_smoke is not None and not vllm_smoke.ok:
+        if vllm_outcome.smoke is not None and not vllm_outcome.smoke.ok:
             console.print(
-                f"[red]smoke:[/red] {vllm_smoke.detail}\n"
+                f"[red]smoke:[/red] {vllm_outcome.smoke.detail}\n"
                 "  re-run with `--no-smoke` to skip the smoke test."
             )
             raise typer.Exit(code=1)
 
-        manifest_path = finalize_vllm_export(
-            store=store,
-            spec=spec,
-            prepared=vllm_result,
-            smoke_output_first_line=None if vllm_smoke is None else vllm_smoke.detail,
-            adapter_name=adapter,
-            adapter_mix=mix_entries,
-        )
+        vllm_result = vllm_outcome.prepared
+        assert vllm_outcome.manifest_path is not None
         console.print(f"[green]exported:[/green] {vllm_result.export_dir}")
         console.print("target:  vllm")
         assert vllm_result.launch_script_path is not None
         assert vllm_result.config_path is not None
         console.print(f"launch:  {vllm_result.launch_script_path.name}")
         console.print(f"config:  {vllm_result.config_path.name}")
-        console.print(f"manifest: {manifest_path.name}")
-        if vllm_smoke is not None and vllm_smoke.detail:
-            console.print(f"smoke:   {vllm_smoke.detail}")
+        console.print(f"manifest: {vllm_outcome.manifest_path.name}")
+        if vllm_outcome.smoke is not None and vllm_outcome.smoke.detail:
+            console.print(f"smoke:   {vllm_outcome.smoke.detail}")
         return
 
     if resolved_target.name == "mlx-serve":
@@ -475,40 +472,38 @@ def export_cmd(
 
         declared_adapter_names = tuple(adapters_declared.keys()) if adapters_declared else None
         try:
-            mlx_serve_result = prepare_mlx_serve_export(
-                store=store,
-                spec=spec,
-                adapter_name=adapter,
-                adapter_path_override=adapter_path_override,
-                declared_adapter_names=declared_adapter_names,
+            mlx_outcome = run_mlx_serve_target_export(
+                MlxServeExportRequest(
+                    target=resolved_target,
+                    store=store,
+                    spec=spec,
+                    adapter_name=adapter,
+                    adapter_path_override=adapter_path_override,
+                    declared_adapter_names=declared_adapter_names,
+                    adapter_mix=mix_entries,
+                    no_smoke=no_smoke,
+                )
             )
         except ExportError as exc:
             console.print(f"[red]export:[/red] {exc}")
             raise typer.Exit(code=1) from exc
 
-        mlx_serve_smoke = None if no_smoke else resolved_target.smoke_test(mlx_serve_result)
-        if mlx_serve_smoke is not None and not mlx_serve_smoke.ok:
+        if mlx_outcome.smoke is not None and not mlx_outcome.smoke.ok:
             console.print(
-                f"[red]smoke:[/red] {mlx_serve_smoke.detail}\n"
+                f"[red]smoke:[/red] {mlx_outcome.smoke.detail}\n"
                 "  re-run with `--no-smoke` to skip the smoke test."
             )
             raise typer.Exit(code=1)
 
-        manifest_path = finalize_mlx_serve_export(
-            store=store,
-            spec=spec,
-            prepared=mlx_serve_result,
-            smoke_output_first_line=None if mlx_serve_smoke is None else mlx_serve_smoke.detail,
-            adapter_name=adapter,
-            adapter_mix=mix_entries,
-        )
+        mlx_serve_result = mlx_outcome.prepared
+        assert mlx_outcome.manifest_path is not None
         console.print(f"[green]exported:[/green] {mlx_serve_result.export_dir}")
         console.print("target:  mlx-serve")
         assert mlx_serve_result.launch_script_path is not None
         console.print(f"launch:  {mlx_serve_result.launch_script_path.name}")
-        console.print(f"manifest: {manifest_path.name}")
-        if mlx_serve_smoke is not None and mlx_serve_smoke.detail:
-            console.print(f"smoke:   {mlx_serve_smoke.detail}")
+        console.print(f"manifest: {mlx_outcome.manifest_path.name}")
+        if mlx_outcome.smoke is not None and mlx_outcome.smoke.detail:
+            console.print(f"smoke:   {mlx_outcome.smoke.detail}")
         return
 
     try:
