@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from dlm.base_models.schema import BaseModelSpec
+    from dlm.export.runner import ExportResult
     from dlm.export.targets.base import ExportTarget, SmokeResult, TargetResult
     from dlm.store.paths import StorePath
 
@@ -122,3 +123,55 @@ def run_mlx_serve_target_export(req: MlxServeExportRequest) -> ServerTargetExpor
         adapter_mix=req.adapter_mix,
     )
     return ServerTargetExportResult(prepared=prepared, smoke=smoke, manifest_path=manifest_path)
+
+
+@dataclass(frozen=True)
+class LlamaServerPostExportRequest:
+    """Inputs to `run_llama_server_post_export`.
+
+    `base_export` is the `ExportResult` returned by `run_export(target=
+    "llama-server")`; the dispatcher resolves the adapter dir, stages
+    the launch artifacts, and runs the smoke test on top of it.
+    """
+
+    target: ExportTarget
+    store: StorePath
+    spec: BaseModelSpec
+    base_export: ExportResult
+    adapter_name: str | None
+    adapter_path_override: Path | None
+    training_sequence_len: int | None
+    no_smoke: bool
+
+
+@dataclass(frozen=True)
+class LlamaServerPostExportResult:
+    """Outcome of `run_llama_server_post_export`. `smoke` is `None`
+    when `--no-smoke` was set."""
+
+    prepared: TargetResult
+    smoke: SmokeResult | None
+
+
+def run_llama_server_post_export(
+    req: LlamaServerPostExportRequest,
+) -> LlamaServerPostExportResult:
+    """Resolve adapter dir, stage llama-server artifacts, then smoke-test."""
+    adapter_dir = req.adapter_path_override
+    if adapter_dir is None:
+        if req.adapter_name is None:
+            adapter_dir = req.store.resolve_current_adapter()
+        else:
+            adapter_dir = req.store.resolve_current_adapter_for(req.adapter_name)
+    assert adapter_dir is not None
+
+    prepared = _targets.prepare_llama_server_export(
+        export_dir=req.base_export.export_dir,
+        manifest_path=req.base_export.manifest_path,
+        artifacts=req.base_export.artifacts,
+        adapter_dir=adapter_dir,
+        spec=req.spec,
+        training_sequence_len=req.training_sequence_len,
+    )
+    smoke = None if req.no_smoke else req.target.smoke_test(prepared)
+    return LlamaServerPostExportResult(prepared=prepared, smoke=smoke)

@@ -147,8 +147,10 @@ def export_cmd(
         run_export,
     )
     from dlm.export.entry import (
+        LlamaServerPostExportRequest,
         MlxServeExportRequest,
         VllmExportRequest,
+        run_llama_server_post_export,
         run_mlx_serve_target_export,
         run_vllm_target_export,
     )
@@ -160,7 +162,7 @@ def export_cmd(
         OllamaVersionError,
     )
     from dlm.export.quantize import run_checked
-    from dlm.export.targets import prepare_llama_server_export, resolve_target
+    from dlm.export.targets import resolve_target
     from dlm.store.paths import for_dlm
 
     console = Console(stderr=True)
@@ -568,21 +570,18 @@ def export_cmd(
         raise typer.Exit(code=1) from exc
 
     if resolved_target.name == "llama-server":
-        adapter_dir = adapter_path_override
-        if adapter_dir is None:
-            if adapter is None:
-                adapter_dir = store.resolve_current_adapter()
-            else:
-                adapter_dir = store.resolve_current_adapter_for(adapter)
-        assert adapter_dir is not None
         try:
-            llama_server_result = prepare_llama_server_export(
-                export_dir=result.export_dir,
-                manifest_path=result.manifest_path,
-                artifacts=result.artifacts,
-                adapter_dir=adapter_dir,
-                spec=spec,
-                training_sequence_len=parsed.frontmatter.training.sequence_len,
+            llama_server_outcome = run_llama_server_post_export(
+                LlamaServerPostExportRequest(
+                    target=resolved_target,
+                    store=store,
+                    spec=spec,
+                    base_export=result,
+                    adapter_name=adapter,
+                    adapter_path_override=adapter_path_override,
+                    training_sequence_len=parsed.frontmatter.training.sequence_len,
+                    no_smoke=no_smoke,
+                )
             )
         except VendoringError as exc:
             console.print(
@@ -594,7 +593,8 @@ def export_cmd(
         except ExportError as exc:
             console.print(f"[red]export:[/red] {exc}")
             raise typer.Exit(code=1) from exc
-        llama_server_smoke = None if no_smoke else resolved_target.smoke_test(llama_server_result)
+        llama_server_result = llama_server_outcome.prepared
+        llama_server_smoke = llama_server_outcome.smoke
         if llama_server_smoke is not None and not llama_server_smoke.ok:
             console.print(
                 f"[red]smoke:[/red] {llama_server_smoke.detail}\n"
