@@ -79,7 +79,10 @@ class TestStageSuccess:
         assert lp["rank"] == 8
         assert lp["scale"] == pytest.approx(16 / 8)
         assert lp["dropout"] == pytest.approx(0.05)
-        assert lp["keys"] == ["q_proj", "v_proj"]
+        # Bare PEFT target_modules get qualified with the in-block FQN
+        # so mlx-lm's `linear_to_lora_layers` can match them. See
+        # `_qualify_target_module` in dlm.inference.mlx_adapter.
+        assert lp["keys"] == ["self_attn.q_proj", "self_attn.v_proj"]
 
     def test_tensor_keys_match_mlx_layout(self, tmp_path: Path, stub_num_layers: None) -> None:
         src = tmp_path / "peft"

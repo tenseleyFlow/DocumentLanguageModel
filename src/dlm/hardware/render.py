@@ -25,7 +25,7 @@ def render_text(result: DoctorResult) -> str:
     lines.append(f"FlashAttention: {_bool(caps.has_flash_attention)}")
     lines.append(f"xFormers:       {_bool(caps.has_xformers)}")
     lines.append(f"Triton:         {_bool(caps.has_triton)}")
-    lines.append(f"MLX inference:  {_bool(caps.has_mlx)}")
+    lines.append(f"MLX inference:  {_mlx_line(caps)}")
     lines.append(f"accelerate:     {caps.accelerate_version or 'not installed'}")
     lines.append(f"CPU cores:      {caps.cpu_cores}")
     lines.append(f"RAM:            {caps.ram_gb:.1f} GB")
@@ -80,6 +80,20 @@ def _torch_suffix(caps: Capabilities) -> str:
 
 def _bool(v: bool) -> str:
     return "yes" if v else "no"
+
+
+def _mlx_line(caps: Capabilities) -> str:
+    """Doctor's MLX line — `yes` plus a one-line scope hint, or `no`.
+
+    MLX is prompt-only (training stays on PyTorch MPS). On Apple Silicon
+    it's the default backend for `dlm prompt`; off-platform it's not
+    installed. The scope hint is here so users don't expect MLX to
+    accelerate training and don't think `--backend mlx` is a separate
+    "mode" with its own training story.
+    """
+    if not caps.has_mlx:
+        return "no"
+    return "yes (prompt-only; default backend for `dlm prompt` on Apple Silicon)"
 
 
 def _telemetry_line(posture: dict[str, str]) -> str:

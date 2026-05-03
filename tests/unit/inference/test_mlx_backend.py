@@ -12,6 +12,7 @@ import pytest
 from dlm.base_models import BASE_MODELS
 from dlm.inference.backends.mlx_backend import (
     MlxBackend,
+    _apply_chat_template,
     _resolve_base_num_hidden_layers,
     stage_mlx_adapter_dir,
 )
@@ -94,6 +95,14 @@ class TestMlxBackend:
         adapter_dir = tmp_path / "adapter"
         adapter_dir.mkdir()
         staged_dir = tmp_path / "staged"
+        staged_dir.mkdir()
+        # Real `stage_mlx_adapter_dir` writes this file; the post-load
+        # assertion guard reads it to know which FQNs to verify, so the
+        # test stub must mirror the on-disk shape.
+        (staged_dir / "adapter_config.json").write_text(
+            '{"lora_parameters": {"keys": ["self_attn.q_proj"]}}',
+            encoding="utf-8",
+        )
 
         backend = MlxBackend(SimpleNamespace())
         monkeypatch.setattr(
@@ -103,6 +112,14 @@ class TestMlxBackend:
         monkeypatch.setattr(
             "dlm.inference.backends.mlx_backend.stage_mlx_adapter_dir",
             lambda peft_adapter_dir, dst_dir, *, base_hf_id: staged_dir,
+        )
+        # Stub the post-load assertion: real `mlx_lm.load` produces a
+        # model with LoRA-wrapped layers, but here we hand back a
+        # placeholder string. Bypassing the assertion keeps the rest
+        # of the stubbed happy-path test intact.
+        monkeypatch.setattr(
+            "dlm.inference.backends.mlx_backend.assert_mlx_adapter_applied",
+            lambda model, *, expected_keys: None,
         )
 
         fake_mlx = ModuleType("mlx_lm")
@@ -127,6 +144,46 @@ class TestMlxBackend:
         assert backend._workdir is None
         assert backend._model is None
         assert backend._tokenizer is None
+
+
+class TestApplyChatTemplate:
+    """Mirrors PyTorch backend's `format_chat_prompt` for the MLX path."""
+
+    def test_renders_via_tokenizer_when_template_present(self) -> None:
+        captured: dict[str, object] = {}
+
+        def _apply_chat_template_method(
+            messages: list[dict[str, str]],
+            *,
+            tokenize: bool,
+            add_generation_prompt: bool,
+        ) -> str:
+            captured["messages"] = messages
+            captured["tokenize"] = tokenize
+            captured["add_generation_prompt"] = add_generation_prompt
+            return "<rendered>hello"
+
+        tokenizer = SimpleNamespace(
+            chat_template="{{messages}}",
+            apply_chat_template=_apply_chat_template_method,
+        )
+        out = _apply_chat_template(tokenizer, "hello")
+        assert out == "<rendered>hello"
+        assert captured["messages"] == [{"role": "user", "content": "hello"}]
+        assert captured["tokenize"] is False
+        assert captured["add_generation_prompt"] is True
+
+    def test_passes_through_when_no_chat_template(self) -> None:
+        tokenizer = SimpleNamespace(chat_template=None)
+        assert _apply_chat_template(tokenizer, "raw prompt") == "raw prompt"
+
+    def test_passes_through_when_render_returns_non_string(self) -> None:
+        """Defensive: HF wrappers occasionally return token lists; fall back to raw."""
+        tokenizer = SimpleNamespace(
+            chat_template="{{messages}}",
+            apply_chat_template=lambda *_a, **_k: [1, 2, 3],
+        )
+        assert _apply_chat_template(tokenizer, "raw prompt") == "raw prompt"
 
 
 class TestStageMlxAdapterDir:

@@ -853,6 +853,13 @@ def train_cmd(
             "Acceptance will be persisted in the store manifest."
         )
         raise typer.Exit(code=1) from exc
+    # `getattr` so test fixtures stubbing `spec` as a `SimpleNamespace`
+    # without this field still pass; real registry entries always have it.
+    capability_warning = getattr(spec, "capability_warning", None)
+    if capability_warning:
+        console.print(
+            f"[yellow]warning:[/yellow] base [bold]{spec.key}[/bold]: {capability_warning}"
+        )
     # Detect the DDP world_size set by `accelerate launch`
     # (WORLD_SIZE env var) and thread it into the doctor so the plan's
     # effective_batch_size reflects the rank count. Single-process
@@ -3575,6 +3582,20 @@ def cache_show_cmd(
     cache = TokenizedCache.open(store.tokenized_cache_dir)
     last = _queries.latest_tokenization(store.root)
 
+    # The tokenized cache only fires for runs whose frontmatter declares
+    # `training.sources` (directive-sourced rows are where the tokenize
+    # cost dominates; in-body sections go through TRL's tokenizer).
+    # Surface this so an empty cache on an in-body-only doc doesn't
+    # look like a bug.
+    has_sources = parsed.frontmatter.training.sources is not None
+    cache_enabled = parsed.frontmatter.training.cache.enabled
+    if not has_sources:
+        cache_status: str | None = "not used (doc has no `training.sources` directive)"
+    elif not cache_enabled:
+        cache_status = "disabled (training.cache.enabled = false)"
+    else:
+        cache_status = None
+
     payload: dict[str, object] = {
         "dlm_id": parsed.frontmatter.dlm_id,
         "cache_path": str(store.tokenized_cache_dir),
@@ -3582,6 +3603,7 @@ def cache_show_cmd(
         "bytes": cache.total_bytes,
         "last_run_hit_rate": last.hit_rate if last else None,
         "last_run_id": last.run_id if last else None,
+        "cache_status": cache_status,
     }
     if json_out:
         _sys.stdout.write(_json.dumps(payload, indent=2) + "\n")
@@ -3589,6 +3611,8 @@ def cache_show_cmd(
 
     out_console.print(f"[bold]Cache for {parsed.frontmatter.dlm_id}[/bold]")
     out_console.print(f"  path:              {store.tokenized_cache_dir}")
+    if cache_status is not None:
+        out_console.print(f"  status:            [yellow]{cache_status}[/yellow]")
     out_console.print(f"  entries:           {cache.entry_count}")
     out_console.print(f"  size:              {_human_size(cache.total_bytes)}")
     if last is not None:
@@ -3596,7 +3620,7 @@ def cache_show_cmd(
             f"  last-run hit rate: {last.hit_rate:.1%} "
             f"({last.cache_hits}/{last.cache_hits + last.cache_misses})"
         )
-    else:
+    elif cache_status is None:
         out_console.print("  last-run hit rate: [dim]no tokenization runs yet[/dim]")
 
 

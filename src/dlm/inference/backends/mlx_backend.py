@@ -35,7 +35,10 @@ from typing import TYPE_CHECKING, Any
 
 from dlm.inference.backends.base import InferenceBackend
 from dlm.inference.errors import AdapterNotFoundError
-from dlm.inference.mlx_adapter import MlxConversionError
+from dlm.inference.mlx_adapter import (
+    MlxConversionError,
+    assert_mlx_adapter_applied,
+)
 
 if TYPE_CHECKING:
     from dlm.base_models import BaseModelSpec
@@ -192,6 +195,14 @@ class MlxBackend(InferenceBackend):
             adapter_path=str(staged),
         )
 
+        # mlx-lm's `load_adapters` runs `linear_to_lora_layers` +
+        # `model.load_weights(strict=False)`, both of which fail
+        # silently on key/shape mismatches. Verify at least one LoRA
+        # parameter actually attached — else `MlxConversionError` so
+        # the user sees the failure instead of base-model output.
+        staged_cfg = json.loads((staged / _ADAPTER_CONFIG_FILENAME).read_text(encoding="utf-8"))
+        assert_mlx_adapter_applied(self._model, expected_keys=staged_cfg["lora_parameters"]["keys"])
+
     def generate(self, prompt: str, **gen_kwargs: Any) -> str:  # pragma: no cover - heavy path
         if self._model is None or self._tokenizer is None:
             raise RuntimeError("MlxBackend.generate called before load()")
@@ -206,6 +217,13 @@ class MlxBackend(InferenceBackend):
         top_p = float(gen_kwargs.get("top_p") or 0.0)
         top_k = int(gen_kwargs.get("top_k") or 0)
 
+        # Apply the tokenizer's chat template so INSTRUCTION-trained
+        # adapters see the same input shape they trained on. The PyTorch
+        # backend renders via `format_chat_prompt`; without the same
+        # render here, MLX feeds raw user text to the model and the
+        # adapter silently fails to fire on chat-shaped queries.
+        rendered = _apply_chat_template(self._tokenizer, prompt)
+
         # mlx-lm's `generate` / `generate_step` no longer accept `temp`
         # directly — sampling params are passed via a sampler produced
         # by `make_sampler(temp=..., top_p=..., top_k=...)`. Unknown
@@ -215,7 +233,7 @@ class MlxBackend(InferenceBackend):
         out = mlx_generate(
             self._model,
             self._tokenizer,
-            prompt=prompt,
+            prompt=rendered,
             max_tokens=max_new_tokens,
             sampler=sampler,
             verbose=False,
@@ -228,3 +246,22 @@ class MlxBackend(InferenceBackend):
         if self._workdir is not None:
             self._workdir.cleanup()
             self._workdir = None
+
+
+def _apply_chat_template(tokenizer: Any, prompt: str) -> str:
+    """Render `prompt` through the tokenizer's chat template, or pass through.
+
+    Mirrors `dlm.inference.generate.format_chat_prompt` for the MLX path.
+    mlx-lm's `TokenizerWrapper` proxies `apply_chat_template` to the
+    underlying HF tokenizer; bases without a chat template (raw causal
+    LMs) get the prompt unchanged.
+    """
+    if getattr(tokenizer, "chat_template", None):
+        rendered = tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        if isinstance(rendered, str):
+            return rendered
+    return prompt

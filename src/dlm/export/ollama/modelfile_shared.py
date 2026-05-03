@@ -129,8 +129,14 @@ def build_param_lines(
     if num_ctx is not None:
         lines.append(f"PARAMETER num_ctx {num_ctx}")
     if draft_model is not None:
-        lines.append(f"# Speculative decoding: `ollama pull {draft_model}` first.")
-        lines.append(f"PARAMETER draft_model {draft_model}")
+        # `draft_model` is not a valid Modelfile PARAMETER directive
+        # (Ollama rejects `ollama create` with "unknown parameter
+        # 'draft_model'"). It's a runtime option exposed via the
+        # `OLLAMA_DRAFT_MODEL` env var or the API's `options.draft_model`
+        # field. Document the suggested pairing as a comment so users
+        # can wire it up without forcing-fail their `ollama create`.
+        lines.append(f"# Speculative-decoding draft: `ollama pull {draft_model}`")
+        lines.append(f"# then run with `OLLAMA_DRAFT_MODEL={draft_model} ollama run <this-model>`")
     return lines
 
 
