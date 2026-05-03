@@ -82,6 +82,33 @@ class TestShape:
         assert 'TEMPLATE """' in text
         assert "<|im_start|>" in text  # chatml dialect
 
+    def test_no_template_when_include_template_false(self, tmp_path: Path) -> None:
+        """Audit 13 M13.1: ``--no-template`` must actually suppress the
+        TEMPLATE block in the emitted Modelfile, not just the preflight."""
+        ctx = _ctx(tmp_path)
+        # Bypass the frozen-dataclass replace dance: rebuild with a plan
+        # that has include_template=False.
+        plan = ExportPlan(quant="Q4_K_M", merged=False, include_template=False)
+        ctx_no_tmpl = ModelfileContext(
+            spec=ctx.spec,
+            plan=plan,
+            adapter_dir=ctx.adapter_dir,
+            base_gguf_name=ctx.base_gguf_name,
+            adapter_gguf_name=ctx.adapter_gguf_name,
+            dlm_id=ctx.dlm_id,
+            adapter_version=ctx.adapter_version,
+            system_prompt=ctx.system_prompt,
+            training_sequence_len=ctx.training_sequence_len,
+            override_temperature=ctx.override_temperature,
+            override_top_p=ctx.override_top_p,
+            draft_model_ollama_name=ctx.draft_model_ollama_name,
+        )
+        text = render_modelfile(ctx_no_tmpl)
+        assert "TEMPLATE" not in text
+        # Other directives still emit normally.
+        assert "FROM ./base.Q4_K_M.gguf" in text
+        assert "PARAMETER temperature" in text
+
     def test_params_emitted(self, tmp_path: Path) -> None:
         text = render_modelfile(_ctx(tmp_path))
         assert "PARAMETER temperature" in text

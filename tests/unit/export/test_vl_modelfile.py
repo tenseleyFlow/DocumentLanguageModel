@@ -48,10 +48,10 @@ def _fake_vl_spec() -> Any:
     )
 
 
-def _fake_plan() -> Any:
+def _fake_plan(*, include_template: bool = True) -> Any:
     from types import SimpleNamespace
 
-    return SimpleNamespace(quant="Q4_K_M", merged=False)
+    return SimpleNamespace(quant="Q4_K_M", merged=False, include_template=include_template)
 
 
 @pytest.fixture
@@ -165,6 +165,21 @@ class TestVlModelfileRender:
         """Every text file; confirms no trailing-junk regressions."""
         out = render_vl_modelfile(vl_ctx)
         assert out.endswith("\n")
+
+    def test_no_template_when_include_template_false(self, adapter_dir: Path) -> None:
+        """`--no-template` skips TEMPLATE emission on the VL path too."""
+        ctx = VlModelfileContext(
+            spec=_fake_vl_spec(),
+            plan=_fake_plan(include_template=False),
+            adapter_dir=adapter_dir,
+            base_gguf_name="base.Q4_K_M.gguf",
+            adapter_gguf_name="adapter.Q4_K_M.gguf",
+            dlm_id="01JZZZZZZZZZZZZZZZZZZZZZZZ",
+            adapter_version=1,
+        )
+        out = render_vl_modelfile(ctx)
+        assert "TEMPLATE" not in out
+        assert "FROM ./base.Q4_K_M.gguf" in out
 
 
 class TestStopsFallback:
