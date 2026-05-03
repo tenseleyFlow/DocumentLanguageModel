@@ -1,12 +1,12 @@
 """Parse `### Q` / `### A` pairs out of an `::instruction::` section body.
 
-Grammar (strict):
+Grammar:
 
     ### Q
-    <question body, one or more lines, first blank line ends it>
+    <question body — one or more lines, terminated by `### A`>
     ### A
-    <answer body, same rule>
-    (blank line)
+    <answer body — one or more lines, may include blank lines and fenced
+     code blocks; terminated by the next `### Q` or end-of-section>
     ### Q
     ...
 
@@ -21,8 +21,10 @@ Rules:
   where the violation was detected.
 - Empty question or empty answer bodies are errors — training on an
   empty turn is almost always a mistake.
-- Non-header, non-blank lines outside a field body are errors; prose
-  that isn't part of a turn belongs in a default PROSE section.
+- **Body bodies preserve blank lines.** Multi-paragraph answers and
+  fenced code blocks (```fortran ... ```) with internal blank lines are
+  legal. Bodies terminate only at the next `### Q` / `### A` header or at
+  end-of-section. Leading + trailing blank lines on a body are stripped.
 """
 
 from __future__ import annotations
@@ -112,18 +114,18 @@ def _parse_pair(it: _PeekableLines, *, section_id: str) -> QAPair:
 
 
 def _read_field_body(it: _PeekableLines) -> str:
-    """Read until a blank line or the start of another header.
+    """Read until the next `### Q` / `### A` header or end-of-section.
 
-    The terminating blank line is consumed so the outer loop sees the
-    next header directly; headers are left for the outer loop.
+    Blank lines inside the body are preserved verbatim — answers can be
+    multi-paragraph, and fenced code blocks routinely contain blank
+    lines (e.g., separating an import block from the call site). Leading
+    and trailing blank lines on the captured body are stripped via
+    `str.strip()` so callers receive a tidy multi-line string.
     """
     buf: list[str] = []
     while not it.eof():
         line = it.peek_line()
         assert line is not None
-        if line.strip() == "":
-            it.advance()
-            break
         if _is_header(line, _Q_HEADER) or _is_header(line, _A_HEADER):
             break
         buf.append(line)
