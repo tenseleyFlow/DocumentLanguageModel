@@ -108,6 +108,33 @@ def test_max_bytes_per_file_skips_oversize(tmp_path: Path) -> None:
     assert prov.skipped_over_size == 1
 
 
+def test_per_file_skip_logs_are_debug_not_info(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Audit 13 M13.5: per-file skip messages were emitted at INFO,
+    spamming 243 lines to stderr on every ``dlm show`` of a 2k-file
+    corpus. They're now DEBUG so the default-level log stream stays
+    clean while ``--verbose``/``LOG_LEVEL=DEBUG`` still surfaces them
+    for diagnosis. The summary count remains in provenance."""
+    import logging
+
+    src = tmp_path / "src"
+    src.mkdir()
+    for n in range(5):
+        (src / f"big{n}.py").write_text("x" * 100)
+    body = "  sources:\n    - path: src\n      include: ['**/*.py']\n      max_bytes_per_file: 10\n"
+    parsed, _ = _make_parsed(body, tmp_path)
+
+    with caplog.at_level(logging.INFO, logger="dlm.directives.expand"):
+        result = expand_sources(parsed, base_path=tmp_path)  # type: ignore[arg-type]
+
+    assert result.provenance[0].skipped_over_size == 5
+    info_records = [r for r in caplog.records if r.levelno >= logging.INFO]
+    assert info_records == [], (
+        f"per-file skip should not emit INFO records, got: {[r.message for r in info_records]}"
+    )
+
+
 def test_binary_file_skipped(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
