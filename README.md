@@ -234,7 +234,7 @@ dlm push mydoc.dlm --to hf:org/name
 ```sh
 dlm doctor
 dlm show mydoc.dlm --json
-dlm metrics mydoc.dlm
+dlm metrics show mydoc.dlm
 ```
 
 ## Supported Platforms

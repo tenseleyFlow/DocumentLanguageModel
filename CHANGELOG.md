@@ -6,6 +6,16 @@ the project targets [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`dlm metrics` is now a subcommand group with an explicit `show`.**
+  The previous shape — a callback that took `<path>` plus a `watch`
+  subcommand — caused click to error with "Missing argument 'PATH'"
+  whenever an option followed the positional (`dlm metrics PATH
+  --run-id 1`). The fix makes the call explicit:
+  `dlm metrics show PATH [options]`. `dlm metrics watch PATH` is
+  unchanged. Update scripts that called the old form.
+
 ### Fixed
 
 - **`gguf_arch` preflight probe was silently false-negative on every

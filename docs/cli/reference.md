@@ -148,8 +148,8 @@ cancels generation or input. Session history persists at
 Query the per-store SQLite metrics DB (Sprint 26).
 
 ```
-dlm metrics <path> [--json|--csv] [--run-id N] [--phase PHASE] [--since WINDOW] [--limit N]
-dlm metrics <path> watch [--poll-seconds N]
+dlm metrics show <path> [--json|--csv] [--run-id N] [--phase PHASE] [--since WINDOW] [--limit N]
+dlm metrics watch <path> [--poll-seconds N]
 ```
 
 | Option | Default | Notes |
@@ -161,7 +161,7 @@ dlm metrics <path> watch [--poll-seconds N]
 | `--since` | None | Time window (`24h`, `7d`, `30m`, `10s`). |
 | `--limit N` | 20 | Cap the number of runs returned. |
 
-`dlm metrics <path> watch` polls the DB and tails new step/eval rows as
+`dlm metrics watch <path>` polls the DB and tails new step/eval rows as
 they arrive. See the [metrics cookbook](../cookbook/metrics.md) for
 the full flow + optional TensorBoard / W&B sinks (`uv sync --extra
 observability`).

@@ -66,9 +66,15 @@ def test_reference_doc_covers_audio_and_verify_surface() -> None:
 
 
 def test_reference_doc_uses_actual_metrics_watch_order() -> None:
+    """M13.3 restructured ``metrics`` as a subcommand group: ``show``
+    and ``watch`` are siblings now. The reference doc should show
+    ``watch`` as a subcommand of ``metrics``, not as a positional after
+    ``<path>``."""
     section = _section("metrics")
-    assert "dlm metrics <path> watch [--poll-seconds N]" in section
-    assert "dlm metrics watch <path>" not in section
+    assert "dlm metrics watch <path>" in section
+    assert "dlm metrics <path> watch" not in section
+    # ``show`` is the explicit drill-down sibling of ``watch``.
+    assert "dlm metrics show <path>" in section
 
 
 def test_reference_doc_covers_export_target_surface() -> None:
