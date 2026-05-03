@@ -70,6 +70,16 @@ class TestSampleRows:
         assert all("messages" in r for r in rows)
         assert rows[0]["messages"][0]["content"] == "q1"
 
+    def test_instruction_probe_marker_normalized(self, tmp_path: Path) -> None:
+        """Replay snapshots with `### Q !probe` headers parse like plain Q/A."""
+        s = _store(tmp_path)
+        body = "### Q !probe\nq1\n### A\na1"
+        s.append(_snap("a" * 16, "instruction", body, added=datetime(2026, 1, 1)))
+        rows = s.sample_rows(k=10, now=datetime(2026, 4, 1), rng=random.Random(0))
+        assert len(rows) == 1
+        assert rows[0]["messages"][0]["content"] == "q1"
+        assert rows[0]["messages"][1]["content"] == "a1"
+
     def test_preference_expands_to_pref_rows(self, tmp_path: Path) -> None:
         s = _store(tmp_path)
         body = "### Prompt\np\n### Chosen\nc\n### Rejected\nr"
