@@ -135,7 +135,7 @@ def _patch_text_mining(
     )
     if judge_names is None:
         monkeypatch.setattr(
-            "dlm.preference.build_judge",
+            "dlm.preference.judge.build_judge",
             lambda *args, **kwargs: _FakeJudge(),
         )
         return
@@ -143,7 +143,7 @@ def _patch_text_mining(
     def _build_judge(ref: str, **_kwargs: object) -> _NamedFakeJudge:
         return _NamedFakeJudge(judge_names[ref])
 
-    monkeypatch.setattr("dlm.preference.build_judge", _build_judge)
+    monkeypatch.setattr("dlm.preference.judge.build_judge", _build_judge)
 
 
 class TestPreferenceCmd:

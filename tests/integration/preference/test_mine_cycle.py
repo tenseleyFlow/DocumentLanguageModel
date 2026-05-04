@@ -143,7 +143,7 @@ def _patch_mining(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *args, **kwargs: _FakeMiningBackend(_MINE_RESPONSES),
     )
     monkeypatch.setattr(
-        "dlm.preference.build_judge",
+        "dlm.preference.judge.build_judge",
         lambda *args, **kwargs: _TerseJudge(),
     )
 

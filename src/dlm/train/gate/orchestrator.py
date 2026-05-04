@@ -66,6 +66,7 @@ def probes_from_sections(parsed: ParsedDlm) -> list[GateProbe]:
     from dlm.data.errors import InstructionParseError, PreferenceParseError
     from dlm.data.instruction_parser import parse_instruction_body
     from dlm.data.preference_parser import parse_preference_body
+    from dlm.data.sections_to_rows import normalize_probe_markers
     from dlm.doc.sections import SectionType
 
     probes: list[GateProbe] = []
@@ -75,7 +76,10 @@ def probes_from_sections(parsed: ParsedDlm) -> list[GateProbe]:
             continue
         try:
             if section.type is SectionType.INSTRUCTION:
-                pairs = parse_instruction_body(section.content, section_id=section.section_id)
+                pairs = parse_instruction_body(
+                    normalize_probe_markers(section.content),
+                    section_id=section.section_id,
+                )
                 if pairs:
                     probes.append(GateProbe(tag, pairs[0].question))
             elif section.type is SectionType.PREFERENCE:

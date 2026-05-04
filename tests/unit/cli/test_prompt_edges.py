@@ -245,7 +245,7 @@ class TestPromptEdgeBranches:
             spec=_spec(key="vl-demo", modality="vision-language"),
         )
         monkeypatch.setattr(
-            "dlm.cli.commands._dispatch_vl_prompt",
+            "dlm.cli.commands.prompt._dispatch_vl_prompt",
             lambda **kwargs: captured.update(kwargs),
         )
 
@@ -276,7 +276,7 @@ class TestPromptEdgeBranches:
             spec=_spec(key="audio-demo", modality="audio-language"),
         )
         monkeypatch.setattr(
-            "dlm.cli.commands._dispatch_audio_prompt",
+            "dlm.cli.commands.prompt._dispatch_audio_prompt",
             lambda **kwargs: captured.update(kwargs),
         )
 

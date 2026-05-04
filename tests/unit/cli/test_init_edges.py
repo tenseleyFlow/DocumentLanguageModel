@@ -107,7 +107,10 @@ class TestInitTemplateEdges:
 
         monkeypatch.setattr(base_models, "resolve", _fake_resolve)
         monkeypatch.setattr(base_models, "is_gated", lambda spec: False)
-        monkeypatch.setattr(commands, "_prompt_accept_license", lambda console, base, url: True)
+        monkeypatch.setattr(
+            "dlm.cli.commands.init._prompt_accept_license",
+            lambda console, base, url: True,
+        )
 
         result = runner.invoke(
             app,
@@ -145,7 +148,7 @@ class TestInitTemplateEdges:
         ) -> object:
             raise TemplateError("template exploded")
 
-        monkeypatch.setattr(templates, "apply_template", _fake_apply_template)
+        monkeypatch.setattr("dlm.templates.init.apply_template", _fake_apply_template)
 
         result = runner.invoke(
             app,

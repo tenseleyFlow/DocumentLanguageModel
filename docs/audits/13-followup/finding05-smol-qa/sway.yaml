@@ -1,0 +1,90 @@
+# Finding 05 — Q/A-shape recipe on smol (does the recipe rescue the small base?)
+#
+# Same INSTRUCTION-only corpus as finding 04, but base flipped to
+# SmolLM2-135M. Tests whether the recipe-shape fix that worked on
+# qwen-coder-1.5b also rescues a 135M base, or whether the architectural
+# floor diagnosed in finding 02 still bites independent of training-data
+# shape.
+#
+# Run from the sway repo's venv after training completes:
+#   uv run --no-sync sway run \
+#     docs/audits/13-followup/finding05-smol-qa/sway.yaml \
+#     --json /tmp/sway-finding05.json --markdown /tmp/sway-finding05.md
+
+version: 1
+
+dlm_source: /Users/mfwolffe/GithubOrgs/tenseleyFlow/DocumentLanguageModel/docs/audits/13-followup/finding05-smol-qa/the-doc.dlm
+
+models:
+  base:
+    kind: hf
+    base: HuggingFaceTB/SmolLM2-135M-Instruct
+  ft:
+    kind: hf
+    base: HuggingFaceTB/SmolLM2-135M-Instruct
+    adapter: ~/.dlm/store/01KQGBY1QWPFBKE0E8487PRB3E/adapter/versions/v0001
+
+defaults:
+  seed: 0
+  differential: true
+  coverage_threshold: 0.6
+  score_weights:
+    adherence: 0.30
+    attribution: 0.35
+    calibration: 0.20
+    ablation: 0.15
+
+suite:
+  # ── Calibration baseline ─────────────────────────────────────────
+  - name: null_baseline
+    kind: null_adapter
+    runs: 3
+
+  # ── Adherence ────────────────────────────────────────────────────
+  # Q/A-shape prompts so the LoRA's training-format trigger fires.
+  - name: dk_fortran_qa_shaped
+    kind: delta_kl
+    prompts:
+      - "What module in fortran-lang/stdlib provides sorting routines?"
+      - "Show the signature of stdlib's sorting routine in Fortran."
+      - "How do you read a CSV file with stdlib?"
+      - "What is the intent(in) attribute used for?"
+      - "How do you declare an allocatable real(real64) array?"
+      - "What does do concurrent do in Fortran?"
+    assert_z_gte: 1.0
+    assert_mean_gte: 0.02
+
+  # ── Attribution (bridge-aware) ───────────────────────────────────
+  - name: sis_fortran
+    kind: section_internalization
+    assert_z_gte: 1.0
+    assert_passing_section_frac: 0.4
+
+  - name: para_fortran
+    kind: paraphrase_invariance
+    assert_z_gte: 1.0
+
+  # ── Calibration ──────────────────────────────────────────────────
+  - name: leak_fortran
+    kind: leakage
+    assert_z_gte: 1.0
+
+  # The single most load-bearing probe for "did we break the base?"
+  # On smol w/ raw-source training (finding 02), 26% items regressed.
+  # Hypothesis: Q/A-shape recipe regresses fewer items because LoRA
+  # only activates on Q/A-shaped prompts, leaving English chat alone.
+  - name: cal_general
+    kind: calibration_drift
+    items_limit: 50
+    assert_z_gte: 1.0
+
+  # ── Ablation (the sway signature) ────────────────────────────────
+  - name: abl_fortran
+    kind: adapter_ablation
+    lambdas: [0.0, 0.25, 0.5, 0.75, 1.0, 1.25]
+    prompts:
+      - "What module in fortran-lang/stdlib provides sorting routines?"
+      - "Show the signature of stdlib's sorting routine in Fortran."
+      - "How do you declare an allocatable real(real64) array?"
+    assert_linearity_gte: 0.85
+    assert_z_gte: 1.0

@@ -183,10 +183,10 @@ def _snapshot_to_rows(snap: SectionSnapshot) -> list[Row]:
 
     if snap.section_type == "instruction":
         from dlm.data.instruction_parser import parse_instruction_body
-        from dlm.data.sections_to_rows import _normalize_probe_markers
+        from dlm.data.sections_to_rows import normalize_probe_markers
 
         pairs = parse_instruction_body(
-            _normalize_probe_markers(snap.content), section_id=snap.section_id
+            normalize_probe_markers(snap.content), section_id=snap.section_id
         )
         return [
             {

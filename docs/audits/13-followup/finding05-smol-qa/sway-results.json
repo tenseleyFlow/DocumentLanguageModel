@@ -1,0 +1,824 @@
+{
+  "adapter_id": "/Users/mfwolffe/.dlm/store/01KQGBY1QWPFBKE0E8487PRB3E/adapter/versions/v0001",
+  "backend_stats": {
+    "avg_batch_size": 4.666666666666667,
+    "batched_prompts": 28,
+    "batches_sent": 6,
+    "cache_hits": 180,
+    "cache_misses": 378,
+    "forward_passes": 378,
+    "hit_rate": 0.3225806451612903,
+    "max_batch_size": 6,
+    "scoring_wall_s": 14.60764731594827
+  },
+  "base_model_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "determinism": {
+    "class": "best_effort",
+    "notes": [
+      "MPS: bit-identical across runs is best-effort"
+    ],
+    "seed": 0
+  },
+  "finished_at": "2026-04-30T23:44:54.359560+00:00",
+  "null_stats": {
+    "calibration_drift": {
+      "degenerate": 1.0,
+      "mean": 0.0,
+      "n": 3.0,
+      "std": 1e-06
+    },
+    "delta_kl": {
+      "degenerate": 0.0,
+      "mean": 0.173796021454004,
+      "n": 3.0,
+      "std": 0.1939931492701627
+    },
+    "leakage": {
+      "degenerate": 0.0,
+      "mean": 0.17610427655357053,
+      "n": 3.0,
+      "std": 0.07092708538349159
+    },
+    "paraphrase_invariance": {
+      "degenerate": 0.0,
+      "mean": -0.012714107831319174,
+      "n": 3.0,
+      "std": 0.013087756562633434
+    },
+    "section_internalization": {
+      "degenerate": 0.0,
+      "mean": -2.509727251123853e-20,
+      "n": 3.0,
+      "std": 1e-06
+    }
+  },
+  "probes": [
+    {
+      "base_value": null,
+      "ci_95": null,
+      "duration_s": 48.716706999985036,
+      "evidence": {
+        "calibrated_kinds": [
+          "delta_kl",
+          "section_internalization",
+          "paraphrase_invariance",
+          "leakage",
+          "calibration_drift"
+        ],
+        "from_cache": false,
+        "init_scale": 0.02,
+        "null_stats": {
+          "calibration_drift": {
+            "degenerate": 1.0,
+            "mean": 0.0,
+            "n": 3.0,
+            "std": 1e-06
+          },
+          "delta_kl": {
+            "degenerate": 0.0,
+            "mean": 0.173796021454004,
+            "n": 3.0,
+            "std": 0.1939931492701627
+          },
+          "leakage": {
+            "degenerate": 0.0,
+            "mean": 0.17610427655357053,
+            "n": 3.0,
+            "std": 0.07092708538349159
+          },
+          "paraphrase_invariance": {
+            "degenerate": 0.0,
+            "mean": -0.012714107831319174,
+            "n": 3.0,
+            "std": 0.013087756562633434
+          },
+          "section_internalization": {
+            "degenerate": 0.0,
+            "mean": -2.509727251123853e-20,
+            "n": 3.0,
+            "std": 1e-06
+          }
+        },
+        "null_stats_by_rank": {
+          "rank_1.00": {
+            "calibration_drift": {
+              "degenerate": 1.0,
+              "mean": 0.0,
+              "n": 3.0,
+              "std": 1e-06
+            },
+            "delta_kl": {
+              "degenerate": 0.0,
+              "mean": 0.173796021454004,
+              "n": 3.0,
+              "std": 0.1939931492701627
+            },
+            "leakage": {
+              "degenerate": 0.0,
+              "mean": 0.17610427655357053,
+              "n": 3.0,
+              "std": 0.07092708538349159
+            },
+            "paraphrase_invariance": {
+              "degenerate": 0.0,
+              "mean": -0.012714107831319174,
+              "n": 3.0,
+              "std": 0.013087756562633434
+            },
+            "section_internalization": {
+              "degenerate": 0.0,
+              "mean": -2.509727251123853e-20,
+              "n": 3.0,
+              "std": 1e-06
+            }
+          }
+        },
+        "per_kind_raw_samples": {
+          "calibration_drift": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "delta_kl": [
+            0.44814371786693713,
+            0.03648415034633113,
+            0.036760196148743804
+          ],
+          "leakage": [
+            0.11363636363636363,
+            0.27530364372469635,
+            0.13937282229965156
+          ],
+          "paraphrase_invariance": [
+            -0.006305098533630371,
+            -0.0008810758590698242,
+            -0.030956149101257324
+          ],
+          "section_internalization": [
+            -2.1081708909440364e-20,
+            -1.2046690805394493e-20,
+            -4.216341781888073e-20
+          ]
+        },
+        "rank_multipliers": [
+          1.0
+        ],
+        "runs": 3,
+        "seed_base": 1000,
+        "skipped_kinds": [
+          {
+            "kind": "adapter_ablation",
+            "reason": "probe opted out (calibrate_spec returned None)"
+          }
+        ],
+        "weight": 1.0
+      },
+      "ft_value": null,
+      "kind": "null_adapter",
+      "message": "null calibration: 5 kinds calibrated over 3 seeds (1 opted out)",
+      "name": "null_baseline",
+      "raw": null,
+      "score": 1.0,
+      "verdict": "pass",
+      "z_score": null
+    },
+    {
+      "base_value": null,
+      "ci_95": [
+        0.09650551619626635,
+        0.35946236070362286
+      ],
+      "duration_s": 0.16365929201128893,
+      "evidence": {
+        "divergence_kind": "js",
+        "max": 0.5209904680483264,
+        "num_prompts": 6,
+        "per_prompt": [
+          0.035233903048109916,
+          0.16547128814672135,
+          0.5209904680483264,
+          0.037578388980321654,
+          0.28977815672822294,
+          0.2656513511901071
+        ],
+        "raw_ci_95": [
+          0.09650551619626635,
+          0.35946236070362286
+        ],
+        "weight": 1.0,
+        "z_by_rank": {
+          "rank_1.00": 0.23362287829993433
+        }
+      },
+      "ft_value": null,
+      "kind": "delta_kl",
+      "message": "mean js=0.2191, z=+0.23\u03c3 vs null",
+      "name": "dk_fortran_qa_shaped",
+      "raw": 0.2191172593569682,
+      "score": 0.5194587403778158,
+      "verdict": "fail",
+      "z_score": 0.23362287829993433
+    },
+    {
+      "base_value": null,
+      "ci_95": [
+        -0.04250307630931393,
+        0.04526532776670737
+      ],
+      "duration_s": 1.3934379169950262,
+      "evidence": {
+        "num_sections": 36,
+        "passing_frac": 0.4166666666666667,
+        "per_section": [
+          {
+            "base_nll": 5.164129638671875,
+            "effective_sis": 0.18507939311104665,
+            "ft_nll": 2.3199871826171874,
+            "kind": "prose",
+            "leak_lift": 0.36567023074738,
+            "own_lift": 0.5507496238584266,
+            "passed": true,
+            "section_id": "2ae73af79acd2aa3",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.811819657035496,
+            "effective_sis": -0.3556689245978278,
+            "ft_nll": 3.7164399520210596,
+            "kind": "instruction",
+            "leak_lift": 0.3806910173504043,
+            "own_lift": 0.02502209275257649,
+            "passed": false,
+            "section_id": "2452de7d2dd5c3b4",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.136927462172234,
+            "effective_sis": 0.2418172898270216,
+            "ft_nll": 1.6303156710219109,
+            "kind": "instruction",
+            "leak_lift": 0.36409417806082517,
+            "own_lift": 0.6059114678878468,
+            "passed": true,
+            "section_id": "21bb9fbcaaa7a060",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.098089139755458,
+            "effective_sis": 0.050937016426319925,
+            "ft_nll": 1.7958587228435359,
+            "kind": "instruction",
+            "leak_lift": 0.36939640787751127,
+            "own_lift": 0.4203334243038312,
+            "passed": true,
+            "section_id": "f76ff274207e54ba",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.3260064697265626,
+            "effective_sis": -0.07481219193212046,
+            "ft_nll": 2.334599609375,
+            "kind": "instruction",
+            "leak_lift": 0.37288944144302355,
+            "own_lift": 0.2980772495109031,
+            "passed": false,
+            "section_id": "1fcb5d4cbb821529",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.056639161828446,
+            "effective_sis": -0.022327395419529494,
+            "ft_nll": 1.9895537912029109,
+            "kind": "instruction",
+            "leak_lift": 0.3714315304287849,
+            "own_lift": 0.3491041350092554,
+            "passed": false,
+            "section_id": "26055358b11a4b71",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.293870785361842,
+            "effective_sis": 0.16398709383659743,
+            "ft_nll": 2.017074906198602,
+            "kind": "instruction",
+            "leak_lift": 0.366256127949448,
+            "own_lift": 0.5302432217860454,
+            "passed": true,
+            "section_id": "5c2e655d5acab066",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.731144400203929,
+            "effective_sis": 0.12062639040683182,
+            "ft_nll": 1.9100213892319624,
+            "kind": "instruction",
+            "leak_lift": 0.3674605919336082,
+            "own_lift": 0.48808698234044,
+            "passed": true,
+            "section_id": "5b30c1a667e7f247",
+            "tag": ""
+          },
+          {
+            "base_nll": 2.9113540649414062,
+            "effective_sis": -0.10372084294061601,
+            "ft_nll": 2.12537110157502,
+            "kind": "instruction",
+            "leak_lift": 0.37369245952659286,
+            "own_lift": 0.26997161658597685,
+            "passed": false,
+            "section_id": "7c4c6be29d6bb58b",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.886013966686321,
+            "effective_sis": 0.07231549642739837,
+            "ft_nll": 2.1718230337466835,
+            "kind": "instruction",
+            "leak_lift": 0.36880256121081467,
+            "own_lift": 0.44111805763821305,
+            "passed": true,
+            "section_id": "355dc55a9b922c2f",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.977588742278343,
+            "effective_sis": -0.010462636306369733,
+            "ft_nll": 3.1824745355650434,
+            "kind": "instruction",
+            "leak_lift": 0.37110195378675265,
+            "own_lift": 0.3606393174803829,
+            "passed": false,
+            "section_id": "591edca2bcb639df",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.4858864232113485,
+            "effective_sis": 0.0649295265511961,
+            "ft_nll": 2.5392931887978003,
+            "kind": "instruction",
+            "leak_lift": 0.3690077270407092,
+            "own_lift": 0.4339372535919053,
+            "passed": true,
+            "section_id": "dd845297627e6316",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.1663431020883412,
+            "effective_sis": 0.16946833433579728,
+            "ft_nll": 1.4705377432016227,
+            "kind": "instruction",
+            "leak_lift": 0.3661038712689147,
+            "own_lift": 0.535572205604712,
+            "passed": true,
+            "section_id": "f33fa262dde9e576",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.629479471842448,
+            "effective_sis": 0.12450598650031502,
+            "ft_nll": 2.35242919921875,
+            "kind": "instruction",
+            "leak_lift": 0.3673528253754559,
+            "own_lift": 0.4918588118757709,
+            "passed": true,
+            "section_id": "51b2d7bab71a2394",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.5608963639768834,
+            "effective_sis": 0.06661783229160151,
+            "ft_nll": 2.009845890410959,
+            "kind": "instruction",
+            "leak_lift": 0.36896082965903126,
+            "own_lift": 0.4355786619506328,
+            "passed": true,
+            "section_id": "a1471c8243e51656",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.46660628973269,
+            "effective_sis": 0.08009064584719167,
+            "ft_nll": 1.9112189797794117,
+            "kind": "instruction",
+            "leak_lift": 0.36858658483804263,
+            "own_lift": 0.4486772306852343,
+            "passed": true,
+            "section_id": "e4de1e9b6253d0fe",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.724906558082217,
+            "effective_sis": 0.0987929679005865,
+            "ft_nll": 1.9858965192522322,
+            "kind": "instruction",
+            "leak_lift": 0.368067075892115,
+            "own_lift": 0.4668600437927015,
+            "passed": true,
+            "section_id": "3f45b9dc7adb5ae2",
+            "tag": ""
+          },
+          {
+            "base_nll": 5.869542275705645,
+            "effective_sis": -0.10509210902484184,
+            "ft_nll": 4.2927575880481355,
+            "kind": "instruction",
+            "leak_lift": 0.3737305502511547,
+            "own_lift": 0.26863844122631286,
+            "passed": false,
+            "section_id": "49b016bc73973496",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.878383435701069,
+            "effective_sis": -0.2987410517286544,
+            "ft_nll": 3.566683049787555,
+            "kind": "instruction",
+            "leak_lift": 0.3791096875484828,
+            "own_lift": 0.08036863581982842,
+            "passed": false,
+            "section_id": "7e22432d60d48676",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.624024938364498,
+            "effective_sis": 0.19054229192462147,
+            "ft_nll": 1.6088468207687627,
+            "kind": "instruction",
+            "leak_lift": 0.365518483558114,
+            "own_lift": 0.5560607754827355,
+            "passed": true,
+            "section_id": "26f0a3de93f72693",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.089062410242417,
+            "effective_sis": 0.03307038220764158,
+            "ft_nll": 2.441321204690372,
+            "kind": "instruction",
+            "leak_lift": 0.3698927032724746,
+            "own_lift": 0.40296308548011617,
+            "passed": false,
+            "section_id": "068761bfd5a13bf0",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.3356565817808495,
+            "effective_sis": -0.04247155325080737,
+            "ft_nll": 2.9069730318509617,
+            "kind": "instruction",
+            "leak_lift": 0.3719910903685426,
+            "own_lift": 0.32951953711773524,
+            "passed": false,
+            "section_id": "c36538fa2d77f1dc",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.747733806741649,
+            "effective_sis": -0.04766004529346185,
+            "ft_nll": 2.5316872432314117,
+            "kind": "instruction",
+            "leak_lift": 0.37213521514750525,
+            "own_lift": 0.3244751698540434,
+            "passed": false,
+            "section_id": "8c64273ee598cdc8",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.1840599323141165,
+            "effective_sis": -0.043150407071232744,
+            "ft_nll": 2.136951446533203,
+            "kind": "instruction",
+            "leak_lift": 0.37200994741911,
+            "own_lift": 0.32885954034787723,
+            "passed": false,
+            "section_id": "22844ad1e6cc21b5",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.509236952837776,
+            "effective_sis": 0.12555988804335655,
+            "ft_nll": 1.7795921774471508,
+            "kind": "instruction",
+            "leak_lift": 0.3673235503325936,
+            "own_lift": 0.49288343837595017,
+            "passed": true,
+            "section_id": "ca4042aec6060b82",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.8464840748271003,
+            "effective_sis": 0.021109981847880432,
+            "ft_nll": 2.341220543032787,
+            "kind": "instruction",
+            "leak_lift": 0.37022493661580125,
+            "own_lift": 0.3913349184636817,
+            "passed": false,
+            "section_id": "6d1105d942e21fe7",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.2444513956705725,
+            "effective_sis": -0.11153607984572833,
+            "ft_nll": 3.1308199564615884,
+            "kind": "instruction",
+            "leak_lift": 0.3739095494406237,
+            "own_lift": 0.2623734695948954,
+            "passed": false,
+            "section_id": "b2d3d820f1c1c345",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.5749533971150718,
+            "effective_sis": -0.17598699916513005,
+            "ft_nll": 2.860989252726237,
+            "kind": "instruction",
+            "leak_lift": 0.3756998527550516,
+            "own_lift": 0.19971285358992152,
+            "passed": false,
+            "section_id": "2a8f4c8330dc4df5",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.0795318603515627,
+            "effective_sis": -0.19925457730258353,
+            "ft_nll": 2.5341726449819713,
+            "kind": "instruction",
+            "leak_lift": 0.37634617436998086,
+            "own_lift": 0.17709159706739733,
+            "passed": false,
+            "section_id": "b176cf46a20e0714",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.2099117449860075,
+            "effective_sis": -0.03496741567277334,
+            "ft_nll": 2.128764593779151,
+            "kind": "instruction",
+            "leak_lift": 0.37178264210248607,
+            "own_lift": 0.33681522642971273,
+            "passed": false,
+            "section_id": "8169b4e2d63784ec",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.230460788892663,
+            "effective_sis": -0.20378740910551404,
+            "ft_nll": 3.49992503290591,
+            "kind": "instruction",
+            "leak_lift": 0.3764720863645067,
+            "own_lift": 0.17268467725899264,
+            "passed": false,
+            "section_id": "d6008217fa164da7",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.511493025154903,
+            "effective_sis": 0.04586452455157064,
+            "ft_nll": 2.0528123789820176,
+            "kind": "instruction",
+            "leak_lift": 0.36953731042958765,
+            "own_lift": 0.4154018349811583,
+            "passed": false,
+            "section_id": "f83dc98d1b6ddcae",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.3412074788411457,
+            "effective_sis": -0.011300414593640506,
+            "ft_nll": 2.1389581298828126,
+            "kind": "instruction",
+            "leak_lift": 0.37112522540584353,
+            "own_lift": 0.359824810812203,
+            "passed": false,
+            "section_id": "668c04d7ae53e8fe",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.6240665496341764,
+            "effective_sis": -0.2049958633403854,
+            "ft_nll": 3.002503652421255,
+            "kind": "instruction",
+            "leak_lift": 0.3765056545376976,
+            "own_lift": 0.1715097911973122,
+            "passed": false,
+            "section_id": "64606c5209a76c28",
+            "tag": ""
+          },
+          {
+            "base_nll": 3.727417701898619,
+            "effective_sis": 0.008367172648670262,
+            "ft_nll": 2.314927389455396,
+            "kind": "instruction",
+            "leak_lift": 0.37057890353800155,
+            "own_lift": 0.3789460761866718,
+            "passed": false,
+            "section_id": "16f25169869c5c6f",
+            "tag": ""
+          },
+          {
+            "base_nll": 4.547536041777013,
+            "effective_sis": 0.18225370190557222,
+            "ft_nll": 2.0554752673132946,
+            "kind": "instruction",
+            "leak_lift": 0.3657487221697543,
+            "own_lift": 0.5480024240753265,
+            "passed": true,
+            "section_id": "0f34524d32acc1b6",
+            "tag": ""
+          }
+        ],
+        "per_section_threshold": 0.05,
+        "raw_ci_95": [
+          -0.04250307630931393,
+          0.04526532776670737
+        ],
+        "weight": 1.0,
+        "z_by_rank": {
+          "rank_1.00": 4.651026541782724e-12
+        }
+      },
+      "ft_value": null,
+      "kind": "section_internalization",
+      "message": "15/36 sections cleared; mean effective_sis=+0.000, z=+0.00\u03c3 vs null",
+      "name": "sis_fortran",
+      "raw": 4.625929269271485e-18,
+      "score": 0.5000000000003876,
+      "verdict": "fail",
+      "z_score": 4.651026541782724e-12
+    },
+    {
+      "base_value": null,
+      "ci_95": null,
+      "duration_s": 2.9580260161310434e-06,
+      "evidence": {},
+      "ft_value": null,
+      "kind": "paraphrase_invariance",
+      "message": "no cases provided",
+      "name": "para_fortran",
+      "raw": null,
+      "score": null,
+      "verdict": "error",
+      "z_score": null
+    },
+    {
+      "base_value": null,
+      "ci_95": [
+        0.03139013452914798,
+        0.03139013452914798
+      ],
+      "duration_s": 18.9565314159845,
+      "evidence": {
+        "mean_clean_recall": 0.03139013452914798,
+        "mean_fragility": 0.0,
+        "mean_perturbed_recall": 0.0407330191075767,
+        "per_section": [
+          {
+            "clean_recall": 0.03139013452914798,
+            "fragility": 0.0,
+            "perturbed_recall": 0.0407330191075767,
+            "section_id": "2ae73af79acd2aa3"
+          }
+        ],
+        "raw_ci_95": [
+          0.03139013452914798,
+          0.03139013452914798
+        ],
+        "weight": 1.0,
+        "z_by_rank": {
+          "rank_1.00": 2.040322695370548
+        }
+      },
+      "ft_value": 0.0,
+      "kind": "leakage",
+      "message": "greedy_recall=0.03 (perturbed=0.04, fragility=0.00), z=+2.04\u03c3 vs null",
+      "name": "leak_fortran",
+      "raw": 0.03139013452914798,
+      "score": 0.6637627044025881,
+      "verdict": "pass",
+      "z_score": 2.040322695370548
+    },
+    {
+      "base_value": null,
+      "ci_95": [
+        0.04,
+        0.22
+      ],
+      "duration_s": 3.106611958995927,
+      "evidence": {
+        "fraction_regressed": 0.12,
+        "mean_delta_nats": -0.17035713793127796,
+        "raw_ci_95": [
+          0.04,
+          0.22
+        ],
+        "regressed_count": 6,
+        "regression_nats_threshold": 1.0,
+        "total_items": 50,
+        "weight": 1.0,
+        "worst_offenders": [
+          {
+            "delta": -4.315955400466919,
+            "gold": " Europe",
+            "prompt": "The Mediterranean Sea borders southern"
+          },
+          {
+            "delta": -1.7071008682250977,
+            "gold": " China",
+            "prompt": "Mount Everest is located on the border of Nepal and"
+          },
+          {
+            "delta": -1.4701178073883057,
+            "gold": " Brasilia",
+            "prompt": "The capital of Brazil is"
+          },
+          {
+            "delta": -1.428731918334961,
+            "gold": " Sun",
+            "prompt": "The closest star to Earth is the"
+          },
+          {
+            "delta": -1.321993350982666,
+            "gold": " Asia",
+            "prompt": "The largest continent is"
+          }
+        ],
+        "z_by_rank": null
+      },
+      "ft_value": -0.17035713793127796,
+      "kind": "calibration_drift",
+      "message": "6/50 items regressed >1.0 nats (frac=12.0%), mean_delta=-0.170 nats/tok (no calibration for calibration_drift)",
+      "name": "cal_general",
+      "raw": 0.12,
+      "score": 0.34123809655165915,
+      "verdict": "pass",
+      "z_score": null
+    },
+    {
+      "base_value": null,
+      "ci_95": null,
+      "duration_s": 1.0620087500137743,
+      "evidence": {
+        "lambdas": [
+          0.0,
+          0.25,
+          0.5,
+          0.75,
+          1.0,
+          1.25
+        ],
+        "linearity": 0.9103879862304414,
+        "mean_divergence_per_lambda": [
+          0.0,
+          0.024096238486922095,
+          0.06339058010139965,
+          0.12162927505983301,
+          0.16378600880464075,
+          0.3086516331232216
+        ],
+        "overshoot": 1.8844810700001389,
+        "passed_linearity": true,
+        "passed_overshoot": true,
+        "passed_saturation": false,
+        "saturation_lambda": 1.25,
+        "saturation_reason": "found",
+        "weight": 1.0,
+        "z_by_rank": null
+      },
+      "ft_value": null,
+      "kind": "adapter_ablation",
+      "message": "R\u00b2=0.91, sat_\u03bb=1.25 (out of band), overshoot=1.88 (no calibration for adapter_ablation)",
+      "name": "abl_fortran",
+      "raw": 0.9103879862304414,
+      "score": 0.79,
+      "verdict": "fail",
+      "z_score": null
+    }
+  ],
+  "schema_version": 1,
+  "score": {
+    "band": "partial",
+    "components": {
+      "ablation": 0.79,
+      "adherence": 0.5194587403778158,
+      "attribution": 0.5000000000003876,
+      "baseline": 1.0,
+      "calibration": 0.5025004004771236
+    },
+    "findings": [
+      "dk_fortran_qa_shaped (delta_kl) failed: mean js=0.2191, z=+0.23\u03c3 vs null",
+      "1 probe(s) errored \u2014 see full report for details"
+    ],
+    "overall": 0.5498377022089052,
+    "weights": {
+      "ablation": 0.15,
+      "adherence": 0.3,
+      "attribution": 0.35,
+      "baseline": 0.0,
+      "calibration": 0.2
+    }
+  },
+  "spec_path": "/Users/mfwolffe/GithubOrgs/tenseleyFlow/DocumentLanguageModel/docs/audits/13-followup/finding05-smol-qa/sway.yaml",
+  "started_at": "2026-04-30T23:43:40.737655+00:00",
+  "sway_version": "0.1.0",
+  "wall_seconds": 73.621905
+}

@@ -127,7 +127,7 @@ def _patch_mining_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *args, **kwargs: _FakeBackend({"What is DGEMM?": ["bad answer", "good answer"]}),
     )
     monkeypatch.setattr(
-        "dlm.preference.build_judge",
+        "dlm.preference.judge.build_judge",
         lambda *args, **kwargs: _FakeJudge(),
     )
 

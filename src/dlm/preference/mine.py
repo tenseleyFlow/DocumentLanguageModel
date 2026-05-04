@@ -17,7 +17,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from dlm.data.errors import InstructionParseError
 from dlm.data.instruction_parser import parse_instruction_body
-from dlm.data.sections_to_rows import _normalize_probe_markers
+from dlm.data.sections_to_rows import normalize_probe_markers
 from dlm.doc.parser import ParsedDlm
 from dlm.doc.sections import Section, SectionType
 from dlm.preference.judge import PairScore, PreferenceJudge
@@ -266,7 +266,7 @@ def _extract_prompts(
             continue
         try:
             pairs = parse_instruction_body(
-                _normalize_probe_markers(section.content),
+                normalize_probe_markers(section.content),
                 section_id=section.section_id,
             )
         except InstructionParseError as exc:
