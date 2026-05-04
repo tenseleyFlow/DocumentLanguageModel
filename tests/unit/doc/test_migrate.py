@@ -138,6 +138,46 @@ y
         assert result.backup_path is None
         assert not (tmp_path / "mydoc.dlm.bak").exists()
 
+    def test_user_explicit_default_value_survives_migration(
+        self, tmp_path: Path, bumped_current: int
+    ) -> None:
+        """Honor the 'additive identity' contract at intent level, not just behavior.
+
+        A user who pinned `lora_r: 8` should still see `lora_r: 8` in
+        the migrated doc, even though 8 happens to match the current
+        schema default. Without this, a future default change would
+        silently override the user's pin.
+        """
+        current = bumped_current - 1
+
+        @register(from_version=current)
+        def _pre_current(raw: dict[str, object]) -> dict[str, object]:
+            return dict(raw)
+
+        doc = tmp_path / "mydoc.dlm"
+        doc.write_text(
+            f"""---
+dlm_id: {_VALID_ULID}
+base_model: smollm2-135m
+dlm_version: {current}
+training:
+  lora_r: 8
+  lora_alpha: 16
+  num_epochs: 3
+---
+
+body
+""",
+            encoding="utf-8",
+        )
+
+        result = migrate_file(doc, no_backup=True)
+        assert result.wrote is True
+        text = doc.read_text(encoding="utf-8")
+        assert "lora_r: 8" in text
+        assert "lora_alpha: 16" in text
+        assert "num_epochs: 3" in text
+
     def test_dry_run_reports_without_writing(self, tmp_path: Path, bumped_current: int) -> None:
         current = bumped_current - 1
 

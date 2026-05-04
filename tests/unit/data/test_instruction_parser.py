@@ -77,9 +77,70 @@ class TestErrors:
         assert excinfo.value.section_id == "sid-abc"
         assert excinfo.value.section_line >= 1
 
-    def test_prose_between_pairs_rejected(self) -> None:
-        """Non-header, non-blank content after a complete pair is treated as
-        the next Q header, which fails the header check."""
+    def test_prose_between_pairs_absorbed_into_prior_answer(self) -> None:
+        """Prose between Q/A pairs is folded into the previous answer.
+
+        Bodies terminate at the next ``### Q`` / ``### A`` header (or
+        EOF), so a paragraph wedged between two pairs becomes part of
+        the first pair's answer rather than raising. Authors should
+        either format the stray prose as a separate PROSE section
+        outside the ``::instruction::`` block, or accept it gets
+        appended to the prior answer.
+        """
         body = "### Q\nq1\n### A\na1\n\nsome prose not in a section\n### Q\nq2\n### A\na2"
-        with pytest.raises(InstructionParseError, match="expected `### Q`"):
-            parse_instruction_body(body, section_id="sid")
+        pairs = parse_instruction_body(body, section_id="sid")
+        assert len(pairs) == 2
+        assert pairs[0].answer == "a1\n\nsome prose not in a section"
+        assert pairs[1] == QAPair(question="q2", answer="a2")
+
+
+class TestBlankLinePreservation:
+    """Bodies preserve blank lines so multi-paragraph answers and fenced
+    code blocks (which routinely separate imports from the call site
+    with a blank) parse correctly."""
+
+    def test_answer_with_blank_line_inside_fenced_code_block(self) -> None:
+        body = (
+            "### Q\nHow do I append to a log file?\n"
+            "### A\n"
+            "Use ``logger_type%add_log_file`` with ``position='append'``:\n"
+            "```fortran\n"
+            "use stdlib_logger, only: logger_type\n"
+            "type(logger_type) :: log\n"
+            "integer :: stat\n"
+            "\n"
+            "call log%add_log_file('app.log', stat, position='append')\n"
+            "call log%log_information('app started')\n"
+            "```\n"
+            "Default level is ``information``; raise via ``configuration``."
+        )
+        pairs = parse_instruction_body(body, section_id="sid")
+        assert len(pairs) == 1
+        assert "call log%add_log_file" in pairs[0].answer
+        # Blank line preserved inside the fence.
+        assert "\n\ncall log%add_log_file" in pairs[0].answer
+
+    def test_multi_paragraph_answer(self) -> None:
+        body = (
+            "### Q\nWhat is X?\n"
+            "### A\n"
+            "Paragraph one explains the basics.\n"
+            "\n"
+            "Paragraph two adds context that wouldn't fit in one breath.\n"
+            "\n"
+            "Paragraph three lands the recommendation."
+        )
+        pairs = parse_instruction_body(body, section_id="sid")
+        assert pairs[0].answer.count("\n\n") == 2
+
+    def test_two_pairs_with_multi_paragraph_answers(self) -> None:
+        body = "### Q\nq1?\n### A\nfirst para\n\nsecond para\n### Q\nq2?\n### A\nans2"
+        pairs = parse_instruction_body(body, section_id="sid")
+        assert len(pairs) == 2
+        assert pairs[0].answer == "first para\n\nsecond para"
+        assert pairs[1].answer == "ans2"
+
+    def test_trailing_blank_lines_stripped(self) -> None:
+        body = "### Q\nq?\n### A\nthe answer\n\n\n"
+        pairs = parse_instruction_body(body, section_id="sid")
+        assert pairs[0].answer == "the answer"

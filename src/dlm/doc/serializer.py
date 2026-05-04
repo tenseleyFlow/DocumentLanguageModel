@@ -34,12 +34,23 @@ _FRONTMATTER_ORDER: Final[tuple[str, ...]] = (
 )
 
 
-def serialize(parsed: ParsedDlm) -> str:
+def serialize(
+    parsed: ParsedDlm,
+    *,
+    force_emit_paths: frozenset[tuple[str, ...]] | None = None,
+) -> str:
     """Produce canonical `.dlm` text for `parsed`.
 
     Always ends with `\\n`.
+
+    `force_emit_paths` is consulted by `_emit_nested_mapping` — a field
+    whose dotted path appears in the set is emitted even when its value
+    matches the schema default. Used by the migrate pipeline to
+    preserve user-explicit fields across schema-default drift (so a
+    user who pinned `lora_r: 8` doesn't silently inherit a future
+    `lora_r: 16` default after migration).
     """
-    parts: list[str] = [_serialize_frontmatter(parsed.frontmatter), "\n"]
+    parts: list[str] = [_serialize_frontmatter(parsed.frontmatter, force_emit_paths), "\n"]
     for i, section in enumerate(parsed.sections):
         if i > 0:
             parts.append("\n")
@@ -50,10 +61,41 @@ def serialize(parsed: ParsedDlm) -> str:
     return rendered
 
 
+def collect_dict_field_paths(d: object, prefix: tuple[str, ...] = ()) -> frozenset[tuple[str, ...]]:
+    """Walk a parsed-YAML dict and return every nested leaf-or-mapping path.
+
+    Used by the migrate pipeline: the set of paths present in the
+    user's original frontmatter (after migration runs) is the set of
+    fields the serializer must emit even when they match defaults.
+    Mappings *and* leaves are both included so intermediate blocks
+    survive re-emission.
+    """
+    paths: set[tuple[str, ...]] = set()
+    if isinstance(d, dict):
+        for k, v in d.items():
+            if not isinstance(k, str):
+                continue
+            here = (*prefix, k)
+            paths.add(here)
+            if isinstance(v, dict):
+                paths.update(collect_dict_field_paths(v, here))
+            elif isinstance(v, list):
+                # List of mappings (e.g. training.sources) — each item
+                # contributes paths under the same parent key, since
+                # we serialize positional list entries together.
+                for item in v:
+                    if isinstance(item, dict):
+                        paths.update(collect_dict_field_paths(item, here))
+    return frozenset(paths)
+
+
 # --- frontmatter --------------------------------------------------------------
 
 
-def _serialize_frontmatter(fm: DlmFrontmatter) -> str:
+def _serialize_frontmatter(
+    fm: DlmFrontmatter,
+    force_emit_paths: frozenset[tuple[str, ...]] | None = None,
+) -> str:
     lines: list[str] = ["---"]
     for key in _FRONTMATTER_ORDER:
         value = getattr(fm, key, None)
@@ -63,7 +105,9 @@ def _serialize_frontmatter(fm: DlmFrontmatter) -> str:
             lines.extend(_emit_block_scalar(key, value))
             continue
         if isinstance(value, TrainingConfig | ExportConfig):
-            nested = _emit_nested_mapping(value, indent=2)
+            nested = _emit_nested_mapping(
+                value, indent=2, path=(key,), force_emit_paths=force_emit_paths
+            )
             if not nested:
                 # All-default nested block — skip the header too so we
                 # don't emit an empty `training:` line.
@@ -76,7 +120,13 @@ def _serialize_frontmatter(fm: DlmFrontmatter) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
+def _emit_nested_mapping(
+    model: BaseModel,
+    *,
+    indent: int,
+    path: tuple[str, ...] = (),
+    force_emit_paths: frozenset[tuple[str, ...]] | None = None,
+) -> list[str]:
     """Emit a nested training/export/dpo block.
 
     Suppress fields that equal their schema default so
@@ -87,6 +137,11 @@ def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
 
     Nested `BaseModel` values (e.g. `TrainingConfig.preference`)
     recurse with deeper indent; all-default sub-blocks are skipped.
+
+    `force_emit_paths` overrides the default-suppression rule for any
+    field whose dotted path appears in the set. Used by the migrate
+    pipeline to preserve user-explicit fields across schema-default
+    drift.
     """
     pad = " " * indent
     lines: list[str] = []
@@ -99,16 +154,28 @@ def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
 
     for field_name, field_info in model.__class__.model_fields.items():
         value = getattr(model, field_name)
-        if field_info.default is not PydanticUndefined and value == field_info.default:
+        field_path = (*path, field_name)
+        forced = force_emit_paths is not None and field_path in force_emit_paths
+        if (
+            not forced
+            and field_info.default is not PydanticUndefined
+            and value == field_info.default
+        ):
             continue
         if (
-            field_info.default is PydanticUndefined
+            not forced
+            and field_info.default is PydanticUndefined
             and field_info.default_factory is not None
             and value == field_info.default_factory()  # type: ignore[call-arg]
         ):
             continue
         if isinstance(value, BaseModel):
-            nested = _emit_nested_mapping(value, indent=indent + 2)
+            nested = _emit_nested_mapping(
+                value,
+                indent=indent + 2,
+                path=field_path,
+                force_emit_paths=force_emit_paths,
+            )
             if not nested:
                 continue
             lines.append(f"{pad}{field_name}:")
@@ -125,7 +192,12 @@ def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
             lines.append(f"{pad}{field_name}:")
             for k, v in value.items():
                 lines.append(f"{pad}  {k}:")
-                nested = _emit_nested_mapping(v, indent=indent + 4)
+                nested = _emit_nested_mapping(
+                    v,
+                    indent=indent + 4,
+                    path=(*field_path, k),
+                    force_emit_paths=force_emit_paths,
+                )
                 if nested:
                     lines.extend(nested)
                 else:
@@ -144,7 +216,12 @@ def _emit_nested_mapping(model: BaseModel, *, indent: int) -> list[str]:
             # fields indent aligned.
             lines.append(f"{pad}{field_name}:")
             for item in value:
-                nested = _emit_nested_mapping(item, indent=indent + 4)
+                nested = _emit_nested_mapping(
+                    item,
+                    indent=indent + 4,
+                    path=field_path,
+                    force_emit_paths=force_emit_paths,
+                )
                 if not nested:
                     lines.append(f"{pad}  - {{}}")
                     continue

@@ -337,6 +337,17 @@ _ENTRIES: tuple[BaseModelSpec, ...] = (
         size_gb_fp16=0.27,
         context_length=8_192,
         recommended_seq_len=1024,
+        capability_warning=(
+            "SmolLM2-135M is below dlm's empirical training floor. Audit 13 "
+            "follow-up findings 02 + 05 measured this base actively "
+            "degrading general-chat capability under every LoRA recipe "
+            "tested (PROSE-only, INSTRUCTION-only, mixed). Adapters "
+            "memorize trained content but fail to generalize and bleed "
+            "domain-specific tokens into unrelated queries. Suitable for "
+            "style-transfer demos and pipeline smoke tests; for any "
+            "specialty-knowledge task use a base ≥ 1B params (e.g. "
+            "smollm2-1.7b, qwen2.5-coder-1.5b, llama-3.2-1b)."
+        ),
     ),
     BaseModelSpec(
         key="smollm2-360m",

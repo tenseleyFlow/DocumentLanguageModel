@@ -160,7 +160,7 @@ dlm show /path/to/doc.dlm --json | jq .training_cache
 The metrics DB keeps a row per run:
 
 ```bash
-dlm metrics /path/to/doc.dlm --json | jq '.runs[0].tokenization'
+dlm metrics show /path/to/doc.dlm --json | jq '.runs[0].tokenization'
 ```
 
 Fields on the event: `total_sections`, `cache_hits`, `cache_misses`,

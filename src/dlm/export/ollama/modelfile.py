@@ -98,7 +98,7 @@ def render_modelfile(ctx: ModelfileContext) -> str:
     )
     from_line = f"FROM ./{ctx.base_gguf_name}"
     adapter_line = f"ADAPTER ./{ctx.adapter_gguf_name}" if ctx.adapter_gguf_name else None
-    template_block = _build_template_block(template_row)
+    template_block = _build_template_block(template_row) if ctx.plan.include_template else None
     num_ctx = resolve_num_ctx(ctx.training_sequence_len, ctx.spec.context_length)
     temperature = (
         ctx.override_temperature
@@ -121,7 +121,10 @@ def render_modelfile(ctx: ModelfileContext) -> str:
     parts: list[str] = [header, "", from_line]
     if adapter_line is not None:
         parts.append(adapter_line)
-    parts.extend(["", template_block, ""])
+    if template_block is not None:
+        parts.extend(["", template_block, ""])
+    else:
+        parts.append("")
     parts.extend(param_lines)
     if system_line is not None:
         parts.extend(["", system_line])

@@ -153,6 +153,22 @@ Then commit the updated goldens. If the token count is off for
 multiple dialects, investigate the Go template in
 `src/dlm/export/ollama/templates/`.
 
+## Install
+
+### `No such command 'repl'` (or `metrics`, `synth`, `serve`, etc.)
+
+**Cause:** the `dlm` on your `PATH` is older than the released binary
+— most often a third-party Homebrew tap that hasn't bumped to the
+current release. The commands `repl`, `metrics`, `templates`, `push`,
+`pull`, `serve`, `verify`, `preference`, `synth`, and `cache` were all
+added after 0.9.0.
+
+**Fix:** install from PyPI (`pip install --upgrade
+document-language-model`) or run from a checkout via `uv run dlm`.
+Confirm the version with `dlm --version`; trunk advertises 0.10.0+.
+The brew formula is community-maintained and not auto-bumped on every
+DLM release.
+
 ## Hardware / doctor
 
 ### `dlm doctor: no viable plan`

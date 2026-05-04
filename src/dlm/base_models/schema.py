@@ -149,6 +149,14 @@ class BaseModelSpec(BaseModel):
     provenance_url: str | None = None
     provenance_match_text: str | None = None
 
+    # Optional curated warning surfaced at `dlm train` time when this
+    # base is selected. Populate when the base has a known limitation
+    # that's not derivable from `params` / `architecture` alone — e.g.
+    # SmolLM2-135M's measured architectural floor (audit 13 follow-up
+    # findings 02 + 05: actively degrades base capability under any
+    # LoRA recipe). Empty string is treated as "no warning".
+    capability_warning: str | None = Field(default=None, min_length=1)
+
     # Modality + multi-modal preprocessing (schema v10 + v11, plus the
     # additive `text-moe` discriminator).
     # Text-family bases leave `modality in {"text", "text-moe"}`

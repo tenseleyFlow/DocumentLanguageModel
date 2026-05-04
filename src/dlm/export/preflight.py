@@ -98,8 +98,11 @@ def check_tokenizer_vocab(adapter_dir: Path) -> int:
             detail=f"cannot parse {cfg_path}: {exc}",
         ) from exc
 
-    # `vocab_size` key isn't always present in tokenizer_config.json;
-    # fall back to the companion tokenizer.json which always carries it.
+    # `vocab_size` key isn't always present in tokenizer_config.json
+    # (Qwen2.5+, Llama-3.x omit it); fall back to summing the BPE base
+    # plus the explicit `added_tokens` array in tokenizer.json. This
+    # matches `len(transformers.AutoTokenizer.from_pretrained(...))` —
+    # the count the model actually addresses at inference time.
     vocab_size = cfg.get("vocab_size")
     if not isinstance(vocab_size, int):
         tokenizer_json = adapter_dir / "tokenizer.json"
@@ -113,8 +116,9 @@ def check_tokenizer_vocab(adapter_dir: Path) -> int:
                 ) from exc
             model = t.get("model") or {}
             vocab = model.get("vocab")
+            added = t.get("added_tokens") or []
             if isinstance(vocab, dict):
-                vocab_size = len(vocab)
+                vocab_size = len(vocab) + (len(added) if isinstance(added, list) else 0)
     if not isinstance(vocab_size, int) or vocab_size <= 0:
         raise PreflightError(
             probe="tokenizer_vocab",
@@ -133,6 +137,10 @@ def check_chat_template(adapter_dir: Path, *, required: bool = True) -> None:
     `--no-template` on the CLI sets `required=False`; the default
     requires one because the Modelfile emitter hardcodes
     `TEMPLATE "..."` which needs source text.
+
+    Modern HF tokenizers (Qwen2.5+, Llama-3.x) write the template to
+    a sibling `chat_template.jinja` file rather than inlining it in
+    `tokenizer_config.json`. Check both locations.
     """
     if not required:
         return
@@ -150,15 +158,30 @@ def check_chat_template(adapter_dir: Path, *, required: bool = True) -> None:
             detail=f"cannot parse {cfg_path}: {exc}",
         ) from exc
     template = cfg.get("chat_template")
-    if not template or not str(template).strip():
-        raise PreflightError(
-            probe="chat_template",
-            detail=(
-                "tokenizer has no chat_template. Pass --no-template to skip "
-                "this check (Modelfile emission will fall back to the base "
-                "model's default), or attach a template via frontmatter."
-            ),
-        )
+    if template and str(template).strip():
+        return
+
+    sibling_path = adapter_dir / "chat_template.jinja"
+    if sibling_path.exists():
+        try:
+            sibling_template = sibling_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise PreflightError(
+                probe="chat_template",
+                detail=f"cannot read {sibling_path}: {exc}",
+            ) from exc
+        if sibling_template.strip():
+            return
+
+    raise PreflightError(
+        probe="chat_template",
+        detail=(
+            "tokenizer has no chat_template (checked tokenizer_config.json "
+            "and chat_template.jinja). Pass --no-template to skip "
+            "this check (Modelfile emission will fall back to the base "
+            "model's default), or attach a template via frontmatter."
+        ),
+    )
 
 
 def check_pretokenizer_fingerprint(spec: BaseModelSpec) -> None:

@@ -30,6 +30,21 @@ class TestLaunchTen:
         assert list(keys) == list(BASE_MODELS.keys())
 
 
+class TestCapabilityWarnings:
+    def test_smol_135m_carries_warning(self) -> None:
+        """SmolLM2-135M is below the empirically-measured training floor."""
+        spec = BASE_MODELS["smollm2-135m"]
+        assert spec.capability_warning is not None
+        # The audit findings 02 + 05 are the load-bearing evidence;
+        # the wording should mention the floor in some form.
+        assert "floor" in spec.capability_warning.lower()
+
+    def test_above_floor_bases_have_no_warning(self) -> None:
+        """1B+ launch bases ship without the architectural-floor warning."""
+        for key in ("smollm2-1.7b", "qwen2.5-coder-1.5b", "llama-3.2-1b"):
+            assert BASE_MODELS[key].capability_warning is None, key
+
+
 class TestRevisionPinning:
     """Audit-02 F11: every registry entry has a real 40-char commit SHA."""
 
